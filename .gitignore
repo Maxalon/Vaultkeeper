@@ -1,0 +1,37 @@
+.env
+.env.local
+.idea/
+.vscode/
+
+# Stray SVN client config (not part of this project — likely created by an
+# accidental HOME=/mnt/games/MTGBank invocation; auth/ may contain saved creds)
+.subversion/
+
+# Laravel
+api/vendor/
+api/node_modules/
+api/storage/*.key
+api/storage/logs/*.log
+api/storage/framework/cache/data/*
+api/storage/framework/sessions/*
+api/storage/framework/views/*
+api/bootstrap/cache/*.php
+api/.phpunit.result.cache
+!api/storage/framework/cache/data/.gitkeep
+!api/storage/framework/sessions/.gitkeep
+!api/storage/framework/views/.gitkeep
+
+# Node / Vue
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.local
+
+# Android
+app/build/
+app/.gradle/
+app/local.properties
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,46 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for Gradle wrapper
+        id: check
+        run: |
+          if [ -f app/gradlew ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::app/gradlew not found — skipping Android build."
+          fi
+
+      - name: Set up JDK 17
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Make gradlew executable
+        if: steps.check.outputs.exists == 'true'
+        run: chmod +x app/gradlew
+
+      - name: Build release APK
+        if: steps.check.outputs.exists == 'true'
+        working-directory: app
+        run: ./gradlew assembleRelease
+
+      - name: Upload APK artifact
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultkeeper-apk
+          path: app/build/outputs/apk/release/*.apk

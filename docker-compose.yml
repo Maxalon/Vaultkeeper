@@ -1,0 +1,70 @@
+services:
+  db:
+    image: mysql:8
+    container_name: vaultkeeper_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - vaultkeeper
+
+  api:
+    build:
+      context: ./docker/php
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    container_name: vaultkeeper_api
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./api:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - vaultkeeper
+
+  web:
+    image: node:20-alpine
+    container_name: vaultkeeper_web
+    restart: unless-stopped
+    working_dir: /app
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./web:/app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    networks:
+      - vaultkeeper
+
+  nginx:
+    image: nginx:alpine
+    container_name: vaultkeeper_nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./api:/var/www/html
+    depends_on:
+      - api
+      - web
+    networks:
+      - vaultkeeper
+
+volumes:
+  db_data:
+
+networks:
+  vaultkeeper:
+    driver: bridge
