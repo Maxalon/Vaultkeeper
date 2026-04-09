@@ -6,7 +6,9 @@ use App\Models\Card;
 use App\Models\CollectionEntry;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use League\Csv\Reader;
 
@@ -20,6 +22,12 @@ class ManaBoxImportService
      */
     public function import(UploadedFile $file, User $user, ?int $locationId): array
     {
+        $setsDir = storage_path('app/public/sets');
+        if (! is_dir($setsDir) || empty(glob($setsDir.'/*'))) {
+            Log::info('Sets directory empty, running sets:sync automatically.');
+            Artisan::call('sets:sync');
+        }
+
         $reader = Reader::createFromPath($file->getRealPath(), 'r');
         $reader->setHeaderOffset(0);
 
@@ -64,12 +72,15 @@ class ManaBoxImportService
                     continue;
                 }
 
+                $rarity = trim((string) ($row['Rarity'] ?? ''));
+
                 $card = Card::updateOrCreate(
                     ['scryfall_id' => $scryfallId],
                     [
                         'name'             => (string) ($row['Name'] ?? ''),
                         'set_code'         => (string) ($row['Set code'] ?? ''),
                         'collector_number' => (string) ($row['Collector number'] ?? ''),
+                        'rarity'           => $rarity !== '' ? $rarity : null,
                     ],
                 );
 

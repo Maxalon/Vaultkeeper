@@ -40,3 +40,20 @@ Open http://localhost:8080 and log in.
 | GET    | `/api/auth/me`       | JWT required                   |
 | `*`    | `/api/{cards,collection,locations,decks}` | Resource controllers (stubs) |
 | POST   | `/api/import`        | Stub                           |
+
+## Scheduled Tasks
+
+Vaultkeeper uses Laravel's task scheduler to keep set symbols up to date.
+Add this single cron entry to the server running the Docker containers:
+
+    * * * * * docker compose -f /path/to/docker-compose.yml exec -T api php artisan schedule:run >> /dev/null 2>&1
+
+Replace `/path/to/docker-compose.yml` with the actual path to your project.
+
+To manually sync all set symbols (first-time setup or full refresh):
+
+    docker compose exec api php artisan sets:sync
+
+To manually trigger the daily new-sets check:
+
+    docker compose exec api php artisan sets:sync-new
