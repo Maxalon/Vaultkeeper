@@ -2,13 +2,116 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CollectionEntry;
+use App\Models\Location;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 class LocationController extends Controller
 {
-    public function index() {}
-    public function store(Request $request) {}
-    public function show(string $id) {}
-    public function update(Request $request, string $id) {}
-    public function destroy(string $id) {}
+    /**
+     * GET /api/locations — list user's locations with card_count, plus a
+     * virtual "Unassigned" entry pinned to the top of the response.
+     */
+    public function index(): JsonResponse
+    {
+        $userId = auth()->id();
+
+        $locations = Location::query()
+            ->where('user_id', $userId)
+            ->withCount(['entries as card_count' => function ($q) use ($userId) {
+                $q->where('user_id', $userId);
+            }])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Location $l) => [
+                'id'          => $l->id,
+                'type'        => $l->type,
+                'name'        => $l->name,
+                'set_code'    => $l->set_code,
+                'description' => $l->description,
+                'card_count'  => (int) $l->card_count,
+            ]);
+
+        $unassignedCount = CollectionEntry::query()
+            ->where('user_id', $userId)
+            ->whereNull('location_id')
+            ->count();
+
+        $virtual = [
+            'id'          => null,
+            'type'        => 'virtual',
+            'name'        => 'Unassigned',
+            'set_code'    => null,
+            'description' => 'Cards not assigned to any location',
+            'card_count'  => $unassignedCount,
+        ];
+
+        return response()->json([$virtual, ...$locations->all()]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'type'        => 'required|in:drawer,binder',
+            'name'        => 'required|string|max:100',
+            'set_code'    => 'nullable|string|max:10',
+            'description' => 'nullable|string|max:500',
+        ]);
+
+        $location = Location::create([...$data, 'user_id' => auth()->id()]);
+
+        return response()->json($this->present($location, 0), 201);
+    }
+
+    public function update(Request $request, Location $location): JsonResponse
+    {
+        abort_if($location->user_id !== auth()->id(), 403);
+
+        $data = $request->validate([
+            'type'        => 'required|in:drawer,binder',
+            'name'        => 'required|string|max:100',
+            'set_code'    => 'nullable|string|max:10',
+            'description' => 'nullable|string|max:500',
+        ]);
+
+        $location->update($data);
+
+        $count = CollectionEntry::where('user_id', auth()->id())
+            ->where('location_id', $location->id)
+            ->count();
+
+        return response()->json($this->present($location, $count));
+    }
+
+    public function destroy(Location $location): Response
+    {
+        abort_if($location->user_id !== auth()->id(), 403);
+
+        // Detach entries before deleting so the user doesn't lose collection
+        // rows just because they removed a drawer.
+        DB::transaction(function () use ($location) {
+            CollectionEntry::where('location_id', $location->id)
+                ->update(['location_id' => null]);
+
+            $location->delete();
+        });
+
+        return response()->noContent();
+    }
+
+    /** @return array<string, mixed> */
+    private function present(Location $location, int $cardCount): array
+    {
+        return [
+            'id'          => $location->id,
+            'type'        => $location->type,
+            'name'        => $location->name,
+            'set_code'    => $location->set_code,
+            'description' => $location->description,
+            'card_count'  => $cardCount,
+        ];
+    }
 }

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
@@ -16,8 +16,13 @@ async function onSubmit() {
   submitting.value = true
   try {
     await auth.login({ username: username.value, password: password.value })
-    router.push({ name: 'dashboard' })
+    // Wait one tick so the auth store mutations have flushed before the
+    // route guard re-evaluates the new token, then navigate to /collection
+    // (the old `dashboard` route was removed in 3B).
+    await nextTick()
+    router.push('/collection')
   } catch (e) {
+    console.error('Login flow failed:', e)
     error.value = e?.response?.data?.message || 'Login failed'
   } finally {
     submitting.value = false

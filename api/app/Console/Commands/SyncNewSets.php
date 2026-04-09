@@ -10,25 +10,24 @@ class SyncNewSets extends Command
 {
     protected $signature = 'sets:sync-new';
 
-    protected $description = 'Download set symbols for any sets in the mtg-vectors manifest not yet on disk.';
+    protected $description = 'Download set symbols for any sets in the Hexproof catalog not yet on disk.';
 
     private const RARITIES = ['C', 'U', 'R', 'M'];
 
     public function handle(ScryfallService $scryfall): int
     {
-        $manifest = $scryfall->fetchManifest();
-        $symbols  = $manifest['symbols'] ?? [];
-        $this->info('Manifest fetched. '.count($symbols).' sets found.');
+        $catalog = $scryfall->fetchSetCatalog();
+        $this->info('Catalog fetched. '.count($catalog).' sets found.');
 
         $downloaded = 0;
         $skipped    = 0;
         $failed     = 0;
 
-        foreach ($symbols as $code => $supported) {
-            $supported = (array) $supported;
+        foreach ($catalog as $code => $rarities) {
+            $rarities = (array) $rarities;
 
             foreach (self::RARITIES as $rarity) {
-                if (! in_array($rarity, $supported, true)) {
+                if (! isset($rarities[$rarity]) || ! is_string($rarities[$rarity])) {
                     continue;
                 }
 
@@ -38,7 +37,7 @@ class SyncNewSets extends Command
                     continue;
                 }
 
-                $url = "https://cdn.jsdelivr.net/gh/Investigamer/mtg-vectors@main/svg/optimized/set/{$code}/{$rarity}.svg";
+                $url = $rarities[$rarity];
 
                 if ($scryfall->downloadFile($url, $dest)) {
                     $downloaded++;
@@ -51,6 +50,50 @@ class SyncNewSets extends Command
 
         $this->info("Sets sync complete. Downloaded: {$downloaded}, Skipped: {$skipped}, Failed: {$failed}");
 
+        $this->syncSymbols($scryfall);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Download any mana / cost symbol SVGs not yet on disk.
+     */
+    private function syncSymbols(ScryfallService $scryfall): void
+    {
+        $symbols = $scryfall->fetchSymbology();
+        $this->info('Symbology fetched. '.count($symbols).' symbols found.');
+
+        $downloaded = 0;
+        $skipped    = 0;
+        $failed     = 0;
+
+        foreach ($symbols as $symbol) {
+            $raw = (string) ($symbol['symbol'] ?? '');
+            $url = (string) ($symbol['svg_uri'] ?? '');
+            // Strip the wrapping braces and flatten the slashes used in
+            // hybrid / Phyrexian symbols (e.g. "{2/W}" → "2W") so each
+            // symbol maps to a single flat filename, not a subdirectory.
+            $clean = str_replace('/', '', trim($raw, '{}'));
+
+            if ($clean === '' || $url === '') {
+                continue;
+            }
+
+            $dest = storage_path("app/public/symbols/{$clean}.svg");
+
+            if (file_exists($dest)) {
+                $skipped++;
+                continue;
+            }
+
+            if ($scryfall->downloadFile($url, $dest)) {
+                $downloaded++;
+            } else {
+                $failed++;
+                Log::warning("sets:sync-new failed to download symbol {$url}");
+            }
+        }
+
+        $this->info("Symbols sync complete. Downloaded: {$downloaded}, Skipped: {$skipped}, Failed: {$failed}");
     }
 }

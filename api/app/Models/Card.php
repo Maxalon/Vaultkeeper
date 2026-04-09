@@ -27,6 +27,7 @@ class Card extends Model
         'mana_cost_back',
         'type_line_back',
         'rarity',
+        'colors',
         'is_dfc',
         'legalities',
         'last_scryfall_sync',
@@ -35,6 +36,7 @@ class Card extends Model
     protected $casts = [
         'last_scryfall_sync' => 'datetime',
         'legalities'         => 'array',
+        'colors'             => 'array',
         'is_dfc'             => 'boolean',
     ];
 }

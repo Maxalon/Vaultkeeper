@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\FetchCardTextData;
 use App\Models\Card;
 use App\Models\CollectionEntry;
 use App\Models\User;
@@ -46,6 +47,7 @@ class ManaBoxImportService
         $cardsUpdated = 0;
         $skipped      = 0;
         $warnings     = [];
+        $newCardIds   = [];
 
         DB::transaction(function () use (
             $rows,
@@ -56,6 +58,7 @@ class ManaBoxImportService
             &$cardsUpdated,
             &$skipped,
             &$warnings,
+            &$newCardIds,
         ) {
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +1 for header, +1 to make 1-indexed
@@ -84,7 +87,12 @@ class ManaBoxImportService
                     ],
                 );
 
-                $card->wasRecentlyCreated ? $cardsCreated++ : $cardsUpdated++;
+                if ($card->wasRecentlyCreated) {
+                    $cardsCreated++;
+                    $newCardIds[] = $scryfallId;
+                } else {
+                    $cardsUpdated++;
+                }
 
                 CollectionEntry::create([
                     'user_id'     => $user->id,
@@ -99,6 +107,10 @@ class ManaBoxImportService
                 $imported++;
             }
         });
+
+        if (! empty($newCardIds)) {
+            FetchCardTextData::dispatch($newCardIds);
+        }
 
         return [
             'imported'      => $imported,

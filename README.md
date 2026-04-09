@@ -23,12 +23,22 @@ docker compose up -d --build
 docker compose exec api php artisan key:generate
 docker compose exec api php artisan jwt:secret
 docker compose exec api php artisan migrate
+docker compose exec api php artisan storage:link
 
 # Create a user (interactive prompts)
 docker compose exec api php artisan user:create
 ```
 
 Open http://localhost:8080 and log in.
+
+The queue worker runs automatically as a Docker service.
+To monitor queued jobs:
+
+    docker compose exec api php artisan queue:monitor
+
+To manually retry failed jobs:
+
+    docker compose exec api php artisan queue:retry all
 
 ## Routes
 

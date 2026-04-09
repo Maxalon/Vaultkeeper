@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
-import DashboardView from '../views/DashboardView.vue'
+import CollectionView from '../views/CollectionView.vue'
 
 const routes = [
   {
@@ -9,10 +9,14 @@ const routes = [
     component: LoginView,
   },
   {
-    path: '/',
-    name: 'dashboard',
-    component: DashboardView,
+    path: '/collection',
+    name: 'collection',
+    component: CollectionView,
     meta: { requiresAuth: true },
+  },
+  {
+    path: '/',
+    redirect: { name: 'collection' },
   },
 ]
 
@@ -27,7 +31,7 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
   if (to.name === 'login' && token) {
-    return { name: 'dashboard' }
+    return { name: 'collection' }
   }
 })
 

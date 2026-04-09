@@ -20,10 +20,18 @@ Route::middleware('auth:api')->group(function () {
         Route::get('me',       [AuthController::class, 'me']);
     });
 
-    Route::apiResource('cards',       CardController::class);
-    Route::apiResource('collection',  CollectionController::class);
-    Route::apiResource('locations',   LocationController::class);
-    Route::apiResource('decks',       DeckController::class);
+    Route::apiResource('cards', CardController::class);
+    Route::apiResource('decks', DeckController::class);
+
+    Route::get('locations',                [LocationController::class, 'index']);
+    Route::post('locations',               [LocationController::class, 'store']);
+    Route::put('locations/{location}',     [LocationController::class, 'update']);
+    Route::delete('locations/{location}',  [LocationController::class, 'destroy']);
+
+    Route::get('collection',               [CollectionController::class, 'index']);
+    Route::get('collection/{entry}',       [CollectionController::class, 'show']);
+    Route::patch('collection/{entry}',     [CollectionController::class, 'update']);
+    Route::delete('collection/{entry}',    [CollectionController::class, 'destroy']);
 
     Route::post('import', [ImportController::class, 'store']);
 });

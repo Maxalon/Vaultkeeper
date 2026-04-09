@@ -16,4 +16,23 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// On 401: clear local auth state and bounce to /login. Lazy-imports the
+// router to avoid the api ↔ router circular import at module load time.
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    if (err.response?.status === 401) {
+      const auth = useAuthStore()
+      auth.token = null
+      auth.user = null
+      localStorage.removeItem('token')
+      const { default: router } = await import('../router')
+      if (router.currentRoute.value.name !== 'login') {
+        router.push({ name: 'login' })
+      }
+    }
+    return Promise.reject(err)
+  },
+)
+
 export default api
