@@ -4,12 +4,15 @@ import { useCollectionStore } from '../stores/collection'
 import CardStrip from './CardStrip.vue'
 
 const collection = useCollectionStore()
+const moveTarget = ref('')
+const realLocations = computed(() => collection.locations)
 
 const COLORS = ['W', 'U', 'B', 'R', 'G', 'C']
 const RARITIES = ['common', 'uncommon', 'rare', 'mythic']
 const TYPES = ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Land']
 const SORTS = [
   { value: 'name', label: 'Name' },
+  { value: 'color', label: 'Color' },
   { value: 'set_code', label: 'Set' },
   { value: 'rarity', label: 'Rarity' },
   { value: 'collector_number', label: 'Number' },
@@ -88,7 +91,17 @@ function toggleOrder() {
 }
 
 function onSelect(id) {
-  collection.setActiveEntry(id)
+  if (collection.selecting) {
+    collection.toggleSelect(id)
+  } else {
+    collection.setActiveEntry(id)
+  }
+}
+
+async function batchMove() {
+  if (!moveTarget.value) return
+  await collection.batchMove(Number(moveTarget.value))
+  moveTarget.value = ''
 }
 
 watch(() => collection.filters.sort, () => collection.fetchEntries())
@@ -104,15 +117,15 @@ watch(() => collection.entries.length, () => {
   <main class="card-list-panel">
     <div class="filter-bar">
       <div class="dropdowns">
-        <select @change="appendToken('c:' + $event.target.value); $event.target.value = ''">
+        <select id="filter-color" @change="appendToken('c:' + $event.target.value); $event.target.value = ''">
           <option value="" disabled selected>Color</option>
           <option v-for="c in COLORS" :key="c" :value="c.toLowerCase()">{{ c }}</option>
         </select>
-        <select @change="appendToken('t:' + $event.target.value.toLowerCase()); $event.target.value = ''">
+        <select id="filter-type" @change="appendToken('t:' + $event.target.value.toLowerCase()); $event.target.value = ''">
           <option value="" disabled selected>Type</option>
           <option v-for="t in TYPES" :key="t" :value="t">{{ t }}</option>
         </select>
-        <select @change="appendToken('r:' + $event.target.value); $event.target.value = ''">
+        <select id="filter-rarity" @change="appendToken('r:' + $event.target.value); $event.target.value = ''">
           <option value="" disabled selected>Rarity</option>
           <option v-for="r in RARITIES" :key="r" :value="r">{{ r }}</option>
         </select>
@@ -132,7 +145,6 @@ watch(() => collection.entries.length, () => {
           placeholder="Search by name…"
           @input="scheduleFetch"
         />
-        <span class="hint">Dropdowns filter live · full Scryfall syntax coming soon</span>
       </div>
 
       <div class="sort">
@@ -143,6 +155,32 @@ watch(() => collection.entries.length, () => {
           {{ collection.filters.order === 'asc' ? '↑' : '↓' }}
         </button>
       </div>
+
+      <button
+        type="button"
+        class="select-toggle"
+        :class="{ active: collection.selecting }"
+        @click="collection.toggleSelecting()"
+        title="Multi-select"
+      >Select</button>
+    </div>
+
+    <div v-if="collection.selecting" class="select-bar">
+      <span class="sel-count">{{ collection.selectedIds.length }} selected</span>
+      <button type="button" class="sel-btn" @click="collection.selectAll()">All</button>
+      <button type="button" class="sel-btn" @click="collection.clearSelection()">None</button>
+      <div class="sel-move">
+        <select v-model="moveTarget">
+          <option value="" disabled selected>Move to…</option>
+          <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
+        </select>
+        <button
+          type="button"
+          class="sel-btn primary"
+          :disabled="collection.selectedIds.length === 0 || !moveTarget"
+          @click="batchMove"
+        >Move</button>
+      </div>
     </div>
 
     <div class="list-area">
@@ -151,20 +189,19 @@ watch(() => collection.entries.length, () => {
           <div class="empty">Loading…</div>
         </template>
         <template v-else-if="!columns.length">
-          <div class="empty">
-            <template v-if="collection.activeLocationId !== null">No cards match the current filters</template>
-            <template v-else>Pick a location to see cards</template>
-          </div>
+          <div class="empty">No cards match the current filters</div>
         </template>
         <template v-else>
           <!-- One DOM container per column. CardStrip's hover-driven flex
                reflow stays scoped to each column. -->
           <div v-for="(col, ci) in columns" :key="ci" class="column">
             <CardStrip
-              v-for="entry in col"
+              v-for="(entry, ei) in col"
               :key="entry.id"
               :entry="entry"
               :active="entry.id === collection.activeEntryId"
+              :selected="collection.selectedIds.includes(entry.id)"
+              :last="ei === col.length - 1"
               @select="onSelect"
             />
           </div>
@@ -192,6 +229,22 @@ watch(() => collection.entries.length, () => {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+/* Shared sizing for every control in the filter bar. */
+.filter-bar select,
+.filter-bar input,
+.filter-bar button {
+  height: 30px;
+  font-size: 12px;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+.filter-bar select {
+  appearance: none;
+  padding-right: 26px;
+  background-image: url('../assets/chevron-down.svg');
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
 .dropdowns {
   display: flex;
   gap: 6px;
@@ -199,8 +252,6 @@ watch(() => collection.entries.length, () => {
 .dropdowns select, .dropdowns .set-input {
   width: auto;
   min-width: 80px;
-  padding: 6px 8px;
-  font-size: 12px;
 }
 .set-input {
   width: 70px !important;
@@ -211,10 +262,6 @@ watch(() => collection.entries.length, () => {
   flex-direction: column;
   gap: 2px;
   min-width: 200px;
-}
-.search-area input {
-  font-size: 13px;
-  padding: 7px 10px;
 }
 .hint {
   font-size: 10px;
@@ -228,13 +275,71 @@ watch(() => collection.entries.length, () => {
 }
 .sort select {
   width: auto;
-  font-size: 12px;
-  padding: 6px 8px;
 }
-.order-btn {
-  padding: 6px 10px;
-  font-size: 14px;
-  line-height: 1;
+.select-toggle {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.select-toggle:hover {
+  border-color: var(--gold-dim);
+  color: var(--text);
+}
+.select-toggle.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--bg-0);
+}
+.select-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sel-count {
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.sel-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.sel-btn:hover {
+  border-color: var(--gold-dim);
+  color: var(--text);
+}
+.sel-btn.primary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--bg-0);
+  font-weight: 600;
+}
+.sel-btn.primary:disabled {
+  opacity: 0.4;
+}
+.sel-move {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.sel-move select {
+  font-size: 12px;
+  padding: 5px 8px;
+  width: auto;
+  min-width: 140px;
 }
 
 /* The critical scroll fix: flex children need min-height: 0 to shrink
@@ -249,7 +354,10 @@ watch(() => collection.entries.length, () => {
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  padding: 24px 28px 80px;
+  /* Bottom padding must be at least --strip-expanded so the last card
+     in a column can expand on hover without growing the scrollable area
+     (which would cause a scroll-bounce loop). */
+  padding: 24px 28px var(--strip-expanded);
 }
 .strip-stack {
   display: flex;
@@ -263,6 +371,7 @@ watch(() => collection.entries.length, () => {
   flex-direction: column;
   width: var(--card-width);
   flex-shrink: 0;
+  contain: layout style;
 }
 .empty {
   flex: 1;

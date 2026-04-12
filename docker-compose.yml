@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     volumes:
-      - ./api:/var/www/html
+      - ./api:/var/www/html:z
     depends_on:
       db:
         condition: service_healthy
@@ -45,7 +45,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     volumes:
-      - ./api:/var/www/html
+      - ./api:/var/www/html:z
     command: php artisan queue:work --sleep=3 --tries=3 --timeout=60
     depends_on:
       db:
@@ -60,7 +60,7 @@ services:
     working_dir: /app
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
-      - ./web:/app
+      - ./web:/app:z
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     networks:
       - vaultkeeper
@@ -72,8 +72,8 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./api:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro,z
+      - ./api:/var/www/html:z
     depends_on:
       - api
       - web

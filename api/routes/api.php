@@ -6,6 +6,7 @@ use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\DeckController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
+use App\Http\Controllers\LocationGroupController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -28,7 +29,14 @@ Route::middleware('auth:api')->group(function () {
     Route::put('locations/{location}',     [LocationController::class, 'update']);
     Route::delete('locations/{location}',  [LocationController::class, 'destroy']);
 
+    Route::get('location-groups',               [LocationGroupController::class, 'index']);
+    Route::post('location-groups',              [LocationGroupController::class, 'store']);
+    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder']);
+    Route::put('location-groups/{group}',       [LocationGroupController::class, 'update']);
+    Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
+
     Route::get('collection',               [CollectionController::class, 'index']);
+    Route::post('collection/batch-move',   [CollectionController::class, 'batchMove']);
     Route::get('collection/{entry}',       [CollectionController::class, 'show']);
     Route::patch('collection/{entry}',     [CollectionController::class, 'update']);
     Route::delete('collection/{entry}',    [CollectionController::class, 'destroy']);

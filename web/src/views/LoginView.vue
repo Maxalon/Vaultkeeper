@@ -36,11 +36,11 @@ async function onSubmit() {
     <form @submit.prevent="onSubmit">
       <label>
         Username
-        <input v-model="username" type="text" autocomplete="username" required />
+        <input id="login-username" v-model="username" type="text" autocomplete="username" required />
       </label>
       <label>
         Password
-        <input v-model="password" type="password" autocomplete="current-password" required />
+        <input id="login-password" v-model="password" type="password" autocomplete="current-password" required />
       </label>
       <button type="submit" :disabled="submitting">
         {{ submitting ? 'Signing in…' : 'Sign in' }}

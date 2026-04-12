@@ -97,7 +97,7 @@ function close() {
   collection.closeActiveEntry()
 }
 
-const realLocations = computed(() => collection.locations.filter((l) => l.id !== null))
+const realLocations = computed(() => collection.locations)
 </script>
 
 <template>
@@ -145,7 +145,7 @@ const realLocations = computed(() => collection.locations.filter((l) => l.id !==
       <div class="controls">
         <label class="control">
           <span>Condition</span>
-          <select :value="entry.condition" @change="onConditionChange">
+          <select id="detail-condition" :value="entry.condition" @change="onConditionChange">
             <option>NM</option>
             <option>LP</option>
             <option>MP</option>
@@ -156,14 +156,13 @@ const realLocations = computed(() => collection.locations.filter((l) => l.id !==
 
         <label class="control">
           <span>Location</span>
-          <select :value="entry.location_id ?? ''" @change="onLocationChange">
-            <option value="">Unassigned</option>
+          <select id="detail-location" :value="entry.location_id ?? ''" @change="onLocationChange">
             <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
           </select>
         </label>
 
         <label class="control inline">
-          <input type="checkbox" :checked="entry.foil" @change="onFoilChange" />
+          <input id="detail-foil" type="checkbox" :checked="entry.foil" @change="onFoilChange" />
           <span>Foil</span>
         </label>
       </div>
@@ -235,7 +234,7 @@ const realLocations = computed(() => collection.locations.filter((l) => l.id !==
 }
 .big-image {
   width: 100%;
-  max-width: 280px;
+  max-width: 340px;
   border-radius: 12px;
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.6);
   transition: transform 400ms ease;
@@ -261,7 +260,7 @@ const realLocations = computed(() => collection.locations.filter((l) => l.id !==
   color: var(--bg-0);
 }
 .name {
-  font-size: 22px;
+  font-size: 24px;
   color: var(--gold);
   margin-bottom: 6px;
   text-align: center;
@@ -283,13 +282,13 @@ const realLocations = computed(() => collection.locations.filter((l) => l.id !==
 }
 .type-line {
   text-align: center;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text);
   margin-bottom: 12px;
   font-style: italic;
 }
 :deep(.oracle) {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.55;
   color: var(--text);
   background: var(--bg-0);

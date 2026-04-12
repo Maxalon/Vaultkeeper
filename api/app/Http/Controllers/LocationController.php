@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CollectionEntry;
 use App\Models\Location;
+use App\Models\LocationGroup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -12,8 +13,7 @@ use Illuminate\Support\Facades\DB;
 class LocationController extends Controller
 {
     /**
-     * GET /api/locations — list user's locations with card_count, plus a
-     * virtual "Unassigned" entry pinned to the top of the response.
+     * GET /api/locations — list user's locations with card_count and total.
      */
     public function index(): JsonResponse
     {
@@ -24,44 +24,41 @@ class LocationController extends Controller
             ->withCount(['entries as card_count' => function ($q) use ($userId) {
                 $q->where('user_id', $userId);
             }])
+            ->orderBy('sort_order')
             ->orderBy('name')
             ->get()
             ->map(fn (Location $l) => [
                 'id'          => $l->id,
                 'type'        => $l->type,
                 'name'        => $l->name,
-                'set_code'    => $l->set_code,
+                'set_codes'   => $l->set_codes,
                 'description' => $l->description,
                 'card_count'  => (int) $l->card_count,
             ]);
 
-        $unassignedCount = CollectionEntry::query()
-            ->where('user_id', $userId)
-            ->whereNull('location_id')
-            ->count();
+        $total = CollectionEntry::where('user_id', $userId)->count();
 
-        $virtual = [
-            'id'          => null,
-            'type'        => 'virtual',
-            'name'        => 'Unassigned',
-            'set_code'    => null,
-            'description' => 'Cards not assigned to any location',
-            'card_count'  => $unassignedCount,
-        ];
-
-        return response()->json([$virtual, ...$locations->all()]);
+        return response()->json([
+            'locations'   => $locations->all(),
+            'total_count' => $total,
+        ]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'type'        => 'required|in:drawer,binder',
+            'type'        => 'required|in:drawer,binder,deck',
             'name'        => 'required|string|max:100',
-            'set_code'    => 'nullable|string|max:10',
             'description' => 'nullable|string|max:500',
         ]);
 
-        $location = Location::create([...$data, 'user_id' => auth()->id()]);
+        $userId = auth()->id();
+
+        $location = Location::create([
+            ...$data,
+            'user_id'    => $userId,
+            'sort_order' => LocationGroup::nextTopLevelSortOrder($userId),
+        ]);
 
         return response()->json($this->present($location, 0), 201);
     }
@@ -71,9 +68,8 @@ class LocationController extends Controller
         abort_if($location->user_id !== auth()->id(), 403);
 
         $data = $request->validate([
-            'type'        => 'required|in:drawer,binder',
+            'type'        => 'required|in:drawer,binder,deck',
             'name'        => 'required|string|max:100',
-            'set_code'    => 'nullable|string|max:10',
             'description' => 'nullable|string|max:500',
         ]);
 
@@ -109,7 +105,7 @@ class LocationController extends Controller
             'id'          => $location->id,
             'type'        => $location->type,
             'name'        => $location->name,
-            'set_code'    => $location->set_code,
+            'set_codes'   => $location->set_codes,
             'description' => $location->description,
             'card_count'  => $cardCount,
         ];

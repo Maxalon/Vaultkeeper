@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Jobs\FetchCardTextData;
 use App\Models\Card;
 use App\Models\CollectionEntry;
+use App\Models\Location;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
@@ -107,6 +108,10 @@ class ManaBoxImportService
                 $imported++;
             }
         });
+
+        if ($locationId && $imported > 0) {
+            Location::find($locationId)?->refreshSetCodes();
+        }
 
         if (! empty($newCardIds)) {
             FetchCardTextData::dispatch($newCardIds);

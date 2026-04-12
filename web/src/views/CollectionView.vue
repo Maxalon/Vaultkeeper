@@ -9,9 +9,9 @@ const collection = useCollectionStore()
 
 onMounted(async () => {
   await collection.fetchLocations()
-  // Default to "Unassigned" so the user immediately sees their cards.
+  // Default to showing all cards.
   if (collection.activeLocationId === null) {
-    await collection.setActiveLocation('unassigned')
+    await collection.fetchEntries()
   }
 })
 </script>

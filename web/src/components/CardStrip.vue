@@ -7,6 +7,8 @@ import ManaCost from './ManaCost.vue'
 const props = defineProps({
   entry: { type: Object, required: true },
   active: { type: Boolean, default: false },
+  selected: { type: Boolean, default: false },
+  last: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['select'])
@@ -60,7 +62,7 @@ const skeletonStyle = computed(() => {
 <template>
   <div
     class="strip"
-    :class="{ active, loaded: isLoaded, 'mode-b': isModeB }"
+    :class="{ active, loaded: isLoaded, 'mode-b': isModeB, selected, last }"
     @click="emit('select', entry.id)"
   >
     <!-- Inner clipping wrapper. The visual content lives here so .strip
@@ -101,6 +103,7 @@ const skeletonStyle = computed(() => {
         <span class="qty">×{{ entry.quantity }}</span>
         <SetSymbol :set="card.set_code" :rarity="card.rarity || 'common'" :size="16" />
         <span class="name">{{ card.name || '—' }}</span>
+        <span v-if="entry.foil" class="foil-badge">F</span>
         <ManaCost class="cost" :cost="card.mana_cost || ''" />
       </div>
     </div>
@@ -122,16 +125,30 @@ const skeletonStyle = computed(() => {
   outline: 1px solid transparent;
   transition: height 160ms ease-out, margin-bottom 160ms ease-out,
               outline-color 120ms ease, box-shadow 160ms ease;
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--card-width) auto var(--strip-height);
+  will-change: transform;
 }
-.strip:hover {
+.strip:hover,
+.strip.mode-b.loaded.last {
   height: var(--strip-expanded);
   margin-bottom: calc(4px + var(--strip-gap));
   z-index: 2;
   outline-color: var(--gold);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.7);
 }
+/* Last card in Mode B stays expanded but shouldn't look "selected". */
+.strip.mode-b.loaded.last:not(:hover) {
+  outline-color: transparent;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+}
 .strip.active {
   outline-color: var(--gold-bright);
+}
+.strip.selected {
+  outline-color: var(--gold);
+  outline-width: 2px;
+  box-shadow: 0 0 0 1px var(--gold), 0 2px 4px rgba(0, 0, 0, 0.45);
 }
 
 /* Inner clip layer. Fills the strip exactly and inherits the rounded
@@ -208,6 +225,7 @@ const skeletonStyle = computed(() => {
   );
   color: var(--text);
   transition: top 200ms ease-out;
+  will-change: transform;
 }
 .strip.loaded .overlay {
   top: calc(100% - var(--strip-height));
@@ -217,7 +235,7 @@ const skeletonStyle = computed(() => {
   font-variant-numeric: tabular-nums;
   color: var(--gold);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   flex-shrink: 0;
   text-shadow:
     -1px -1px 0 #000,
@@ -228,15 +246,27 @@ const skeletonStyle = computed(() => {
 }
 .name {
   flex: 1;
-  font-size: 11px;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
+.foil-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: #fff;
+  background: linear-gradient(135deg, #a855f7, #3b82f6, #3ec97c);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
 .cost {
-  font-size: 12px;
+  font-size: 14px;
   flex-shrink: 0;
 }
 
@@ -298,10 +328,12 @@ const skeletonStyle = computed(() => {
    translateY = (bar-top - rest-top) + center-offset
               = (strip-expanded - strip-height - 3) + 9
               = strip-expanded - strip-height + 6 */
-.strip.mode-b.loaded:hover .qty-corner {
+.strip.mode-b.loaded:hover .qty-corner,
+.strip.mode-b.loaded.last .qty-corner {
   transform: translateY(calc(var(--strip-expanded) - var(--strip-height) + 6px));
 }
-.strip.mode-b.loaded:hover .arc-bg {
+.strip.mode-b.loaded:hover .arc-bg,
+.strip.mode-b.loaded.last .arc-bg {
   opacity: 0;
 }
 
@@ -324,5 +356,10 @@ const skeletonStyle = computed(() => {
 .strip.mode-b.loaded:hover .overlay {
   opacity: 1;
   transition: opacity 0ms 160ms, top 0ms 160ms;
+}
+/* Last card in Mode B: always show expanded — no delay needed. */
+.strip.mode-b.loaded.last .overlay {
+  opacity: 1;
+  transition: none;
 }
 </style>

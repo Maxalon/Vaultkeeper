@@ -24,13 +24,12 @@
   --cond-dmg: #ef4444;
 
   /* Layered card list dimensions (CardStrip.vue).
-     --card-width is set by main.js based on devicePixelRatio (146px on
-     standard screens, 220px on HiDPI/4K). Card aspect ratio is the
-     Scryfall normal-size image: 488×680 → height = width × 680/488. */
-  --card-width: 146px;          /* fallback; main.js overwrites */
+     Card aspect ratio is the Scryfall normal-size image:
+     488×680 → height = width × 680/488. */
+  --card-width: 250px;
   --card-image-h: calc(var(--card-width) * 680 / 488);
-  --strip-height: 36px;
-  --strip-gap: 8px;
+  --strip-height: 46px;
+  --strip-gap: 10px;
   --strip-expanded: calc(var(--card-image-h) + var(--strip-height));
 
   /* Fonts */
@@ -38,8 +37,8 @@
   --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   /* Layout */
-  --sidebar-width: 220px;
-  --detail-width: 360px;
+  --sidebar-width: 260px;
+  --detail-width: 400px;
 
   font-family: var(--font-body);
   font-size: 14px;

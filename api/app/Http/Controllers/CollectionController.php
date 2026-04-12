@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Card;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
+use App\Models\Location;
 use App\Services\CardSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -128,6 +129,14 @@ class CollectionController extends Controller
         ]);
 
         $entry->update($data);
+
+        if (array_key_exists('location_id', $data)) {
+            $affected = array_filter([$entry->getOriginal('location_id'), $entry->location_id]);
+            foreach (Location::whereIn('id', $affected)->get() as $loc) {
+                $loc->refreshSetCodes();
+            }
+        }
+
         $entry->load('card');
 
         $wantedMap = $this->wantedByDecksMap([$entry->scryfall_id], auth()->id());
@@ -135,11 +144,65 @@ class CollectionController extends Controller
         return response()->json($this->presentDetail($entry, $wantedMap));
     }
 
+    /**
+     * POST /api/collection/batch-move
+     *
+     * Move multiple entries to a new location in one request.
+     */
+    public function batchMove(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'ids'         => 'required|array|min:1',
+            'ids.*'       => 'integer',
+            'location_id' => [
+                'present',
+                'nullable',
+                'integer',
+                function ($attr, $value, $fail) {
+                    if ($value === null) return;
+                    $exists = \App\Models\Location::where('id', $value)
+                        ->where('user_id', auth()->id())
+                        ->exists();
+                    if (! $exists) {
+                        $fail('The selected location is invalid.');
+                    }
+                },
+            ],
+        ]);
+
+        // Capture source locations before the move
+        $sourceLocationIds = CollectionEntry::query()
+            ->where('user_id', auth()->id())
+            ->whereIn('id', $data['ids'])
+            ->whereNotNull('location_id')
+            ->distinct()
+            ->pluck('location_id')
+            ->all();
+
+        $count = CollectionEntry::query()
+            ->where('user_id', auth()->id())
+            ->whereIn('id', $data['ids'])
+            ->update(['location_id' => $data['location_id']]);
+
+        // Refresh set_codes on all affected locations (sources + target)
+        $affectedIds = array_filter(array_unique([...$sourceLocationIds, $data['location_id']]));
+        foreach (Location::whereIn('id', $affectedIds)->get() as $loc) {
+            $loc->refreshSetCodes();
+        }
+
+        return response()->json(['moved' => $count]);
+    }
+
     public function destroy(CollectionEntry $entry): Response
     {
         abort_if($entry->user_id !== auth()->id(), 403);
 
+        $locationId = $entry->location_id;
         $entry->delete();
+
+        if ($locationId) {
+            Location::find($locationId)?->refreshSetCodes();
+        }
 
         return response()->noContent();
     }
