@@ -10,7 +10,7 @@ use App\Models\UserCard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ImportControllerTest extends TestCase
@@ -24,14 +24,11 @@ class ImportControllerTest extends TestCase
     {
         parent::setUp();
 
-        // ManaBoxImportService runs `sets:sync` if storage/app/public/sets is
-        // empty — that hits the network. Drop a sentinel so the glob check
-        // short-circuits.
-        $dir = storage_path('app/public/sets');
-        File::ensureDirectoryExists($dir);
-        if (empty(glob($dir.'/*'))) {
-            File::put($dir.'/.test-keep', '');
-        }
+        // ManaBoxImportService runs `sets:sync` if the assets disk has no
+        // files under sets/ — that hits the network. Fake the disk and drop
+        // a sentinel so the check short-circuits.
+        Storage::fake('assets');
+        Storage::disk('assets')->put('sets/.test-keep', '');
 
         // FetchCardTextData calls Scryfall on dispatch. Fake the bus so the
         // job is only recorded, not run.

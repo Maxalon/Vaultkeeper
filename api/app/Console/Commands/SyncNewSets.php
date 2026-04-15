@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\ScryfallService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class SyncNewSets extends Command
 {
@@ -14,8 +15,11 @@ class SyncNewSets extends Command
 
     private const RARITIES = ['C', 'U', 'R', 'M'];
 
+    private const DISK = 'assets';
+
     public function handle(ScryfallService $scryfall): int
     {
+        $disk    = Storage::disk(self::DISK);
         $catalog = $scryfall->fetchSetCatalog();
         $this->info('Catalog fetched. '.count($catalog).' sets found.');
 
@@ -31,15 +35,15 @@ class SyncNewSets extends Command
                     continue;
                 }
 
-                $dest = storage_path("app/public/sets/{$code}/{$rarity}.svg");
-                if (file_exists($dest)) {
+                $dest = "sets/{$code}/{$rarity}.svg";
+                if ($disk->exists($dest)) {
                     $skipped++;
                     continue;
                 }
 
                 $url = $rarities[$rarity];
 
-                if ($scryfall->downloadFile($url, $dest)) {
+                if ($scryfall->downloadToDisk($url, self::DISK, $dest)) {
                     $downloaded++;
                 } else {
                     $failed++;
@@ -56,10 +60,11 @@ class SyncNewSets extends Command
     }
 
     /**
-     * Download any mana / cost symbol SVGs not yet on disk.
+     * Download any mana / cost symbol SVGs not yet on the assets disk.
      */
     private function syncSymbols(ScryfallService $scryfall): void
     {
+        $disk    = Storage::disk(self::DISK);
         $symbols = $scryfall->fetchSymbology();
         $this->info('Symbology fetched. '.count($symbols).' symbols found.');
 
@@ -79,14 +84,14 @@ class SyncNewSets extends Command
                 continue;
             }
 
-            $dest = storage_path("app/public/symbols/{$clean}.svg");
+            $dest = "symbols/{$clean}.svg";
 
-            if (file_exists($dest)) {
+            if ($disk->exists($dest)) {
                 $skipped++;
                 continue;
             }
 
-            if ($scryfall->downloadFile($url, $dest)) {
+            if ($scryfall->downloadToDisk($url, self::DISK, $dest)) {
                 $downloaded++;
             } else {
                 $failed++;

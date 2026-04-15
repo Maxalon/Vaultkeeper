@@ -11,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use League\Csv\Reader;
 
@@ -24,8 +25,10 @@ class ManaBoxImportService
      */
     public function import(UploadedFile $file, User $user, ?int $locationId): array
     {
-        $setsDir = storage_path('app/public/sets');
-        if (! is_dir($setsDir) || empty(glob($setsDir.'/*'))) {
+        // First import after a fresh deploy: lazily populate the set symbol
+        // catalog. The assets disk is env-driven (local in dev, s3 in prod),
+        // so this check works against either backing store.
+        if (empty(Storage::disk('assets')->allFiles('sets'))) {
             Log::info('Sets directory empty, running sets:sync automatically.');
             Artisan::call('sets:sync');
         }
