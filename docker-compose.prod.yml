@@ -232,11 +232,34 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    # TLS note: the image ships with a self-signed placeholder cert so
+    # the container boots out of the box for local testing. In real
+    # prod, overlay a real cert by adding a docker-compose.override.yml
+    # next to this file on the server:
+    #
+    #   services:
+    #     nginx:
+    #       volumes:
+    #         - /etc/vaultkeeper/certs:/etc/nginx/certs:ro
+    #
+    # and provisioning the cert files at that host path. For Tailscale:
+    #
+    #   sudo tailscale cert \
+    #     --cert-file /etc/vaultkeeper/certs/cert.pem \
+    #     --key-file  /etc/vaultkeeper/certs/key.pem \
+    #     <host>.<tailnet>.ts.net
+    #
+    # Schedule a renewal timer — Tailscale certs expire ~90 days.
     depends_on:
       api:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--spider", "http://127.0.0.1/"]
+      # HTTP healthcheck (port 80) hits the /up endpoint — the 80 server
+      # block preserves that route in cleartext specifically so the
+      # docker healthcheck doesn't have to deal with the self-signed
+      # placeholder cert.
+      test: ["CMD", "wget", "-qO-", "--spider", "http://127.0.0.1/up"]
       interval: 15s
       timeout: 5s
       retries: 5
