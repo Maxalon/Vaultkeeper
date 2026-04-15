@@ -228,9 +228,25 @@ get their symbols downloaded without manual intervention.
 
 ### Horizon dashboard
 
-Reachable at `https://<host>.<tailnet>.ts.net/horizon`. Access is gated
-by `HORIZON_ALLOWED_EMAILS` in `.env.prod` — only users whose
-authenticated email is in that list can view it.
+Reachable at `https://<host>.<tailnet>.ts.net/horizon` as soon as the
+api and worker containers are up. No publish step, no post-deploy
+command — Horizon 5.45+ serves its dashboard assets directly from the
+package, and the nginx prod config already proxies `/horizon` to
+php-fpm.
+
+Access is gated by `HORIZON_ALLOWED_EMAILS` in `.env.prod` — only
+users whose authenticated email appears (comma-separated) in that
+variable can load the dashboard. A logged-in user outside the
+allowlist gets a 403; an unauthenticated request gets a 401. If you
+change the allowlist, restart the api container so Laravel picks up
+the new env:
+
+```bash
+docker compose -p vaultkeeper_prod --env-file .env.prod up -d api
+```
+
+That's a one-second no-downtime recreate because it only touches the
+api service.
 
 ### MinIO console
 

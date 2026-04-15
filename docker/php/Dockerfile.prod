@@ -94,6 +94,11 @@ COPY --from=vendor --chown=app:app /app/vendor /var/www/html/vendor
 # Temporarily drop the composer binary in, finalize the optimized autoloader
 # with the app source visible, then remove composer — it has no business
 # sitting in a runtime image.
+#
+# Note: older Horizon versions required a `horizon:publish` step here to
+# copy dashboard CSS/JS into public/vendor/horizon/. Horizon 5.45+ serves
+# those assets directly from the package (the artisan command now prints
+# a deprecation warning and does nothing), so we don't call it.
 COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 RUN composer dump-autoload \
         --optimize \
