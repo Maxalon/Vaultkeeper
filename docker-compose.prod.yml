@@ -118,7 +118,7 @@ services:
 
   # ─── Laravel api (php-fpm) ─────────────────────────────────────────────────
   api:
-    image: ${API_IMAGE:-mtgbank-api:local}
+    image: ${API_IMAGE:-vaultkeeper-api:local}
     build:
       context: .
       dockerfile: docker/php/Dockerfile.prod
@@ -169,7 +169,7 @@ services:
 
   # ─── Queue worker (Horizon) ────────────────────────────────────────────────
   worker:
-    image: ${API_IMAGE:-mtgbank-api:local}
+    image: ${API_IMAGE:-vaultkeeper-api:local}
     build:
       context: .
       dockerfile: docker/php/Dockerfile.prod
@@ -225,7 +225,7 @@ services:
 
   # ─── nginx edge ────────────────────────────────────────────────────────────
   nginx:
-    image: ${NGINX_IMAGE:-mtgbank-nginx:local}
+    image: ${NGINX_IMAGE:-vaultkeeper-nginx:local}
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile.prod

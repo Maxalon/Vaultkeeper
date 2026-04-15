@@ -1,3 +1,5 @@
+name: vaultkeeper
+
 services:
   db:
     image: mysql:8.4
@@ -21,6 +23,7 @@ services:
       - vaultkeeper
 
   api:
+    image: vaultkeeper-api:dev
     build:
       context: ./docker/php
       args:
@@ -38,6 +41,7 @@ services:
       - vaultkeeper
 
   worker:
+    image: vaultkeeper-api:dev
     build:
       context: ./docker/php
       args:

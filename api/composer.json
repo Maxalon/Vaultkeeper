@@ -1,9 +1,9 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "vaultkeeper/api",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Vaultkeeper API — Laravel backend for the Vaultkeeper MTG collection manager.",
+    "keywords": ["vaultkeeper", "laravel", "mtg"],
     "license": "MIT",
     "require": {
         "php": "^8.4",
