@@ -50,6 +50,97 @@ the other.
   registry where CI pushes images.
 - `sudo` access for cert provisioning and (optionally) systemd timers.
 
+## Branch model and GitHub setup
+
+Two long-lived branches drive two deploy targets:
+
+- **`main`** — whatever is here is what runs in prod. Gated by PR + CI.
+- **`staging`** — dry-run branch that runs on the staging stack on the
+  same host. Looser gate: CI must pass, but you can push directly.
+
+The typical flow for a solo project:
+
+1. Work on short-lived feature branches off `main`.
+2. Open a PR into `main`; CI has to be green to merge.
+3. Merge to `main` — prod deploy workflow triggers (with a manual
+   approval gate; see below).
+4. When you want to dry-run something against real infrastructure
+   *before* it reaches prod, push it to `staging` instead. The staging
+   deploy workflow auto-deploys on every green push.
+5. Periodically fast-forward `staging` to `main` so staging doesn't
+   drift too far from what's about to ship.
+
+### Creating the `staging` branch
+
+Nothing special — it's an ordinary git branch:
+
+```bash
+git checkout main
+git pull
+git branch staging
+git push -u origin staging
+```
+
+CI (`.github/workflows/ci.yml`) already triggers on pushes to both
+`main` and `staging`, so the suite runs the moment you push.
+
+### Repository settings checklist
+
+Do these **once**, from the GitHub web UI, before the server hardware
+is live. Everything here is either free or one click.
+
+**1. Workflow permissions (required for CI to push images later)**
+
+- `Settings → Actions → General → Workflow permissions`
+- Select **"Read and write permissions"**
+
+Without this the deploy workflows (round 4) won't be able to push to
+ghcr.io — the job step will 403 with no useful error. Set it now and
+forget it.
+
+**2. GitHub Actions environments**
+
+- `Settings → Environments → New environment`
+- Create **`staging`** — no protection rules, no reviewers.
+- Create **`prod`** — tick **"Required reviewers"** and add yourself.
+  Every prod deploy workflow run will then pause with a "Review
+  deployment" button in the Actions UI, which you click to promote.
+
+Environments are also where deploy secrets (Tailscale OAuth client,
+deploy SSH key) will be scoped when the deploy workflows land, so
+staging creds never leak into prod runs and vice versa.
+
+**3. Branch protection on `main`**
+
+- `Settings → Branches → Add branch ruleset` → target `main`
+- Enable:
+  - ✅ Require pull request before merging
+  - ✅ Require status checks to pass — select the `api / phpunit` and
+    `web / vite build` checks from `ci.yml`
+  - ✅ Require linear history (no merge commits — keeps the log clean)
+  - ✅ Block force pushes
+  - ✅ Block deletions
+
+**4. Branch protection on `staging`** (lighter)
+
+- Same UI, target `staging`
+- Enable:
+  - ✅ Require status checks to pass (same two checks)
+  - ✅ Block force pushes
+  - ✅ Block deletions
+
+No PR requirement on staging — you want to be able to push experimental
+commits straight up so the stack rebuilds on the server without
+bureaucracy.
+
+**5. Stub workflows you don't need**
+
+`.github/workflows/android.yml` is a no-op stub left over from the
+initial scaffold. It checks for `app/gradlew` and skips if missing,
+so it isn't actually doing anything — but if you're sure you don't
+want an Android build in this repo, delete the file so the Actions UI
+isn't cluttered with skipped runs.
+
 ## First-time prod deploy
 
 ### 1. Clone the repo and prepare the env file

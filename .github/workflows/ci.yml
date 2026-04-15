@@ -2,12 +2,21 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+# Opt into the Node 24 runtime for JavaScript-based actions
+# (actions/checkout, actions/setup-node, shivammathur/setup-php, etc.).
+# GitHub is deprecating Node 20 — June 2, 2026 forces this default
+# and September 16, 2026 removes Node 20 entirely. Setting the env var
+# now silences the deprecation warning and pre-confirms that every
+# action we use is compatible with the new runtime.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   api-test:
