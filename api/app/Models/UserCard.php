@@ -4,8 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-class Card extends Model
+class UserCard extends Model
 {
+    protected $table = 'user_cards';
+
     protected $fillable = [
         'scryfall_id',
         'name',

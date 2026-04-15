@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Card;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\Location;
+use App\Models\UserCard;
 use App\Services\CardSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,10 +16,10 @@ class CollectionController extends Controller
 {
     /** Sortable columns. cmc is intentionally absent — no column to back it yet. */
     private const SORT_FIELDS = [
-        'name'             => 'cards.name',
-        'set_code'         => 'cards.set_code',
-        'rarity'           => 'cards.rarity',
-        'collector_number' => 'cards.collector_number',
+        'name'             => 'user_cards.name',
+        'set_code'         => 'user_cards.set_code',
+        'rarity'           => 'user_cards.rarity',
+        'collector_number' => 'user_cards.collector_number',
         'condition'        => 'collection_entries.condition',
     ];
 
@@ -38,7 +38,7 @@ class CollectionController extends Controller
     {
         $userId = auth()->id();
 
-        // Sort via join on cards so we can order by card columns. The
+        // Sort via join on user_cards so we can order by card columns. The
         // explicit select() prevents the join from polluting the
         // collection_entries row attributes.
         $sortKey = $request->query('sort', 'name');
@@ -46,7 +46,7 @@ class CollectionController extends Controller
         $order   = strtolower($request->query('order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         $query = CollectionEntry::query()
-            ->join('cards', 'collection_entries.scryfall_id', '=', 'cards.scryfall_id')
+            ->join('user_cards', 'collection_entries.scryfall_id', '=', 'user_cards.scryfall_id')
             ->where('collection_entries.user_id', $userId)
             ->with('card')
             ->select('collection_entries.*');
@@ -62,7 +62,7 @@ class CollectionController extends Controller
         }
 
         if ($search = trim((string) $request->query('search', ''))) {
-            $query->where('cards.name', 'like', "%{$search}%");
+            $query->where('user_cards.name', 'like', "%{$search}%");
         }
 
         $entries = $query->orderBy($sortCol, $order)->get();
@@ -72,7 +72,7 @@ class CollectionController extends Controller
         $stale = $entries->pluck('card')
             ->filter()
             ->unique('scryfall_id')
-            ->filter(fn (Card $c) => $this->sync->needsSync($c));
+            ->filter(fn (UserCard $c) => $this->sync->needsSync($c));
 
         if ($stale->isNotEmpty()) {
             $this->sync->syncMany($stale);

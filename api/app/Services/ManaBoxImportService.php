@@ -3,10 +3,10 @@
 namespace App\Services;
 
 use App\Jobs\FetchCardTextData;
-use App\Models\Card;
 use App\Models\CollectionEntry;
 use App\Models\Location;
 use App\Models\User;
+use App\Models\UserCard;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -78,7 +78,7 @@ class ManaBoxImportService
 
                 $rarity = trim((string) ($row['Rarity'] ?? ''));
 
-                $card = Card::updateOrCreate(
+                $card = UserCard::updateOrCreate(
                     ['scryfall_id' => $scryfallId],
                     [
                         'name'             => (string) ($row['Name'] ?? ''),
