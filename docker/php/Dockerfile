@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
         libonig-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql mbstring bcmath zip gd opcache \
+    && docker-php-ext-install pdo_mysql mbstring bcmath zip gd opcache pcntl \
     && rm -rf /var/lib/apt/lists/*
 
 # Dev opcache posture: timestamps on, revalidate every request. This is
