@@ -1,0 +1,61 @@
+# Authoritative dockerignore for prod image builds that use the repo root
+# as context. Per-directory .dockerignore files under api/ and web/ are
+# kept for the case where someone builds those subdirs as standalone
+# contexts, but Docker only reads the file at the context root — this one.
+
+# ─── Dependencies (installed inside the image, never copied in) ──────────────
+api/vendor/
+api/node_modules/
+web/node_modules/
+web/dist/
+
+# ─── Environment / secrets (never land in an image) ─────────────────────────
+**/.env
+**/.env.*
+!**/.env.example
+
+# ─── Tests and dev-only tooling ─────────────────────────────────────────────
+api/tests/
+api/phpunit.xml
+api/.phpunit.cache/
+api/.phpunit.result.cache
+
+# ─── Runtime state that the container creates itself ───────────────────────
+# Laravel's config:cache balks on missing dirs, so we keep the gitkeep
+# stubs by whitelisting them back in.
+api/storage/app/*
+!api/storage/app/.gitkeep
+!api/storage/app/public
+api/storage/app/public/*
+!api/storage/app/public/.gitkeep
+api/storage/framework/cache/*
+!api/storage/framework/cache/.gitkeep
+api/storage/framework/sessions/*
+!api/storage/framework/sessions/.gitkeep
+api/storage/framework/views/*
+!api/storage/framework/views/.gitkeep
+api/storage/framework/testing/*
+!api/storage/framework/testing/.gitkeep
+api/storage/logs/*
+!api/storage/logs/.gitkeep
+api/bootstrap/cache/*.php
+
+# ─── Git metadata ───────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# ─── Developer cruft ────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# ─── Dev-only compose files shouldn't bleed into prod images ───────────────
+docker-compose.yml
+docker-compose.prod.yml
+
+# ─── README / docs don't belong in a runtime image either ───────────────────
+README.md

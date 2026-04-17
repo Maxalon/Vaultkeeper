@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\ScryfallService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class SyncSets extends Command
 {
@@ -15,14 +16,18 @@ class SyncSets extends Command
     /** Rarity letters we care about. Everything else (WM, T, 80, …) is ignored. */
     private const RARITIES = ['C', 'U', 'R', 'M'];
 
+    /** Logical disk these assets live on. Resolved at runtime to local or s3. */
+    private const DISK = 'assets';
+
     public function handle(ScryfallService $scryfall): int
     {
+        $disk = Storage::disk(self::DISK);
+
         // 1. Card back (shared asset, only fetched once).
-        $cardBackPath = storage_path('app/public/card-back.jpg');
-        if (file_exists($cardBackPath)) {
+        if ($disk->exists('card-back.jpg')) {
             $this->info('Card back already exists, skipping.');
         } else {
-            if ($scryfall->downloadFile('http://cards.scryfall.io/back.png', $cardBackPath)) {
+            if ($scryfall->downloadToDisk('http://cards.scryfall.io/back.png', self::DISK, 'card-back.jpg')) {
                 $this->info('Downloaded card back.');
             } else {
                 $this->error('Failed to download card back.');
@@ -42,7 +47,7 @@ class SyncSets extends Command
 
         $this->withProgressBar(
             $setCodes,
-            function (string $code) use ($catalog, $scryfall, &$downloaded, &$skipped, &$failed) {
+            function (string $code) use ($catalog, $disk, $scryfall, &$downloaded, &$skipped, &$failed) {
                 $rarities = (array) ($catalog[$code] ?? []);
 
                 foreach (self::RARITIES as $rarity) {
@@ -50,15 +55,15 @@ class SyncSets extends Command
                         continue;
                     }
 
-                    $dest = storage_path("app/public/sets/{$code}/{$rarity}.svg");
-                    if (file_exists($dest)) {
+                    $dest = "sets/{$code}/{$rarity}.svg";
+                    if ($disk->exists($dest)) {
                         $skipped++;
                         continue;
                     }
 
                     $url = $rarities[$rarity];
 
-                    if ($scryfall->downloadFile($url, $dest)) {
+                    if ($scryfall->downloadToDisk($url, self::DISK, $dest)) {
                         $downloaded++;
                     } else {
                         $failed++;
@@ -78,10 +83,11 @@ class SyncSets extends Command
 
     /**
      * Download every mana / cost symbol SVG from Scryfall's symbology endpoint
-     * into storage/app/public/symbols/{SYMBOL}.svg. Existing files are skipped.
+     * into the assets disk under symbols/{SYMBOL}.svg. Existing files are skipped.
      */
     private function syncSymbols(ScryfallService $scryfall): void
     {
+        $disk    = Storage::disk(self::DISK);
         $symbols = $scryfall->fetchSymbology();
         $this->info('Symbology fetched. '.count($symbols).' symbols found.');
 
@@ -101,14 +107,14 @@ class SyncSets extends Command
                 continue;
             }
 
-            $dest = storage_path("app/public/symbols/{$clean}.svg");
+            $dest = "symbols/{$clean}.svg";
 
-            if (file_exists($dest)) {
+            if ($disk->exists($dest)) {
                 $skipped++;
                 continue;
             }
 
-            if ($scryfall->downloadFile($url, $dest)) {
+            if ($scryfall->downloadToDisk($url, self::DISK, $dest)) {
                 $downloaded++;
             } else {
                 $failed++;

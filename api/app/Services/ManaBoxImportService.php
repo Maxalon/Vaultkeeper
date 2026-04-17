@@ -3,14 +3,15 @@
 namespace App\Services;
 
 use App\Jobs\FetchCardTextData;
-use App\Models\Card;
 use App\Models\CollectionEntry;
 use App\Models\Location;
 use App\Models\User;
+use App\Models\UserCard;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use League\Csv\Reader;
 
@@ -24,8 +25,10 @@ class ManaBoxImportService
      */
     public function import(UploadedFile $file, User $user, ?int $locationId): array
     {
-        $setsDir = storage_path('app/public/sets');
-        if (! is_dir($setsDir) || empty(glob($setsDir.'/*'))) {
+        // First import after a fresh deploy: lazily populate the set symbol
+        // catalog. The assets disk is env-driven (local in dev, s3 in prod),
+        // so this check works against either backing store.
+        if (empty(Storage::disk('assets')->allFiles('sets'))) {
             Log::info('Sets directory empty, running sets:sync automatically.');
             Artisan::call('sets:sync');
         }
@@ -78,7 +81,7 @@ class ManaBoxImportService
 
                 $rarity = trim((string) ($row['Rarity'] ?? ''));
 
-                $card = Card::updateOrCreate(
+                $card = UserCard::updateOrCreate(
                     ['scryfall_id' => $scryfallId],
                     [
                         'name'             => (string) ($row['Name'] ?? ''),

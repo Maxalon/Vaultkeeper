@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
 
@@ -164,24 +165,25 @@ class ScryfallService
     }
 
     /**
-     * Download a binary file from an arbitrary URL to a destination path.
-     * Not rate-limited — intended for CDN asset downloads, not Scryfall API calls.
+     * Download a binary file from an arbitrary URL and write it through the
+     * given Laravel filesystem disk. Not rate-limited — intended for CDN
+     * asset downloads, not Scryfall API calls.
+     *
+     * Going through Storage::disk() instead of raw file I/O means the same
+     * code path works for local dev (driver=local) and prod / staging
+     * (driver=s3 pointing at MinIO or AWS) — the callers don't know or
+     * care where the bytes end up.
      */
-    public function downloadFile(string $url, string $destinationPath): bool
+    public function downloadToDisk(string $url, string $disk, string $path): bool
     {
         try {
-            $directory = dirname($destinationPath);
-            if (! is_dir($directory) && ! @mkdir($directory, 0755, true) && ! is_dir($directory)) {
-                return false;
-            }
-
             $response = $this->http->get($url);
 
             if (! $response->successful()) {
                 return false;
             }
 
-            return file_put_contents($destinationPath, $response->body()) !== false;
+            return Storage::disk($disk)->put($path, $response->body());
         } catch (Throwable $e) {
             return false;
         }

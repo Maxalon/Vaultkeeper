@@ -1,0 +1,22 @@
+# Built by the multi-stage Dockerfile inside the image, not copied in.
+node_modules/
+dist/
+
+# Environment — must never land in the image. The SPA bakes whatever
+# VITE_* vars it needs at build time via build args, not via .env files
+# inside the image.
+.env
+.env.*
+!.env.example
+
+# Developer cruft.
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Git metadata is never useful inside an image.
+.git/
+.gitignore
+.gitattributes

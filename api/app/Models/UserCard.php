@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Card extends Model
+class UserCard extends Model
 {
+    use HasFactory;
+
+    protected $table = 'user_cards';
+
     protected $fillable = [
         'scryfall_id',
         'name',

@@ -60,6 +60,35 @@ return [
             'report' => false,
         ],
 
+        // Static Scryfall / Hexproof assets (set symbols, mana symbols, card
+        // back). Served at /storage and cached aggressively by the frontend.
+        //
+        // Driver is env-driven so dev runs on the local filesystem (same as
+        // today) while prod / staging point at MinIO or real S3 without any
+        // code change. The same code path handles both.
+        'assets' => env('ASSETS_DISK_DRIVER', 'local') === 's3'
+            ? [
+                'driver'                  => 's3',
+                'key'                     => env('ASSETS_AWS_ACCESS_KEY_ID'),
+                'secret'                  => env('ASSETS_AWS_SECRET_ACCESS_KEY'),
+                'region'                  => env('ASSETS_AWS_DEFAULT_REGION', 'us-east-1'),
+                'bucket'                  => env('ASSETS_BUCKET'),
+                'endpoint'                => env('ASSETS_AWS_ENDPOINT'),
+                'url'                     => env('ASSETS_PUBLIC_URL'),
+                'use_path_style_endpoint' => true,
+                'visibility'              => 'public',
+                'throw'                   => false,
+                'report'                  => false,
+            ]
+            : [
+                'driver'     => 'local',
+                'root'       => storage_path('app/public'),
+                'url'        => env('APP_URL').'/storage',
+                'visibility' => 'public',
+                'throw'      => false,
+                'report'     => false,
+            ],
+
     ],
 
     /*

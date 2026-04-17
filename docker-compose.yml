@@ -1,8 +1,12 @@
+name: vaultkeeper
+
 services:
   db:
-    image: mysql:8
+    image: mysql:8.4
     container_name: vaultkeeper_db
     restart: unless-stopped
+    ports:
+      - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_DATABASE}
@@ -19,6 +23,7 @@ services:
       - vaultkeeper
 
   api:
+    image: vaultkeeper-api:dev
     build:
       context: ./docker/php
       args:
@@ -36,6 +41,7 @@ services:
       - vaultkeeper
 
   worker:
+    image: vaultkeeper-api:dev
     build:
       context: ./docker/php
       args:
@@ -54,7 +60,7 @@ services:
       - vaultkeeper
 
   web:
-    image: node:20-alpine
+    image: node:22-alpine
     container_name: vaultkeeper_web
     restart: unless-stopped
     working_dir: /app

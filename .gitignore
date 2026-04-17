@@ -2,9 +2,10 @@
 .env.local
 .idea/
 .vscode/
+notes.txt
 
-# Stray SVN client config (not part of this project — likely created by an
-# accidental HOME=/mnt/games/MTGBank invocation; auth/ may contain saved creds)
+# Stray SVN client config (not part of this project — created by a tool
+# invoked with the wrong HOME at some point; auth/ may contain saved creds)
 .subversion/
 
 # Laravel

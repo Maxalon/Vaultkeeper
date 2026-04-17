@@ -1,4 +1,4 @@
-FROM php:8.3-fpm
+FROM php:8.4-fpm
 
 ARG UID=1000
 ARG GID=1000
@@ -12,8 +12,12 @@ RUN apt-get update && apt-get install -y \
         libfreetype6-dev \
         libonig-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo_mysql mbstring bcmath zip gd \
+    && docker-php-ext-install pdo_mysql mbstring bcmath zip gd opcache pcntl \
     && rm -rf /var/lib/apt/lists/*
+
+# Dev opcache posture: timestamps on, revalidate every request. This is
+# what makes `edit file -> run test` work without restarting php-fpm.
+COPY opcache-dev.ini /usr/local/etc/php/conf.d/zz-opcache.ini
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 

@@ -2,13 +2,16 @@
 
 Self-hosted MTG (Magic: The Gathering) collection management tool.
 
+> **Deploying to a real server?** See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+> for the prod / staging operator guide. This README covers the dev stack only.
+
 ## Layout
 
 ```
-api/    Laravel 11 PHP backend (JWT auth, MySQL)
+api/    Laravel 13 PHP backend (JWT auth, MySQL, Horizon)
 web/    Vue 3 + Vite frontend (Pinia, Vue Router)
 app/    Kotlin/Compose Android client (placeholder)
-docker/ Nginx + PHP-FPM Dockerfiles
+docker/ Dev + prod Dockerfiles for api and nginx
 ```
 
 ## Dev environment
@@ -17,6 +20,11 @@ Requires Docker + Docker Compose.
 
 ```bash
 cp .env.example .env
+# Open .env and replace every CHANGEME — at minimum DB_PASSWORD and
+# MYSQL_ROOT_PASSWORD. The dev MySQL container binds to 0.0.0.0:3306
+# on your host, so defaults would leave your database reachable by
+# anything on the same network.
+
 docker compose up -d --build
 
 # Wait for the api container to be up, then:
