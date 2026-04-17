@@ -17,8 +17,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  API_IMAGE: ghcr.io/${{ github.repository_owner }}/vaultkeeper-api
-  NGINX_IMAGE: ghcr.io/${{ github.repository_owner }}/vaultkeeper-nginx
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -48,18 +46,20 @@ jobs:
 
       # Tag strategy: branch name as the mutable tag (main / staging), plus
       # the short SHA as an immutable tag for rollback or pinned deploys.
+      # Owner is lowercased because container registries reject uppercase
+      # in repository names, but github.repository_owner preserves case.
       - name: Determine image tags
         id: tags
         run: |
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          API_IMAGE="ghcr.io/${OWNER}/vaultkeeper-api"
+          NGINX_IMAGE="ghcr.io/${OWNER}/vaultkeeper-nginx"
           BRANCH="${GITHUB_REF_NAME}"
           SHA="${GITHUB_SHA::7}"
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "api_tags=${API_IMAGE}:${BRANCH},${API_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
           echo "nginx_tags=${NGINX_IMAGE}:${BRANCH},${NGINX_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
-        env:
-          API_IMAGE: ${{ env.API_IMAGE }}
-          NGINX_IMAGE: ${{ env.NGINX_IMAGE }}
 
       - name: Build & push API image
         uses: docker/build-push-action@v6
