@@ -1,15 +1,18 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "vaultkeeper/api",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
+    "description": "Vaultkeeper API — Laravel backend for the Vaultkeeper MTG collection manager.",
+    "keywords": ["vaultkeeper", "laravel", "mtg"],
     "license": "MIT",
     "require": {
-        "php": "^8.2",
-        "laravel/framework": "^11.31",
-        "laravel/tinker": "^2.9",
+        "php": "^8.4",
+        "laravel/framework": "^13.0",
+        "laravel/horizon": "^5.45",
+        "laravel/tinker": "^3.0",
         "league/csv": "^9.0",
+        "league/flysystem-aws-s3-v3": "^3.32",
+        "predis/predis": "^3.4",
         "tymon/jwt-auth": "^2.3"
     },
     "require-dev": {
@@ -19,7 +22,7 @@
         "laravel/sail": "^1.26",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.1",
-        "phpunit/phpunit": "^11.0.1"
+        "phpunit/phpunit": "^12.0"
     },
     "autoload": {
         "psr-4": {
@@ -64,7 +67,7 @@
         "preferred-install": "dist",
         "sort-packages": true,
         "platform": {
-            "php": "8.3"
+            "php": "8.4"
         },
         "allow-plugins": {
             "pestphp/pest-plugin": true,

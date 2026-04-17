@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\Card;
+use App\Models\UserCard;
 use App\Services\CardSyncService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -27,7 +27,7 @@ class FetchCardTextData implements ShouldQueue
     {
         // image_small is the canary for "never synced" — set on every card
         // (front face for DFCs) the first time it goes through the mapper.
-        $cards = Card::whereIn('scryfall_id', $this->scryfallIds)
+        $cards = UserCard::whereIn('scryfall_id', $this->scryfallIds)
             ->where(function ($q) {
                 $q->whereNull('image_small')
                   ->orWhereNull('last_scryfall_sync');

@@ -2,14 +2,14 @@
 
 namespace App\Services;
 
-use App\Models\Card;
+use App\Models\UserCard;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
  * Single source of truth for mapping Scryfall card responses onto local
- * `cards` rows. Used by the lazy GET /api/collection path AND by the
+ * `user_cards` rows. Used by the lazy GET /api/collection path AND by the
  * post-import FetchCardTextData job — both go through this service so the
  * field mapping cannot drift between code paths.
  */
@@ -40,7 +40,7 @@ class CardSyncService
      * Returns true if the card has never been synced (image_small is null)
      * or its data is older than STALE_AFTER_DAYS.
      */
-    public function needsSync(Card $card): bool
+    public function needsSync(UserCard $card): bool
     {
         if ($card->image_small === null) {
             return true;
@@ -57,7 +57,7 @@ class CardSyncService
      * Fetch a single card from Scryfall and apply its data. Used by the
      * lazy detail path (GET /api/collection/{id}).
      */
-    public function sync(Card $card): Card
+    public function sync(UserCard $card): UserCard
     {
         try {
             $response = $this->scryfall->fetchCard($card->scryfall_id);
@@ -80,7 +80,7 @@ class CardSyncService
      * endpoint when there are enough cards to make the 500ms cool-down
      * worth it; otherwise falls back to per-card fetches.
      *
-     * @param  iterable<Card>  $cards
+     * @param  iterable<UserCard>  $cards
      */
     public function syncMany(iterable $cards): void
     {
@@ -122,9 +122,9 @@ class CardSyncService
     }
 
     /**
-     * Map a Scryfall card response onto the local cards row and persist it.
-     * Public so callers iterating their own batch results (e.g. tests) can
-     * reuse the mapping without round-tripping through Scryfall.
+     * Map a Scryfall card response onto the local user_cards row and persist
+     * it. Public so callers iterating their own batch results (e.g. tests)
+     * can reuse the mapping without round-tripping through Scryfall.
      *
      * Updates go through the query builder rather than Eloquent save()
      * because we want a single UPDATE per card; that means JSON columns
@@ -133,7 +133,7 @@ class CardSyncService
      *
      * @param  array<string, mixed>  $response
      */
-    public function applyScryfallData(Card $card, array $response): void
+    public function applyScryfallData(UserCard $card, array $response): void
     {
         $layout = $response['layout'] ?? null;
         $faces  = $response['card_faces'] ?? null;
@@ -212,6 +212,6 @@ class CardSyncService
         $update['legalities']         = $legalities !== null ? json_encode($legalities) : null;
         $update['last_scryfall_sync'] = now();
 
-        Card::where('scryfall_id', $card->scryfall_id)->update($update);
+        UserCard::where('scryfall_id', $card->scryfall_id)->update($update);
     }
 }

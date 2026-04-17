@@ -29,7 +29,7 @@ class DeckEntry extends Model
 
     public function card(): BelongsTo
     {
-        return $this->belongsTo(Card::class, 'scryfall_id', 'scryfall_id');
+        return $this->belongsTo(UserCard::class, 'scryfall_id', 'scryfall_id');
     }
 
     public function physicalCopy(): BelongsTo

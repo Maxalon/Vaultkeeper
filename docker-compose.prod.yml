@@ -1,0 +1,282 @@
+# Production / staging compose file.
+#
+# Designed to run the same file with two different compose project names
+# (and two different env files) on the same host:
+#
+#   docker compose -f docker-compose.prod.yml -p vaultkeeper_prod \
+#       --env-file .env.prod up -d
+#
+#   docker compose -f docker-compose.prod.yml -p vaultkeeper_staging \
+#       --env-file .env.staging up -d
+#
+# Each project gets its own containers, volumes, and network automatically
+# via compose project naming — prod and staging share zero state.
+#
+# Every image reference is env-driven so CI can pass IMAGE_TAG=<git-sha>
+# (or the branch name) without touching this file.
+
+services:
+
+  # ─── MySQL 8.4 LTS ─────────────────────────────────────────────────────────
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE:-vaultkeeper}
+      MYSQL_USER: ${DB_USERNAME:-vaultkeeper}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # ─── Redis 7 (queue + cache + sessions) ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # AOF persistence — durability matters for queue state, and Redis 7's
+    # default RDB snapshots lose jobs between snapshots if the process
+    # crashes.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # ─── MinIO (S3-compatible object storage for set symbols / assets) ────────
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      # Console bound to localhost only — reach it over Tailscale by
+      # browsing to the host's tailnet IP on :9001. Never exposed
+      # publicly.
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local 2>/dev/null || curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+
+  # ─── MinIO bucket bootstrap (one-shot) ─────────────────────────────────────
+  # Creates the assets bucket and sets a read-public policy so the nginx
+  # edge can serve objects without signed URLs. Exits when done; the api
+  # and worker services wait on `condition: service_completed_successfully`.
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-03T17-07-56Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+        mc mb --ignore-existing local/${ASSETS_BUCKET:-vaultkeeper-assets} &&
+        mc anonymous set download local/${ASSETS_BUCKET:-vaultkeeper-assets} &&
+        echo 'bucket ready'
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    networks:
+      - vaultkeeper
+
+  # ─── Laravel api (php-fpm) ─────────────────────────────────────────────────
+  api:
+    image: ${API_IMAGE:-vaultkeeper-api:local}
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-vaultkeeper}
+      DB_USERNAME: ${DB_USERNAME:-vaultkeeper}
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_CLIENT: predis
+      FILESYSTEM_DISK: assets
+      ASSETS_DISK_DRIVER: s3
+      ASSETS_AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      ASSETS_AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      ASSETS_AWS_DEFAULT_REGION: us-east-1
+      ASSETS_BUCKET: ${ASSETS_BUCKET:-vaultkeeper-assets}
+      ASSETS_AWS_ENDPOINT: http://minio:9000
+      ASSETS_PUBLIC_URL: ${APP_URL}/storage
+      JWT_SECRET: ${JWT_SECRET}
+      HORIZON_ALLOWED_EMAILS: ${HORIZON_ALLOWED_EMAILS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # ─── Queue worker (Horizon) ────────────────────────────────────────────────
+  worker:
+    image: ${API_IMAGE:-vaultkeeper-api:local}
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile.prod
+    restart: unless-stopped
+    command: ["php", "artisan", "horizon"]
+    # Stop signal: Horizon catches SIGTERM and drains cleanly. Give it
+    # generous grace time so an in-flight job can finish before the
+    # supervisor kills it.
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-vaultkeeper}
+      DB_USERNAME: ${DB_USERNAME:-vaultkeeper}
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_CLIENT: predis
+      FILESYSTEM_DISK: assets
+      ASSETS_DISK_DRIVER: s3
+      ASSETS_AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      ASSETS_AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      ASSETS_AWS_DEFAULT_REGION: us-east-1
+      ASSETS_BUCKET: ${ASSETS_BUCKET:-vaultkeeper-assets}
+      ASSETS_AWS_ENDPOINT: http://minio:9000
+      ASSETS_PUBLIC_URL: ${APP_URL}/storage
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ─── nginx edge ────────────────────────────────────────────────────────────
+  nginx:
+    image: ${NGINX_IMAGE:-vaultkeeper-nginx:local}
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile.prod
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    # TLS note: the image ships with a self-signed placeholder cert so
+    # the container boots out of the box for local testing. In real
+    # prod, overlay a real cert by adding a docker-compose.override.yml
+    # next to this file on the server:
+    #
+    #   services:
+    #     nginx:
+    #       volumes:
+    #         - /etc/vaultkeeper/certs:/etc/nginx/certs:ro
+    #
+    # and provisioning the cert files at that host path. For Tailscale:
+    #
+    #   sudo tailscale cert \
+    #     --cert-file /etc/vaultkeeper/certs/cert.pem \
+    #     --key-file  /etc/vaultkeeper/certs/key.pem \
+    #     <host>.<tailnet>.ts.net
+    #
+    # Schedule a renewal timer — Tailscale certs expire ~90 days.
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      # HTTP healthcheck (port 80) hits the /up endpoint — the 80 server
+      # block preserves that route in cleartext specifically so the
+      # docker healthcheck doesn't have to deal with the self-signed
+      # placeholder cert.
+      test: ["CMD", "wget", "-qO-", "--spider", "http://127.0.0.1/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 64M
+
+volumes:
+  db_data:
+  redis_data:
+  minio_data:
+
+networks:
+  vaultkeeper:
+    driver: bridge

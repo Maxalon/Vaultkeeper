@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CollectionEntry extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'user_id',
         'scryfall_id',
@@ -35,6 +38,6 @@ class CollectionEntry extends Model
     // Card lookup uses scryfall_id as both local and foreign key
     public function card(): BelongsTo
     {
-        return $this->belongsTo(Card::class, 'scryfall_id', 'scryfall_id');
+        return $this->belongsTo(UserCard::class, 'scryfall_id', 'scryfall_id');
     }
 }

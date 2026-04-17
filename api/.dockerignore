@@ -1,0 +1,56 @@
+# Dependencies — the prod build installs them fresh so the image gets a
+# clean, --no-dev vendor tree. Copying vendor/ in would fight that and
+# potentially leak dev dependencies into the prod image.
+vendor/
+node_modules/
+
+# Environment / secrets — must never land in an image.
+.env
+.env.*
+!.env.example
+
+# Tests and dev-only tooling have no reason to be in a prod image.
+tests/
+phpunit.xml
+.phpunit.cache/
+.phpunit.result.cache
+
+# Storage state — runtime artifacts the container will create itself.
+# We explicitly keep the directory skeleton so Laravel doesn't crash on
+# missing paths during config:cache.
+storage/app/*
+!storage/app/.gitkeep
+!storage/app/public
+storage/app/public/*
+!storage/app/public/.gitkeep
+storage/framework/cache/*
+!storage/framework/cache/.gitkeep
+storage/framework/sessions/*
+!storage/framework/sessions/.gitkeep
+storage/framework/views/*
+!storage/framework/views/.gitkeep
+storage/framework/testing/*
+!storage/framework/testing/.gitkeep
+storage/logs/*
+!storage/logs/.gitkeep
+
+# Developer cruft.
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Git metadata is never useful inside an image.
+.git/
+.gitignore
+.gitattributes
+
+# CI config belongs in the repo, not in images.
+.github/
+
+# Bootstrap caches are regenerated on boot / build.
+bootstrap/cache/*.php
+
+# Laravel Sail is a dev-only convenience.
+docker-compose.yml

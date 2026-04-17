@@ -1,0 +1,129 @@
+# syntax=docker/dockerfile:1.6
+#
+# Production image for the api / worker containers.
+#
+# Multi-stage build:
+#   1. `vendor`  — composer:2 resolves and installs prod-only dependencies.
+#                  We pass --no-autoloader because autoloader generation needs
+#                  the app source tree, which we only copy in stage 2.
+#   2. `runtime` — slim php:8.4-fpm-alpine with the extensions we need, the
+#                  app source COPY'd in (not bind-mounted), vendor/ from the
+#                  first stage, and a final `composer dump-autoload --optimize
+#                  --classmap-authoritative` to freeze the autoloader map.
+#
+# The image does NOT bake in APP_KEY, JWT_SECRET, or any other runtime env —
+# those are injected by the deployer (docker-compose env_file in our case).
+# It also does NOT run `config:cache` / `route:cache` at build time for the
+# same reason: caching requires env that only exists at run time.
+
+# ─── Stage 1: composer vendor ────────────────────────────────────────────────
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+# Only the files composer needs to resolve. Everything else is handled in
+# stage 2, and the .dockerignore keeps vendor/ / node_modules / tests / .env
+# out of the build context entirely.
+COPY api/composer.json api/composer.lock ./
+
+RUN composer install \
+        --no-dev \
+        --no-interaction \
+        --no-progress \
+        --no-scripts \
+        --no-autoloader \
+        --prefer-dist \
+        --ignore-platform-reqs
+# --ignore-platform-reqs: the composer:2 image doesn't have every PHP
+# extension Horizon and friends need enabled, but we don't care — this
+# stage only downloads vendor/. The runtime stage has the extensions,
+# and the final composer dump-autoload there runs under the real PHP.
+
+# ─── Stage 2: runtime ────────────────────────────────────────────────────────
+FROM php:8.4-fpm-alpine AS runtime
+
+# Compile PHP extensions. Build deps are installed in a virtual package so
+# they can be wholesale removed in the same layer to keep the image small.
+RUN set -eux; \
+    apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS \
+        libzip-dev \
+        libpng-dev \
+        libjpeg-turbo-dev \
+        freetype-dev \
+        oniguruma-dev; \
+    apk add --no-cache \
+        libzip \
+        libpng \
+        libjpeg-turbo \
+        freetype \
+        oniguruma; \
+    docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    docker-php-ext-install -j"$(nproc)" \
+        pdo_mysql \
+        mbstring \
+        bcmath \
+        zip \
+        gd \
+        opcache \
+        pcntl; \
+    apk del --no-network .build-deps
+
+# Prod opcache posture.
+COPY docker/php/opcache-prod.ini /usr/local/etc/php/conf.d/zz-opcache.ini
+
+# Non-root user for the php-fpm pool. UID/GID fixed to 1000 so that bind
+# mounts or mounted volumes from a typical host stay consistent.
+RUN addgroup -g 1000 app \
+    && adduser -D -u 1000 -G app -s /bin/sh app \
+    && sed -ri "s|^user = .*|user = app|; \
+                s|^group = .*|group = app|; \
+                s|^listen.owner = .*|listen.owner = app|; \
+                s|^listen.group = .*|listen.group = app|" \
+        /usr/local/etc/php-fpm.d/www.conf
+
+WORKDIR /var/www/html
+
+# Copy app source from the build context. .dockerignore strips vendor,
+# node_modules, .env, tests, .git, etc.
+COPY --chown=app:app api/ /var/www/html/
+
+# Bring the vendor dir built in stage 1.
+COPY --from=vendor --chown=app:app /app/vendor /var/www/html/vendor
+
+# Temporarily drop the composer binary in, finalize the optimized autoloader
+# with the app source visible, then remove composer — it has no business
+# sitting in a runtime image.
+#
+# Note: older Horizon versions required a `horizon:publish` step here to
+# copy dashboard CSS/JS into public/vendor/horizon/. Horizon 5.45+ serves
+# those assets directly from the package (the artisan command now prints
+# a deprecation warning and does nothing), so we don't call it.
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+RUN composer dump-autoload \
+        --optimize \
+        --classmap-authoritative \
+        --no-scripts \
+    && php artisan package:discover --ansi \
+    && rm /usr/local/bin/composer
+
+# Ensure the skeleton directories Laravel writes to at boot exist and are
+# writable. The .dockerignore keeps their runtime content out, but the
+# directories themselves must be present or config:cache / log writes
+# will panic.
+RUN mkdir -p \
+        storage/framework/cache \
+        storage/framework/sessions \
+        storage/framework/views \
+        storage/framework/testing \
+        storage/logs \
+        bootstrap/cache \
+    && chown -R app:app storage bootstrap/cache
+
+USER app
+
+EXPOSE 9000
+
+# -F keeps php-fpm in the foreground so Docker can see it as PID 1 and
+# route SIGTERM correctly for graceful shutdown.
+CMD ["php-fpm", "-F"]
