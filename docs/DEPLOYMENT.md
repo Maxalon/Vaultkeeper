@@ -106,9 +106,19 @@ forget it.
   Every prod deploy workflow run will then pause with a "Review
   deployment" button in the Actions UI, which you click to promote.
 
-Environments are also where deploy secrets (Tailscale OAuth client,
-deploy SSH key) will be scoped when the deploy workflows land, so
-staging creds never leak into prod runs and vice versa.
+Environments are also where the deploy secrets live. Add these secrets
+to **both** `staging` and `prod` environments (values can differ per
+environment, or be the same if you're deploying to a single server):
+
+| Secret              | Value                                                     |
+|---------------------|-----------------------------------------------------------|
+| `TS_OAUTH_CLIENT_ID`| Tailscale OAuth client ID (see step 6 below)             |
+| `TS_OAUTH_SECRET`   | Tailscale OAuth client secret                             |
+| `DEPLOY_SSH_KEY`    | SSH **private** key for the deploy user (see step 7)      |
+| `DEPLOY_HOST`       | Tailscale hostname of the server (e.g. `vault.tail1234.ts.net`) |
+| `DEPLOY_USER`       | SSH username on the server (e.g. `deploy`)                |
+
+Staging creds never leak into prod runs and vice versa.
 
 **3. Branch protection on `main`**
 
@@ -140,6 +150,98 @@ initial scaffold. It checks for `app/gradlew` and skips if missing,
 so it isn't actually doing anything — but if you're sure you don't
 want an Android build in this repo, delete the file so the Actions UI
 isn't cluttered with skipped runs.
+
+**6. Tailscale OAuth client (required for deploy workflow)**
+
+The deploy workflow connects the GitHub Actions runner to your tailnet
+so it can SSH to the server. This uses a Tailscale OAuth client, not
+an auth key (OAuth clients don't expire).
+
+1. Go to the [Tailscale admin console](https://login.tailscale.com/admin/settings/oauth)
+   → `Settings → OAuth clients → Generate OAuth client`.
+2. Give it a description like `github-actions-deploy`.
+3. Under **Device write** scope, assign the tag `tag:ci`.
+4. Copy the client ID and secret — you'll paste them into the GitHub
+   environment secrets above.
+
+You also need to allow the `tag:ci` tag in your Tailscale ACLs. Go to
+`Access controls` in the admin console and add:
+
+```jsonc
+{
+  "tagOwners": {
+    "tag:ci": ["autogroup:admin"]
+  },
+  "acls": [
+    // ... your existing rules ...
+    // Allow CI runners to reach the deploy server over SSH
+    {
+      "action": "accept",
+      "src":    ["tag:ci"],
+      "dst":    ["tag:server:22"]
+    }
+  ]
+}
+```
+
+Replace `tag:server` with whatever tag your deploy server uses (or use
+the machine's Tailscale IP directly in the `dst` if you don't use
+tags on the server). The key point is that `tag:ci` must be allowed to
+reach port 22 on the deploy host.
+
+**7. SSH deploy key**
+
+Generate a dedicated key pair for deployments. On your local machine:
+
+```bash
+ssh-keygen -t ed25519 -C "vaultkeeper-deploy" -f ~/.ssh/vaultkeeper_deploy -N ""
+```
+
+Then add the **public** key to the server:
+
+```bash
+# On the deploy server (over your existing SSH session):
+sudo useradd -m -s /bin/bash deploy
+sudo mkdir -p /home/deploy/.ssh
+sudo cp ~/.ssh/authorized_keys /home/deploy/.ssh/  # or paste the pubkey
+sudo chown -R deploy:deploy /home/deploy/.ssh
+sudo chmod 700 /home/deploy/.ssh
+sudo chmod 600 /home/deploy/.ssh/authorized_keys
+
+# The deploy user needs docker access:
+sudo usermod -aG docker deploy
+```
+
+Paste the contents of `~/.ssh/vaultkeeper_deploy` (the **private** key)
+into the `DEPLOY_SSH_KEY` secret in both GitHub environments.
+
+**8. Server directory structure**
+
+On the deploy server, create the directories and clone the repo:
+
+```bash
+# As the deploy user:
+sudo mkdir -p /srv/vaultkeeper_prod /srv/vaultkeeper_staging
+sudo chown deploy:deploy /srv/vaultkeeper_prod /srv/vaultkeeper_staging
+
+# Clone into both (the deploy workflow pulls images, it doesn't git pull —
+# but it needs the compose file and env file on disk):
+git clone <repo-url> /srv/vaultkeeper_prod
+git clone <repo-url> /srv/vaultkeeper_staging
+cd /srv/vaultkeeper_staging && git checkout staging
+
+# Copy and fill in env files:
+cp /srv/vaultkeeper_prod/.env.prod.example /srv/vaultkeeper_prod/.env.prod
+cp /srv/vaultkeeper_staging/.env.staging.example /srv/vaultkeeper_staging/.env.staging
+# Edit both and replace every CHANGEME
+```
+
+Log in to GHCR so the server can pull images:
+
+```bash
+# Create a GitHub PAT with read:packages scope, then:
+echo "$GHCR_PAT" | docker login ghcr.io -u <github-username> --password-stdin
+```
 
 ## First-time prod deploy
 
@@ -290,16 +392,27 @@ separate.
 
 ## Ongoing operations
 
-### Upgrading
+### Upgrading (automated)
 
-CI pushes a new image whenever a commit lands on `main` (prod) or
-`staging` (staging). On the host:
+The deploy workflow (`.github/workflows/deploy.yml`) handles upgrades
+automatically:
+
+- **Staging**: auto-deploys on every push to `staging`.
+- **Prod**: deploys on push to `main`, but pauses for manual approval
+  in the GitHub Actions UI (the "Review deployment" button).
+
+The workflow builds images, pushes them to GHCR, SSHs into the server
+via Tailscale, pulls the new images, runs `docker compose up -d`,
+executes pending migrations, and gracefully restarts Horizon.
+
+To deploy manually (e.g. if the workflow is down), SSH to the host:
 
 ```bash
 cd /srv/vaultkeeper_prod
-docker compose -p vaultkeeper_prod --env-file .env.prod pull
-docker compose -p vaultkeeper_prod --env-file .env.prod up -d
-docker compose -p vaultkeeper_prod exec api php artisan migrate --force
+docker compose -f docker-compose.prod.yml --env-file .env.prod -p vaultkeeper_prod pull
+docker compose -f docker-compose.prod.yml --env-file .env.prod -p vaultkeeper_prod up -d
+docker compose -p vaultkeeper_prod exec -T api php artisan migrate --force
+docker compose -p vaultkeeper_prod exec -T api php artisan horizon:terminate
 ```
 
 `up -d` only recreates containers whose image digest changed. No
