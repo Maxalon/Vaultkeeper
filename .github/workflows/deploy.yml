@@ -1,0 +1,163 @@
+name: Deploy
+
+# Runs on every push to main or staging. Branch protection on both branches
+# requires the CI workflow's status checks to pass before a push lands, so
+# by the time this workflow fires the tests have already been green.
+
+on:
+  push:
+    branches: [main, staging]
+
+concurrency:
+  # One deploy per target at a time. A new push cancels an in-flight deploy
+  # for the same branch — there's no point finishing a stale deploy when a
+  # newer commit is already queued.
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/${{ github.repository_owner }}/vaultkeeper-api
+  NGINX_IMAGE: ghcr.io/${{ github.repository_owner }}/vaultkeeper-nginx
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+
+  # ─── Build & push Docker images to GHCR ──────────────────────────────────
+  build:
+    name: build / images
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag strategy: branch name as the mutable tag (main / staging), plus
+      # the short SHA as an immutable tag for rollback or pinned deploys.
+      - name: Determine image tags
+        id: tags
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          SHA="${GITHUB_SHA::7}"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "api_tags=${API_IMAGE}:${BRANCH},${API_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "nginx_tags=${NGINX_IMAGE}:${BRANCH},${NGINX_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
+        env:
+          API_IMAGE: ${{ env.API_IMAGE }}
+          NGINX_IMAGE: ${{ env.NGINX_IMAGE }}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/php/Dockerfile.prod
+          push: true
+          tags: ${{ steps.tags.outputs.api_tags }}
+          cache-from: type=gha,scope=api-${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=api-${{ github.ref_name }}
+
+      - name: Build & push nginx image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/nginx/Dockerfile.prod
+          push: true
+          tags: ${{ steps.tags.outputs.nginx_tags }}
+          cache-from: type=gha,scope=nginx-${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=nginx-${{ github.ref_name }}
+
+  # ─── Deploy to the target environment ────────────────────────────────────
+  #
+  # The `environment` field picks the GitHub environment:
+  #   - main   → prod  (requires manual approval via the "Required reviewers"
+  #                      protection rule you set up in the GitHub UI)
+  #   - staging → staging (auto-deploys, no approval gate)
+  #
+  # Both environments need these secrets configured:
+  #   TS_OAUTH_CLIENT_ID  — Tailscale OAuth client ID
+  #   TS_OAUTH_SECRET     — Tailscale OAuth client secret
+  #   DEPLOY_SSH_KEY      — SSH private key for the deploy user
+  #   DEPLOY_HOST         — Tailscale hostname (e.g. vault.tail1234.ts.net)
+  #   DEPLOY_USER         — SSH username on the host
+  #
+  deploy:
+    name: deploy / ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+
+    env:
+      ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Deploy via SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          # Write the deploy key to a temp file
+          install -m 600 /dev/null /tmp/deploy_key
+          echo "$SSH_KEY" > /tmp/deploy_key
+
+          SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -i /tmp/deploy_key"
+          TARGET="${USER}@${HOST}"
+          PROJECT="vaultkeeper_${ENV_NAME}"
+          DEPLOY_DIR="/srv/vaultkeeper_${ENV_NAME}"
+
+          ssh $SSH_OPTS "$TARGET" bash -s <<DEPLOY_SCRIPT
+            set -euo pipefail
+
+            cd "${DEPLOY_DIR}"
+
+            echo ">>> Pulling latest images..."
+            docker compose -f docker-compose.prod.yml \
+                --env-file .env.${ENV_NAME} \
+                -p ${PROJECT} \
+                pull api nginx worker
+
+            echo ">>> Bringing up services..."
+            docker compose -f docker-compose.prod.yml \
+                --env-file .env.${ENV_NAME} \
+                -p ${PROJECT} \
+                up -d
+
+            echo ">>> Running migrations..."
+            docker compose -p ${PROJECT} \
+                exec -T api php artisan migrate --force
+
+            echo ">>> Restarting Horizon gracefully..."
+            docker compose -p ${PROJECT} \
+                exec -T api php artisan horizon:terminate
+
+            echo ">>> Pruning old images..."
+            docker image prune -f
+
+            echo ">>> Deploy complete. Container status:"
+            docker compose -p ${PROJECT} ps
+          DEPLOY_SCRIPT
+
+          rm -f /tmp/deploy_key
