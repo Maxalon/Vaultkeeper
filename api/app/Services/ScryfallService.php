@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -13,8 +14,12 @@ class ScryfallService
 
     private const HEXPROOF_SET_CATALOG_URL = 'https://api.hexproof.io/symbols/set';
 
-    /** Minimum gap between Scryfall API requests, in microseconds (100ms). */
-    private const MIN_GAP_US = 100_000;
+    /** Minimum gap between Scryfall API requests, in microseconds (150ms).
+     *  Scryfall's docs say 10/s is their ceiling, but sustained traffic at
+     *  exactly 100ms starts drawing 429s during syncOracleTags (hundreds of
+     *  requests in quick succession). 150ms = ~6.6/s with comfortable
+     *  headroom; the 429 retry below covers anything that still slips through. */
+    private const MIN_GAP_US = 150_000;
 
     /** Minimum gap between Scryfall /cards/collection requests, in microseconds (500ms). */
     private const COLLECTION_MIN_GAP_US = 500_000;
@@ -244,28 +249,44 @@ class ScryfallService
      */
     public function searchCards(string $query, int $page = 1, string $unique = 'cards'): array
     {
-        $this->throttle();
+        // Scryfall starts returning 429s once we've hammered the endpoint
+        // enough (syncOracleTags makes hundreds of calls in a row). When
+        // that happens the window doesn't reset immediately — retrying
+        // after a real pause (honouring Retry-After) reliably recovers,
+        // instead of dropping the whole tag on the first 429.
+        $maxAttempts = 3;
 
-        $response = $this->http
-            ->withHeaders(self::API_HEADERS)
-            ->get(self::BASE.'/cards/search', [
-                'q'      => $query,
-                'page'   => $page,
-                'unique' => $unique,
-            ]);
+        for ($attempt = 1; ; $attempt++) {
+            $this->throttle();
 
-        if ($response->status() === 404) {
-            // Scryfall returns 404 when a query has zero matches. Treat as empty.
-            return ['data' => [], 'has_more' => false, 'total_cards' => 0];
+            $response = $this->http
+                ->withHeaders(self::API_HEADERS)
+                ->get(self::BASE.'/cards/search', [
+                    'q'      => $query,
+                    'page'   => $page,
+                    'unique' => $unique,
+                ]);
+
+            if ($response->status() === 404) {
+                // Scryfall returns 404 when a query has zero matches. Treat as empty.
+                return ['data' => [], 'has_more' => false, 'total_cards' => 0];
+            }
+
+            if ($response->status() === 429 && $attempt < $maxAttempts) {
+                $delay = max(30, (int) $response->header('Retry-After'));
+                Log::warning("Scryfall 429 (q={$query}, page={$page}); sleeping {$delay}s before retry {$attempt}/{$maxAttempts}.");
+                sleep($delay);
+                continue;
+            }
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "Scryfall searchCards (q={$query}, page={$page}) failed: status {$response->status()}"
+                );
+            }
+
+            return $response->json() ?? ['data' => [], 'has_more' => false];
         }
-
-        if (! $response->successful()) {
-            throw new RuntimeException(
-                "Scryfall searchCards (q={$query}, page={$page}) failed: status {$response->status()}"
-            );
-        }
-
-        return $response->json() ?? ['data' => [], 'has_more' => false];
     }
 
     /**
