@@ -7,11 +7,12 @@ use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\MtgSet;
 use App\Models\ScryfallCard;
+use App\Models\ScryfallCardRaw;
 use App\Models\SyncState;
-use App\Models\UserCard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -29,7 +30,7 @@ use Throwable;
  */
 class BulkSyncService
 {
-    /** Layouts whose card_faces[] hold front/back data. Mirrors CardSyncService. */
+    /** Layouts whose card_faces[] hold front/back data. */
     private const DFC_LAYOUTS = [
         'transform',
         'modal_dfc',
@@ -169,6 +170,7 @@ class BulkSyncService
 
         $now = now();
         $batch = [];
+        $rawBatch = [];
         $processed = 0;
         $total = count($cards);
 
@@ -179,8 +181,24 @@ class BulkSyncService
             }
             $batch[] = $row;
 
+            // Raw companion row — only emit when all_parts is present;
+            // a NULL all_parts is indistinguishable from "no raw row
+            // needed" on the read side.
+            if (isset($card['id'], $card['all_parts']) && is_array($card['all_parts']) && $card['all_parts'] !== []) {
+                $rawBatch[] = [
+                    'scryfall_id' => $card['id'],
+                    'all_parts'   => json_encode($card['all_parts']),
+                    'created_at'  => $now,
+                    'updated_at'  => $now,
+                ];
+            }
+
             if (count($batch) >= self::UPSERT_CHUNK) {
                 $this->flushScryfallCards($batch);
+                if ($rawBatch) {
+                    $this->flushScryfallCardsRaw($rawBatch);
+                    $rawBatch = [];
+                }
                 $processed += count($batch);
                 $batch = [];
                 if ($onProgress) $onProgress($processed, $total);
@@ -191,6 +209,9 @@ class BulkSyncService
             $this->flushScryfallCards($batch);
             $processed += count($batch);
             if ($onProgress) $onProgress($processed, $total);
+        }
+        if ($rawBatch) {
+            $this->flushScryfallCardsRaw($rawBatch);
         }
 
         // Free the in-memory array before the JOIN — pgsql/mysql client
@@ -209,10 +230,7 @@ class BulkSyncService
 
     /**
      * Map a single Scryfall bulk card object onto a scryfall_cards row array,
-     * ready for upsert. Mirrors the DFC-aware logic in CardSyncService::applyScryfallData()
-     * but produces a flat row for batch INSERT instead of an UPDATE statement.
-     *
-     * Returns null when the input is missing required fields.
+     * ready for upsert. Returns null when the input is missing required fields.
      *
      * @param  array<string, mixed>  $c
      * @return array<string, mixed>|null
@@ -301,10 +319,44 @@ class BulkSyncService
             'keywords'         => isset($c['keywords']) ? json_encode($c['keywords']) : null,
             'edhrec_rank'      => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
             'reserved'         => (bool) ($c['reserved'] ?? false),
+            'commander_game_changer' => (bool) ($c['game_changer'] ?? false),
+            'partner_scope'    => $this->derivePartnerScope(
+                (array) ($c['keywords'] ?? []),
+                $faceFields['oracle_text'] ?? ($c['oracle_text'] ?? null),
+            ),
             'last_synced_at'   => $now,
             'created_at'       => $now,
             'updated_at'       => $now,
         ]);
+    }
+
+    /**
+     * Map a Scryfall card's Partner variant to a flat scope string.
+     *
+     * Plain Partner (including "Partner with X", which also grants plain
+     * Partner) returns 'plain'. Variants like "Partner—Friends forever",
+     * "Partner—Survivors", "Partner—Character select" return a snake_case
+     * label derived from the text between the em-dash and the parenthesized
+     * reminder text. Unknown future "Partner—Foo" variants are picked up
+     * automatically by the same regex.
+     *
+     * Returns null for cards that don't have the Partner keyword at all.
+     * Public so tests can drive the pure function directly.
+     *
+     * @param  array<int, string>  $keywords
+     */
+    public function derivePartnerScope(array $keywords, ?string $oracleText): ?string
+    {
+        if (! in_array('Partner', $keywords, true)) {
+            return null;
+        }
+        // em-dash (U+2014) or literal hyphen. The front-loaded character
+        // class ensures plain "Partner (..." and "Partner with X (..."
+        // do NOT match — they fall through to 'plain'.
+        if (preg_match('/Partner[\x{2014}-]([A-Za-z ]+?)\s*\(/u', $oracleText ?? '', $m)) {
+            return Str::snake(trim($m[1]));
+        }
+        return 'plain';
     }
 
     /**
@@ -336,8 +388,20 @@ class BulkSyncService
                 'image_small', 'image_normal', 'image_large',
                 'image_small_back', 'image_normal_back', 'image_large_back',
                 'mana_cost_back', 'type_line_back', 'oracle_text_back',
-                'edhrec_rank', 'reserved', 'last_synced_at', 'updated_at',
+                'edhrec_rank', 'reserved',
+                'commander_game_changer', 'partner_scope',
+                'last_synced_at', 'updated_at',
             ],
+        );
+    }
+
+    /** Batch upsert helper for scryfall_cards_raw. */
+    private function flushScryfallCardsRaw(array $rows): void
+    {
+        ScryfallCardRaw::upsert(
+            $rows,
+            ['scryfall_id'],
+            ['all_parts', 'updated_at'],
         );
     }
 
@@ -469,22 +533,27 @@ class BulkSyncService
     }
 
     /**
-     * Re-point user data from $oldId to $newId. Handles the user_cards UNIQUE
-     * constraint by deleting the orphan when both rows exist locally, and
-     * coalesces collection_entries that land on the same (location_id,
-     * condition, foil) tuple by summing their quantity.
+     * Re-point user data from $oldId to $newId. If only $oldId exists in
+     * scryfall_cards, rename it (FK cascades carry the children). If both
+     * exist, migrate children first — collection_entries coalesce on
+     * (location_id, condition, foil), deck_entries don't — then drop the
+     * now-orphaned old scryfall_cards row.
      */
     private function consolidateMerge(string $oldId, string $newId): void
     {
-        // 1. user_cards UNIQUE handling
-        $newExists = UserCard::where('scryfall_id', $newId)->exists();
-        if ($newExists) {
-            UserCard::where('scryfall_id', $oldId)->delete();
-        } else {
-            UserCard::where('scryfall_id', $oldId)->update(['scryfall_id' => $newId]);
+        $newExists = ScryfallCard::where('scryfall_id', $newId)->exists();
+
+        if (! $newExists) {
+            // Simple rename path — children follow via ON UPDATE CASCADE on
+            // the scryfall_id FKs.
+            ScryfallCard::where('scryfall_id', $oldId)->update(['scryfall_id' => $newId]);
+            return;
         }
 
-        // 2. collection_entries — coalesce on (location_id, condition, foil)
+        // Both rows exist in scryfall_cards — migrate children to $newId
+        // first (FKs are RESTRICT on delete), then drop the old card row.
+
+        // 1. collection_entries — coalesce on (location_id, condition, foil)
         $oldEntries = CollectionEntry::where('scryfall_id', $oldId)->get();
         foreach ($oldEntries as $old) {
             $sibling = CollectionEntry::where('scryfall_id', $newId)
@@ -504,21 +573,26 @@ class BulkSyncService
             }
         }
 
-        // 3. deck_entries — distinct slots, no coalescing.
+        // 2. deck_entries — distinct slots, no coalescing.
         DeckEntry::where('scryfall_id', $oldId)->update(['scryfall_id' => $newId]);
 
-        // 4. card_oracle_tags — re-point oracle_id if both old/new rows present;
-        //    UNIQUE (oracle_id, tag) means we drop dupes and keep one row each.
-        //    Scryfall provides old/new oracle_id on merges where it changed.
-        // Note: Scryfall's migration object uses `old_scryfall_id` / `new_scryfall_id`;
-        // if oracle_id also changed, callers can extend handleMigrations() to pass it
-        // through. For now, oracle_id is rarely changed by merges so we leave tags alone.
+        // 3. Drop the now-unreferenced old scryfall_cards row. scryfall_cards_raw
+        //    cascades via its own FK.
+        ScryfallCard::where('scryfall_id', $oldId)->delete();
+
+        // 4. card_oracle_tags — UNIQUE (oracle_id, tag) means duplicate tag
+        //    rows would collide. Scryfall's migration object uses
+        //    old_scryfall_id / new_scryfall_id; if oracle_id also changed,
+        //    callers can extend handleMigrations() to pass it through. For
+        //    now, oracle_id rarely changes on merges so we leave tags alone.
     }
 
     /**
      * Flag every collection / deck entry that pointed at $deletedId for the
-     * user to review, and drop the matching scryfall_cards row. The user_cards
-     * row is left intact so the user still sees their copy in their collection.
+     * user to review. The scryfall_cards row itself is kept so the user
+     * still sees their card data (image, text) alongside the needs_review
+     * flag — dropping it would cascade into FK issues and remove the info
+     * the user needs to decide what to do with the stale reference.
      */
     private function markDeleted(string $deletedId): void
     {
@@ -527,8 +601,6 @@ class BulkSyncService
 
         DeckEntry::where('scryfall_id', $deletedId)
             ->update(['needs_review' => true]);
-
-        ScryfallCard::where('scryfall_id', $deletedId)->delete();
     }
 
     // ─────────────────────────────────────────────────────────────────────

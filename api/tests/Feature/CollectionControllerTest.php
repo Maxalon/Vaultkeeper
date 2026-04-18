@@ -4,8 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\CollectionEntry;
 use App\Models\Location;
+use App\Models\ScryfallCard;
 use App\Models\User;
-use App\Models\UserCard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -85,8 +85,8 @@ class CollectionControllerTest extends TestCase
 
     public function test_index_search_matches_card_name_substring(): void
     {
-        $match = UserCard::factory()->create(['name' => 'Lightning Bolt']);
-        $skip  = UserCard::factory()->create(['name' => 'Counterspell']);
+        $match = ScryfallCard::factory()->create(['name' => 'Lightning Bolt']);
+        $skip  = ScryfallCard::factory()->create(['name' => 'Counterspell']);
 
         $hit = CollectionEntry::factory()->create([
             'user_id'     => $this->user->id,

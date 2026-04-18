@@ -4,6 +4,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CardController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\DeckController;
+use App\Http\Controllers\DeckEntryController;
+use App\Http\Controllers\DeckLegalityController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\LocationGroupController;
@@ -38,7 +40,21 @@ Route::middleware('auth:api')->group(function () {
     Route::get('scryfall-cards/{scryfallCard}', [ScryfallCardController::class, 'show']);
 
     Route::apiResource('cards', CardController::class);
-    Route::apiResource('decks', DeckController::class);
+
+    Route::get   ('decks',                                 [DeckController::class, 'index']);
+    Route::post  ('decks',                                 [DeckController::class, 'store']);
+    Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);
+    Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
+    Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
+
+    Route::get   ('decks/{deck}/entries',                  [DeckEntryController::class, 'index']);
+    Route::post  ('decks/{deck}/entries',                  [DeckEntryController::class, 'store']);
+    Route::patch ('decks/{deck}/entries/{entry}',          [DeckEntryController::class, 'update']);
+    Route::delete('decks/{deck}/entries/{entry}',          [DeckEntryController::class, 'destroy']);
+
+    Route::get ('decks/{deck}/illegalities',               [DeckLegalityController::class, 'index']);
+    Route::post('decks/{deck}/illegalities/ignore',        [DeckLegalityController::class, 'ignore']);
+    Route::post('decks/{deck}/illegalities/unignore',      [DeckLegalityController::class, 'unignore']);
 
     Route::get('locations',                [LocationController::class, 'index']);
     Route::post('locations',               [LocationController::class, 'store']);

@@ -40,6 +40,6 @@ class CollectionEntry extends Model
     // Card lookup uses scryfall_id as both local and foreign key
     public function card(): BelongsTo
     {
-        return $this->belongsTo(UserCard::class, 'scryfall_id', 'scryfall_id');
+        return $this->belongsTo(ScryfallCard::class, 'scryfall_id', 'scryfall_id');
     }
 }

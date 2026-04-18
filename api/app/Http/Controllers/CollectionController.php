@@ -5,8 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\Location;
-use App\Models\UserCard;
-use App\Services\CardSyncService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -16,14 +14,12 @@ class CollectionController extends Controller
 {
     /** Sortable columns. cmc is intentionally absent — no column to back it yet. */
     private const SORT_FIELDS = [
-        'name'             => 'user_cards.name',
-        'set_code'         => 'user_cards.set_code',
-        'rarity'           => 'user_cards.rarity',
-        'collector_number' => 'user_cards.collector_number',
+        'name'             => 'scryfall_cards.name',
+        'set_code'         => 'scryfall_cards.set_code',
+        'rarity'           => 'scryfall_cards.rarity',
+        'collector_number' => 'scryfall_cards.collector_number',
         'condition'        => 'collection_entries.condition',
     ];
-
-    public function __construct(private CardSyncService $sync) {}
 
     /**
      * GET /api/collection
@@ -38,15 +34,15 @@ class CollectionController extends Controller
     {
         $userId = auth()->id();
 
-        // Sort via join on user_cards so we can order by card columns. The
-        // explicit select() prevents the join from polluting the
+        // Sort via join on scryfall_cards so we can order by card columns.
+        // The explicit select() prevents the join from polluting the
         // collection_entries row attributes.
         $sortKey = $request->query('sort', 'name');
         $sortCol = self::SORT_FIELDS[$sortKey] ?? self::SORT_FIELDS['name'];
         $order   = strtolower($request->query('order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         $query = CollectionEntry::query()
-            ->join('user_cards', 'collection_entries.scryfall_id', '=', 'user_cards.scryfall_id')
+            ->join('scryfall_cards', 'collection_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
             ->where('collection_entries.user_id', $userId)
             ->with('card')
             ->select('collection_entries.*');
@@ -62,22 +58,10 @@ class CollectionController extends Controller
         }
 
         if ($search = trim((string) $request->query('search', ''))) {
-            $query->where('user_cards.name', 'like', "%{$search}%");
+            $query->where('scryfall_cards.name', 'like', "%{$search}%");
         }
 
         $entries = $query->orderBy($sortCol, $order)->get();
-
-        // Lazy fallback: backfill any unsynced cards. After the post-import
-        // job lands data on import, this should rarely fire.
-        $stale = $entries->pluck('card')
-            ->filter()
-            ->unique('scryfall_id')
-            ->filter(fn (UserCard $c) => $this->sync->needsSync($c));
-
-        if ($stale->isNotEmpty()) {
-            $this->sync->syncMany($stale);
-            $entries->load('card');
-        }
 
         $wantedMap = $this->wantedByDecksMap($entries->pluck('scryfall_id')->unique()->all(), $userId);
 
@@ -91,11 +75,6 @@ class CollectionController extends Controller
         abort_if($entry->user_id !== auth()->id(), 403);
 
         $entry->loadMissing('card');
-
-        if ($entry->card && $this->sync->needsSync($entry->card)) {
-            $this->sync->sync($entry->card);
-            $entry->load('card');
-        }
 
         $wantedMap = $this->wantedByDecksMap([$entry->scryfall_id], auth()->id());
 
@@ -208,12 +187,14 @@ class CollectionController extends Controller
     }
 
     /**
-     * Build a map [scryfall_id => array<string deck_name>] of cards the
-     * authenticated user has marked "wanted" in any deck without a
-     * physical_copy_id assigned.
+     * Build a map [scryfall_id => [{deck_id, deck_name, zone}, ...]] of
+     * cards the authenticated user has marked "wanted" (in any zone) in a
+     * deck without a physical_copy_id assigned. Each entry carries the
+     * zone so the frontend can colour-code by priority — main-deck wants
+     * mean more than maybe-board wants.
      *
      * @param  array<int, string>  $scryfallIds
-     * @return Collection<string, array<int, string>>
+     * @return Collection<string, array<int, array{deck_id: int, deck_name: string, zone: string}>>
      */
     private function wantedByDecksMap(array $scryfallIds, int $userId): Collection
     {
@@ -223,19 +204,27 @@ class CollectionController extends Controller
 
         return DeckEntry::query()
             ->whereIn('scryfall_id', $scryfallIds)
-            ->where('wanted', true)
+            ->whereNotNull('wanted')
             ->whereNull('physical_copy_id')
             ->whereHas('deck', fn ($q) => $q->where('user_id', $userId))
             ->with('deck:id,name')
             ->get()
             ->groupBy('scryfall_id')
-            ->map(fn ($rows) => $rows->pluck('deck.name')->filter()->values()->all());
+            ->map(fn ($rows) => $rows
+                ->filter(fn ($r) => $r->deck !== null)
+                ->map(fn ($r) => [
+                    'deck_id'   => $r->deck->id,
+                    'deck_name' => $r->deck->name,
+                    'zone'      => $r->wanted,
+                ])
+                ->values()
+                ->all());
     }
 
     /**
      * Compact list-row shape for GET /api/collection.
      *
-     * @param  Collection<string, array<int, string>>  $wantedMap
+     * @param  Collection<string, array<int, array{deck_id: int, deck_name: string, zone: string}>>  $wantedMap
      * @return array<string, mixed>
      */
     private function presentList(CollectionEntry $entry, Collection $wantedMap): array
@@ -274,7 +263,7 @@ class CollectionController extends Controller
     /**
      * Full-detail shape for GET /api/collection/{id} and PATCH responses.
      *
-     * @param  Collection<string, array<int, string>>  $wantedMap
+     * @param  Collection<string, array<int, array{deck_id: int, deck_name: string, zone: string}>>  $wantedMap
      * @return array<string, mixed>
      */
     private function presentDetail(CollectionEntry $entry, Collection $wantedMap): array
