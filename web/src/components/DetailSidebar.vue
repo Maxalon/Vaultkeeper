@@ -34,12 +34,12 @@ const OracleText = {
   setup(p) {
     return () => {
       if (!p.text) return null
-      const tokens = p.text.split(/(\{[^}]+\})/g).filter(Boolean)
+      const tokens = p.text.split(/({[^}]+})/g).filter(Boolean)
       return h(
         'div',
         { class: 'oracle' },
         tokens.flatMap((tok, i) => {
-          if (/^\{[^}]+\}$/.test(tok)) return [h(ManaSymbol, { key: i, symbol: tok })]
+          if (/^{[^}]+}$/.test(tok)) return [h(ManaSymbol, { key: i, symbol: tok })]
           return tok.split(/\n+/).flatMap((line, li, arr) => {
             const out = [h('span', { key: `${i}-${li}` }, line)]
             if (li < arr.length - 1) out.push(h('br', { key: `${i}-${li}-br` }))
@@ -368,6 +368,8 @@ const realLocations = computed(() => collection.locations)
   line-height: 1.5;
   color: var(--vk-ink-1);
 }
+/* .oracle is rendered by the OracleText functional component (h('div', { class: 'oracle' })) */
+/*noinspection CssUnusedSymbol*/
 :deep(.oracle) {
   white-space: pre-wrap;
 }
@@ -497,8 +499,13 @@ select.vk-field-input {
   font-weight: 600;
   text-align: right;
 }
+/* .leg-* class names are built dynamically from card.legalities[format] in the template */
+/*noinspection CssUnusedSymbol*/
 .leg-legal       { color: var(--cond-nm); }
+/*noinspection CssUnusedSymbol*/
 .leg-not-legal   { color: var(--vk-ink-3); }
+/*noinspection CssUnusedSymbol*/
 .leg-restricted  { color: var(--cond-mp); }
+/*noinspection CssUnusedSymbol*/
 .leg-banned      { color: var(--cond-dmg); }
 </style>
