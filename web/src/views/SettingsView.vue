@@ -135,7 +135,7 @@ const densityOptions = [
 }
 
 .title {
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-size: 36px;
   font-weight: 400;
   letter-spacing: -0.02em;
@@ -161,7 +161,7 @@ const densityOptions = [
 }
 
 .setting h2 {
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.14em;

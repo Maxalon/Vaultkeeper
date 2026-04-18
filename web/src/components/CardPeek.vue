@@ -61,7 +61,7 @@ img {
   justify-content: center;
   padding: 18px;
   color: var(--vk-ink-2);
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-size: 16px;
   text-align: center;
 }

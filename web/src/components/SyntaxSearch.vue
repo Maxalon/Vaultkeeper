@@ -56,7 +56,7 @@ function onInput(event) {
       />
     </div>
     <button class="vk-syntax-help" title="Syntax reference" type="button">
-      <span style="font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.06em;">?</span>
+      <span style="font-family: var(--font-mono), monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.06em;">?</span>
     </button>
   </div>
 </template>

@@ -310,7 +310,7 @@ function onGroupAdd(evt, group) {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--vk-ink-3);
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
 }
 
 .mode-toggle {
@@ -364,7 +364,7 @@ function onGroupAdd(evt, group) {
   text-align: left;
   cursor: pointer;
   transition: all 0.1s ease;
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
 }
 .sidebar-item:hover {
   background: var(--vk-bg-2);
@@ -402,7 +402,7 @@ function onGroupAdd(evt, group) {
   white-space: nowrap;
 }
 .sidebar-item .num {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 11px;
   color: var(--vk-ink-3);
   letter-spacing: 0.02em;
@@ -521,7 +521,7 @@ function onGroupAdd(evt, group) {
   text-overflow: ellipsis;
 }
 .group-header .num {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 11px;
   color: var(--vk-ink-3);
   font-weight: 500;

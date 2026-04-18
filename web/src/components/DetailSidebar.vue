@@ -296,7 +296,7 @@ const realLocations = computed(() => collection.locations)
 
 .vk-detail-title {
   margin-top: 16px;
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-size: 22px;
   font-weight: 500;
   color: var(--vk-gold);
@@ -314,7 +314,7 @@ const realLocations = computed(() => collection.locations)
   flex-wrap: wrap;
 }
 .vk-detail-meta-row .set-badge {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 10px;
   padding: 2px 6px;
   border: 1px solid var(--vk-line);
@@ -339,7 +339,7 @@ const realLocations = computed(() => collection.locations)
 
 .vk-detail-type {
   margin-top: 10px;
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-style: italic;
   font-size: 14px;
   color: var(--vk-ink-2);
@@ -378,7 +378,7 @@ const realLocations = computed(() => collection.locations)
   justify-content: flex-end;
 }
 .vk-detail-pt .pt {
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-size: 18px;
   font-weight: 500;
   color: var(--vk-ink-1);
@@ -398,7 +398,7 @@ const realLocations = computed(() => collection.locations)
   text-transform: uppercase;
   color: var(--vk-ink-3);
   margin: 0 0 10px;
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
 }
 
 .vk-field {
