@@ -2,7 +2,9 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -13,36 +15,16 @@ use Illuminate\Support\Facades\Schema;
  * Repoints FK columns that used to reference user_cards (collection_entries
  * and deck_entries both keyed by scryfall_id) at scryfall_cards instead.
  *
- * Pre-flight integrity check aborts if any collection_entries or
- * deck_entries row references a scryfall_id missing from scryfall_cards.
- * Remediation: run `php artisan scryfall:sync-bulk` first.
+ * Self-healing pre-flight: if any collection_entries / deck_entries row
+ * references a scryfall_id not in scryfall_cards, the migration runs
+ * `scryfall:sync-bulk` in-place to populate it. Only if orphans remain
+ * after the sync does the migration abort.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        // Pre-flight: abort cleanly if the post-migration FKs would orphan.
-        $counts = DB::selectOne("
-            SELECT
-              (SELECT COUNT(*) FROM collection_entries ce
-                 LEFT JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id
-                 WHERE sc.scryfall_id IS NULL) AS collection_orphans,
-              (SELECT COUNT(*) FROM deck_entries de
-                 LEFT JOIN scryfall_cards sc ON sc.scryfall_id = de.scryfall_id
-                 WHERE sc.scryfall_id IS NULL) AS deck_orphans
-        ");
-
-        $collectionOrphans = (int) ($counts->collection_orphans ?? 0);
-        $deckOrphans       = (int) ($counts->deck_orphans ?? 0);
-
-        if ($collectionOrphans > 0 || $deckOrphans > 0) {
-            throw new \RuntimeException(sprintf(
-                'Aborted: %d collection_entries and %d deck_entries reference scryfall_ids not present in scryfall_cards. '
-                .'Run `php artisan scryfall:sync-bulk` first, verify the orphan counts are zero, then retry.',
-                $collectionOrphans,
-                $deckOrphans,
-            ));
-        }
+        $this->ensureScryfallCardsCoverage();
 
         Schema::table('collection_entries', function (Blueprint $table) {
             $table->dropForeign(['scryfall_id']);
@@ -118,5 +100,60 @@ return new class extends Migration
         Schema::table('deck_entries', function (Blueprint $table) {
             $table->foreign('scryfall_id')->references('scryfall_id')->on('user_cards');
         });
+    }
+
+    /**
+     * Guarantee scryfall_cards contains every scryfall_id the to-be-repointed
+     * FKs will reference. Runs `scryfall:sync-bulk` if and only if there's
+     * at least one orphan — skips the ~5-minute sync on already-in-sync envs.
+     */
+    private function ensureScryfallCardsCoverage(): void
+    {
+        if ($this->countOrphans() === 0) {
+            return;
+        }
+
+        $before = $this->countOrphans();
+        Log::info("drop_user_cards migration: {$before} FK orphan(s) detected, running scryfall:sync-bulk");
+        fwrite(STDERR, ">>> {$before} FK orphan(s) detected; running scryfall:sync-bulk (this may take several minutes)...\n");
+
+        try {
+            Artisan::call('scryfall:sync-bulk');
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                'Aborted: scryfall:sync-bulk failed during migration pre-flight: '.$e->getMessage(),
+                previous: $e,
+            );
+        }
+
+        $after = $this->countOrphans();
+        if ($after > 0) {
+            throw new \RuntimeException(sprintf(
+                'Aborted: %d FK orphan(s) remain in collection_entries/deck_entries '
+                .'after running scryfall:sync-bulk. The referenced scryfall_ids do not '
+                .'exist in the Scryfall bulk data — likely deleted printings. Inspect '
+                .'the orphan rows with:\n'
+                ."  SELECT * FROM collection_entries ce LEFT JOIN scryfall_cards sc "
+                ."ON sc.scryfall_id = ce.scryfall_id WHERE sc.scryfall_id IS NULL;\n"
+                ."  SELECT * FROM deck_entries de LEFT JOIN scryfall_cards sc "
+                ."ON sc.scryfall_id = de.scryfall_id WHERE sc.scryfall_id IS NULL;\n"
+                .'Then either delete the orphans or manually insert stub scryfall_cards rows.',
+                $after,
+            ));
+        }
+    }
+
+    private function countOrphans(): int
+    {
+        $row = DB::selectOne("
+            SELECT
+              (SELECT COUNT(*) FROM collection_entries ce
+                 LEFT JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id
+                 WHERE sc.scryfall_id IS NULL) AS collection_orphans,
+              (SELECT COUNT(*) FROM deck_entries de
+                 LEFT JOIN scryfall_cards sc ON sc.scryfall_id = de.scryfall_id
+                 WHERE sc.scryfall_id IS NULL) AS deck_orphans
+        ");
+        return (int) ($row->collection_orphans ?? 0) + (int) ($row->deck_orphans ?? 0);
     }
 };

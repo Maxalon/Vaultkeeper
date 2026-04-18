@@ -492,32 +492,21 @@ curl -sS http://localhost:8080/api/decks/1/entries \
 
 ---
 
-## Migration runbook (strict order)
+## Migration runbook (strict order, fully self-healing)
 
-**Pre-step 0 (MANDATORY before step 3):** run `php artisan scryfall:sync-bulk` on the target environment and verify it completes without errors. This ensures every `scryfall_id` referenced by `collection_entries` / `deck_entries` exists in `scryfall_cards`. The step-3 migration contains an integrity assertion that will abort the migration if any FK would orphan, and its only remediation is a successful bulk sync.
+No manual pre-steps required. `php artisan migrate --force` handles everything.
 
-Quick sanity check after the pre-step:
-```sql
-SELECT COUNT(*) FROM collection_entries ce
- LEFT JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id
- WHERE sc.scryfall_id IS NULL;
--- must be 0
-
-SELECT COUNT(*) FROM deck_entries de
- LEFT JOIN scryfall_cards sc ON sc.scryfall_id = de.scryfall_id
- WHERE sc.scryfall_id IS NULL;
--- must be 0
-```
-
-Then run migrations in this order:
+Migrations in order:
 
 1. `add_commander_game_changer_and_partner_scope_to_scryfall_cards`
-2. `create_scryfall_cards_raw`
-3. `drop_user_cards_and_repoint_fks` — aborts if the pre-flight query above is non-zero
+2. `create_scryfall_cards_raw` — **triggers `scryfall:sync-bulk` if `scryfall_cards` already has rows**, populating the new columns from step 1 and the new raw table in one pass
+3. `drop_user_cards_and_repoint_fks` — pre-flight counts FK orphans; if non-zero, runs `scryfall:sync-bulk` in-place and re-checks. Aborts only if orphans remain after the sync (points at Scryfall-deleted printings that need manual attention)
 4. `extend_decks_for_deckbuilder`
 5. `convert_decks_format_to_enum`
 6. `extend_deck_entries_for_deckbuilder`
 7. `convert_deck_entries_wanted_to_enum`
 8. `create_deck_ignored_illegalities`
 
-**Post-step:** run `php artisan scryfall:sync-bulk` a second time so the new `commander_game_changer`, `partner_scope`, and `scryfall_cards_raw.all_parts` columns/rows get populated for existing cards.
+**Timing note:** on an existing environment with populated `scryfall_cards`, step 2 runs `sync-bulk` (typically 5-10 minutes) — deploys that pull this migration set will be slower than normal. Fresh installs skip the sync (empty tables have nothing to populate).
+
+**Failure mode:** if `scryfall:sync-bulk` fails during step 2 or step 3, the migration throws with a clear message. The schema is in a mixed state (steps 1-2 may have applied); re-running `migrate --force` resumes from the first unapplied migration once the sync issue is resolved.
