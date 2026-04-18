@@ -77,23 +77,26 @@ function onSelect(id) {
 
 // ── Peek (popover hover) state ──────────────────────────────────────────
 const peek = ref({ entry: null, x: 0, y: 0, visible: false })
-const PEEK_W = 240
-const PEEK_H = Math.round(PEEK_W * 88 / 63) // ≈ 335
 
 function onPeekShow({ entry, rect }) {
   if (!stripStack.value) return
-  const main = stripStack.value.getBoundingClientRect()
+
+  // Peek width tracks --card-width so the popover always matches the
+  // strip size the user picked via Density. Height derives from the
+  // Scryfall card aspect ratio (63×88) — same ratio CardPeek.vue uses.
+  const peekW = readCardWidth()
+  const peekH = Math.round(peekW * 88 / 63)
   const gap = 10
 
   // Position peek to the right of the hovered strip, flip to left if it
   // would overflow the main area on the right.
   let x = rect.right + gap
-  if (x + PEEK_W > window.innerWidth - 12) {
-    x = rect.left - PEEK_W - gap
+  if (x + peekW > window.innerWidth - 12) {
+    x = rect.left - peekW - gap
   }
   // Vertically centre the peek on the strip's middle, clamped to viewport.
-  let y = rect.top + rect.height / 2 - PEEK_H / 2
-  y = Math.max(12, Math.min(y, window.innerHeight - PEEK_H - 12))
+  let y = rect.top + rect.height / 2 - peekH / 2
+  y = Math.max(12, Math.min(y, window.innerHeight - peekH - 12))
 
   peek.value = { entry, x, y, visible: true }
 }

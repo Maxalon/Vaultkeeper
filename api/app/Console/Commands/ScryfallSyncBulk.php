@@ -26,9 +26,23 @@ class ScryfallSyncBulk extends Command
 
     public function handle(BulkSyncService $bulk): int
     {
-        // The full file decode peaks ~3 GB on PHP 8.4 with the current Default
-        // Cards file. 4 GB gives comfortable headroom.
-        ini_set('memory_limit', '4G');
+        // Stay below the api container's 4 GB cgroup cap. If PHP's own
+        // limit trips first we get a visible "Allowed memory size exhausted"
+        // fatal with exit code 255; if the cgroup trips first the kernel
+        // SIGKILLs silently and the operator sees the process just vanish.
+        ini_set('memory_limit', '3500M');
+
+        // Upgrade PHP's default memory-fatal message with an actionable hint.
+        // Regular try/catch can't see memory fatals — shutdown functions can.
+        register_shutdown_function(function () {
+            $err = error_get_last();
+            if ($err && ($err['type'] & (E_ERROR | E_COMPILE_ERROR | E_CORE_ERROR)) !== 0
+                && str_contains($err['message'], 'Allowed memory size')) {
+                fwrite(STDERR, "\nBulk sync failed: out of memory decoding the Scryfall bulk JSON. "
+                    . "Peak exceeded the 3.5 GB PHP limit — either the default_cards file grew, "
+                    . "or switch to a streaming parser.\n");
+            }
+        });
 
         $this->info('Scryfall bulk sync starting…');
 

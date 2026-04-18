@@ -30,7 +30,7 @@ const card = computed(() => props.entry?.card || null)
   position: fixed;
   pointer-events: none;
   z-index: 1000;
-  width: 240px;
+  width: var(--card-width);
   aspect-ratio: 63 / 88;
   border-radius: 12px;
   opacity: 0;
