@@ -143,7 +143,8 @@ const skeletonStyle = computed(() => {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
   outline: 1px solid transparent;
   transition: height 160ms ease-out, margin-bottom 160ms ease-out,
-              outline-color 120ms ease, box-shadow 160ms ease;
+              outline-color 120ms ease, box-shadow 160ms ease,
+              transform 160ms ease-out;
   content-visibility: auto;
   contain-intrinsic-size: auto var(--card-width) auto var(--strip-height);
 }
@@ -162,17 +163,20 @@ const skeletonStyle = computed(() => {
 }
 
 /* Peek hover mode — strip stays compact; parent draws the popover. The
-   subtle gold outline + lift on hover is preserved so the user still gets
-   focus feedback on the row they're targeting. */
+   subtle gold outline + scale lift on hover is preserved so the user
+   still gets focus feedback on the row they're targeting. Margin is held
+   at the default 4px so rows below don't shift when the hovered strip
+   toggles — the scale transform zooms in place without affecting layout. */
 .strip.peek-mode:hover,
 .strip.peek-mode.mode-b.loaded.last {
   height: var(--strip-height);
-  margin-bottom: 0;
+  margin-bottom: 4px;
 }
 .strip.peek-mode:hover {
   z-index: 2;
   outline-color: var(--gold);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  transform: scale(1.02);
 }
 /* Mode B + peek: strip never expands, so the overlay bar stays hidden
    at rest and on hover — the corner badge is the only label, matching
