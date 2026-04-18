@@ -14,15 +14,16 @@ class ScryfallService
 
     private const HEXPROOF_SET_CATALOG_URL = 'https://api.hexproof.io/symbols/set';
 
-    /** Minimum gap between Scryfall API requests, in microseconds (150ms).
-     *  Scryfall's docs say 10/s is their ceiling, but sustained traffic at
-     *  exactly 100ms starts drawing 429s during syncOracleTags (hundreds of
-     *  requests in quick succession). 150ms = ~6.6/s with comfortable
-     *  headroom; the 429 retry below covers anything that still slips through. */
-    private const MIN_GAP_US = 150_000;
+    /** Minimum gap between Scryfall API requests, in microseconds (100ms). */
+    private const MIN_GAP_US = 100_000;
 
     /** Minimum gap between Scryfall /cards/collection requests, in microseconds (500ms). */
     private const COLLECTION_MIN_GAP_US = 500_000;
+
+    /** Minimum gap between Scryfall /cards/search requests, in microseconds (500ms).
+     *  Scryfall rate-limits the search endpoint harder than other endpoints
+     *  (2 req/s instead of 10), so it gets its own cool-down tracker. */
+    private const SEARCH_MIN_GAP_US = 500_000;
 
     /** Common headers required on all Scryfall API requests. */
     private const API_HEADERS = [
@@ -33,6 +34,8 @@ class ScryfallService
     private float $lastRequestAt = 0.0;
 
     private float $lastCollectionRequestAt = 0.0;
+
+    private float $lastSearchRequestAt = 0.0;
 
     public function __construct(private HttpFactory $http) {}
 
@@ -257,7 +260,7 @@ class ScryfallService
         $maxAttempts = 3;
 
         for ($attempt = 1; ; $attempt++) {
-            $this->throttle();
+            $this->throttleSearch();
 
             $response = $this->http
                 ->withHeaders(self::API_HEADERS)
@@ -349,5 +352,24 @@ class ScryfallService
         }
 
         $this->lastCollectionRequestAt = microtime(true);
+    }
+
+    /**
+     * Sleep long enough to respect Scryfall's 500ms cool-down between
+     * /cards/search requests (2 req/s). Tracked separately from the
+     * single-card and collection throttles.
+     */
+    private function throttleSearch(): void
+    {
+        $now = microtime(true);
+
+        if ($this->lastSearchRequestAt > 0.0) {
+            $elapsedUs = ($now - $this->lastSearchRequestAt) * 1_000_000;
+            if ($elapsedUs < self::SEARCH_MIN_GAP_US) {
+                usleep((int) (self::SEARCH_MIN_GAP_US - $elapsedUs));
+            }
+        }
+
+        $this->lastSearchRequestAt = microtime(true);
     }
 }
