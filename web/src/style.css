@@ -1,149 +1,651 @@
 :root {
-  /* Backgrounds */
-  --bg-0: #0d0f14;          /* deepest background */
-  --bg-1: #14171f;          /* panel background */
-  --bg-2: #1c2029;          /* hover / elevated */
-  --border: #2a2f3b;
-  --border-soft: #1e222c;
+  /* Vaultkeeper redesign tokens (Editorial aesthetic — single variant). */
+  --vk-bg-0: #0f0e0b;
+  --vk-bg-1: #17150f;
+  --vk-bg-2: #1f1c15;
+  --vk-bg-3: #28241a;
+  --vk-line: #2f2a1e;
+  --vk-line-soft: #221e15;
 
-  /* Text */
-  --text: #e8e6df;
-  --text-dim: #8a8579;
-  --text-faint: #5a5750;
+  --vk-ink-1: #ede8dc;
+  --vk-ink-2: #a8a294;
+  --vk-ink-3: #6d6d78;
+  --vk-ink-4: #47474f;
 
-  /* Brand accents */
-  --gold: #c9a227;
-  --gold-bright: #e6bb3a;
-  --gold-dim: #8a6f1a;
+  --vk-gold: #f0c35c;
+  --vk-gold-dim: #c99d3d;
+  --vk-gold-deep: #7a5e20;
 
-  /* Condition badge colors */
+  --mtg-w: #f9f6e6;
+  --mtg-u: #5a8ac9;
+  --mtg-b: #3a3238;
+  --mtg-r: #d15a4a;
+  --mtg-g: #5a9364;
+  --mtg-c: #a8a8b2;
+
+  --r-common: #c8c8d0;
+  --r-uncommon: #9ab5c4;
+  --r-rare: #c9a24a;
+  --r-mythic: #d97742;
+
+  --font-sans: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: 'Newsreader', Georgia, serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Legacy aliases — keep all existing scoped component styles working. */
+  --bg-0: var(--vk-bg-0);
+  --bg-1: var(--vk-bg-1);
+  --bg-2: var(--vk-bg-2);
+  --border: var(--vk-line);
+  --border-soft: var(--vk-line-soft);
+  --text: var(--vk-ink-1);
+  --text-dim: var(--vk-ink-2);
+  --text-faint: var(--vk-ink-3);
+  --gold: var(--vk-gold);
+  --gold-bright: var(--vk-gold);
+  --gold-dim: var(--vk-gold-dim);
   --cond-nm: #4ade80;
   --cond-lp: #a3e635;
   --cond-mp: #facc15;
   --cond-hp: #fb923c;
   --cond-dmg: #ef4444;
+  --font-body: var(--font-sans);
 
-  /* Layered card list dimensions (CardStrip.vue).
-     Card aspect ratio is the Scryfall normal-size image:
-     488×680 → height = width × 680/488. */
-  --card-width: 250px;
+  /* Card list dimensions. --card-image-h and --strip-expanded are
+     derived from --card-width per the Scryfall normal aspect (488×680). */
+  --sidebar-width: 240px;
+  --detail-width: 340px;
   --card-image-h: calc(var(--card-width) * 680 / 488);
-  --strip-height: 46px;
-  --strip-gap: 10px;
   --strip-expanded: calc(var(--card-image-h) + var(--strip-height));
 
-  /* Fonts */
-  --font-display: "Cinzel", Georgia, "Times New Roman", serif;
-  --font-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-
-  /* Layout */
-  --sidebar-width: 260px;
-  --detail-width: 400px;
-
-  font-family: var(--font-body);
+  font-family: var(--font-sans), sans-serif;
   font-size: 14px;
-  line-height: 1.45;
-  color: var(--text);
-  background: var(--bg-0);
+  line-height: 1.5;
+  color: var(--vk-ink-1);
+  background: var(--vk-bg-0);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
-* {
-  box-sizing: border-box;
+/* Density variants — drive strip dimensions consumed by CardStrip.vue. */
+[data-density="compact"] {
+  --strip-height: 38px;
+  --strip-gap: 8px;
+  --card-width: 200px;
 }
+[data-density="default"] {
+  --strip-height: 46px;
+  --strip-gap: 10px;
+  --card-width: 250px;
+}
+[data-density="cozy"] {
+  --strip-height: 54px;
+  --strip-gap: 14px;
+  --card-width: 300px;
+}
+
+* { box-sizing: border-box; }
 
 html, body, #app {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background: var(--bg-0);
-  color: var(--text);
+  background: var(--vk-bg-0);
+  color: var(--vk-ink-1);
 }
 
-body {
-  font-family: var(--font-body);
-}
+body { font-family: var(--font-sans), sans-serif; }
 
 h1, h2, h3, .display {
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-weight: 500;
-  letter-spacing: 0.04em;
-  color: var(--text);
+  letter-spacing: -0.01em;
+  color: var(--vk-ink-1);
   margin: 0;
 }
 
-a {
-  color: var(--gold);
-  text-decoration: none;
-}
-a:hover {
-  color: var(--gold-bright);
-}
+a { color: var(--vk-gold); text-decoration: none; }
+a:hover { color: color-mix(in oklab, var(--vk-gold) 80%, white); }
 
 button {
   font-family: inherit;
   font-size: inherit;
   cursor: pointer;
-  border: 1px solid var(--border);
-  background: var(--bg-2);
-  color: var(--text);
+  border: 1px solid var(--vk-line);
+  background: var(--vk-bg-2);
+  color: var(--vk-ink-1);
   padding: 8px 14px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   transition: background 120ms ease, border-color 120ms ease;
 }
-button:hover {
-  background: var(--bg-1);
-  border-color: var(--gold-dim);
-}
-button:focus-visible {
-  outline: 2px solid var(--gold);
-  outline-offset: 2px;
-}
+button:hover { background: var(--vk-bg-1); border-color: var(--vk-gold-dim); }
+button:focus-visible { outline: 2px solid var(--vk-gold); outline-offset: 2px; }
 
 button.primary {
-  background: var(--gold);
-  border-color: var(--gold-bright);
-  color: var(--bg-0);
+  background: var(--vk-gold);
+  border-color: var(--vk-gold);
+  color: #1a1408;
   font-weight: 600;
 }
-button.primary:hover {
-  background: var(--gold-bright);
-}
+button.primary:hover { background: color-mix(in oklab, var(--vk-gold) 80%, white); }
 
 input, select, textarea {
   font-family: inherit;
   font-size: inherit;
-  background: var(--bg-0);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  background: var(--vk-bg-0);
+  color: var(--vk-ink-1);
+  border: 1px solid var(--vk-line);
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   width: 100%;
 }
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: var(--gold-dim);
+  border-color: var(--vk-gold-dim);
 }
 
-::placeholder {
-  color: var(--text-faint);
-}
+::placeholder { color: var(--vk-ink-3); }
+::selection { background: var(--vk-gold); color: #1a1408; }
 
-/* Scrollbars (Webkit) */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg-0);
-}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-2);
+  background: var(--vk-line);
   border-radius: 5px;
-  border: 2px solid var(--bg-0);
+  border: 2px solid var(--vk-bg-1);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--border);
+::-webkit-scrollbar-thumb:hover { background: var(--vk-ink-4); }
+
+/* ============================================================
+   Wordmark — gold rotated diamond + serif name
+   ============================================================ */
+
+.vk-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display), serif;
+  font-weight: 500;
+  font-size: 20px;
+  /* line-height: 1 collapses the em-box so it matches the rendered glyph.
+     Without this, Newsreader's tall ascender padding leaves visible space
+     above the caps, which align-items: center then treats as part of the
+     text box — the icon ends up sitting BELOW the visual text midline. */
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--vk-ink-1);
+}
+.vk-mark-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  flex-shrink: 0;
+  color: var(--vk-gold);
+  overflow: visible; /* let the rotated outer outline's corners breathe past 18×18 */
+  /* Newsreader's visual baseline sits above the em-box center even after
+     line-height: 1. Nudge the icon up 2px to meet the rendered text. */
+  position: relative;
+  top: -2px;
+}
+
+/* ============================================================
+   Filter chip + dropdown menu (used in AppTopBar)
+   ============================================================ */
+
+/* Shared pill base — 32px inline-flex pill, rounded, default transition.
+   .vk-chip and .vk-btn only declare what differs (padding/gap/colors/weight/etc.). */
+.vk-chip,
+.vk-btn {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.vk-chip {
+  padding: 0 12px;
+  gap: 6px;
+  background: var(--vk-bg-2);
+  border: 1px solid var(--vk-line);
+  color: var(--vk-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.vk-chip:hover { border-color: var(--vk-ink-3); color: var(--vk-ink-1); }
+.vk-chip.active {
+  background: color-mix(in oklab, var(--vk-gold) 15%, var(--vk-bg-2));
+  border-color: color-mix(in oklab, var(--vk-gold) 40%, var(--vk-line));
+  color: var(--vk-gold);
+}
+.vk-chip.open {
+  border-color: var(--vk-ink-3);
+  color: var(--vk-ink-1);
+  background: var(--vk-bg-1);
+}
+.vk-chip .caret { opacity: 0.5; font-size: 9px; }
+.vk-chip .tok-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.vk-chip .tok-dot.tok-c { background: #d97757; }
+.vk-chip .tok-dot.tok-t { background: #7aa6d9; }
+.vk-chip .tok-dot.tok-r { background: #c49b4a; }
+.vk-chip .tok-dot.tok-set { background: #8fab7a; }
+.vk-chip .tok-dot.tok-sort { background: #a89bc2; }
+
+.vk-chip-wrap { position: relative; display: inline-flex; }
+.vk-chip-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  background: var(--vk-bg-1);
+  border: 1px solid var(--vk-line);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  padding: 4px;
+  z-index: 100;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.vk-chip-menu.right { left: auto; right: 0; }
+.vk-chip-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  color: var(--vk-ink-2);
+  font-size: 12px;
+  border-radius: 3px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+.vk-chip-menu-item:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
+.vk-chip-menu-item.active {
+  background: color-mix(in oklab, var(--vk-gold) 15%, var(--vk-bg-2));
+  color: var(--vk-gold);
+}
+.vk-chip-menu-item .tok-hint {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  color: var(--vk-ink-4);
+  letter-spacing: 0;
+}
+.vk-chip-menu-item.active .tok-hint { color: var(--vk-gold); opacity: 0.7; }
+
+/* ============================================================
+   Syntax search — colored token overlay over a transparent input
+   ============================================================ */
+
+.vk-syntax-search {
+  flex: 1;
+  min-width: 200px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  background: var(--vk-bg-0);
+  border: 1px solid var(--vk-line);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.vk-syntax-search.focused {
+  border-color: var(--vk-gold-dim);
+  background: color-mix(in oklab, var(--vk-bg-0) 94%, var(--vk-gold) 6%);
+}
+.vk-syntax-field {
+  flex: 1;
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+.vk-syntax-tokens,
+.vk-syntax-input {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  line-height: 1;
+  white-space: pre;
+  letter-spacing: 0;
+}
+.vk-syntax-tokens { pointer-events: none; color: var(--vk-ink-1); }
+.vk-syntax-tokens .sp { white-space: pre; }
+.vk-syntax-tokens .tok {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  padding: 2px 0;
+}
+.vk-syntax-tokens .tok-text { color: var(--vk-ink-1); }
+.vk-syntax-tokens .tok-key { color: var(--vk-ink-1); font-weight: 600; }
+.vk-syntax-tokens .tok-op { color: var(--vk-ink-3); }
+.vk-syntax-tokens .tok-val { color: var(--vk-ink-1); }
+.vk-syntax-tokens .tok-neg { color: #d46a6a; font-weight: 600; margin-right: 1px; }
+
+.vk-syntax-tokens .tok-c .tok-key,
+.vk-syntax-tokens .tok-c .tok-val,
+.vk-syntax-tokens .tok-color .tok-key,
+.vk-syntax-tokens .tok-color .tok-val,
+.vk-syntax-tokens .tok-id .tok-key,
+.vk-syntax-tokens .tok-id .tok-val { color: #d97757; }
+
+.vk-syntax-tokens .tok-t .tok-key,
+.vk-syntax-tokens .tok-t .tok-val,
+.vk-syntax-tokens .tok-type .tok-key,
+.vk-syntax-tokens .tok-type .tok-val { color: #7aa6d9; }
+
+.vk-syntax-tokens .tok-r .tok-key,
+.vk-syntax-tokens .tok-r .tok-val,
+.vk-syntax-tokens .tok-rarity .tok-key,
+.vk-syntax-tokens .tok-rarity .tok-val { color: #c49b4a; }
+
+.vk-syntax-tokens .tok-set .tok-key,
+.vk-syntax-tokens .tok-set .tok-val,
+.vk-syntax-tokens .tok-s .tok-key,
+.vk-syntax-tokens .tok-s .tok-val,
+.vk-syntax-tokens .tok-e .tok-key,
+.vk-syntax-tokens .tok-e .tok-val { color: #8fab7a; }
+
+.vk-syntax-tokens .tok-sort .tok-key,
+.vk-syntax-tokens .tok-sort .tok-val,
+.vk-syntax-tokens .tok-order .tok-key,
+.vk-syntax-tokens .tok-order .tok-val { color: #a89bc2; }
+
+.vk-syntax-input {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: transparent;
+  caret-color: var(--vk-ink-1);
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+.vk-syntax-input::placeholder {
+  color: var(--vk-ink-3);
+  font-family: var(--font-sans), sans-serif;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+.vk-syntax-input::selection {
+  background: color-mix(in oklab, var(--vk-gold) 40%, transparent);
+  color: var(--vk-ink-1);
+}
+
+.vk-syntax-help {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--vk-line);
+  background: transparent;
+  color: var(--vk-ink-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.1s ease, border-color 0.1s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+.vk-syntax-help:hover { color: var(--vk-ink-1); border-color: var(--vk-ink-4); }
+.vk-syntax-search .kbd {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  color: var(--vk-ink-3);
+  padding: 2px 6px;
+  border: 1px solid var(--vk-line);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Primary VK button (uppercase gold)
+   ============================================================ */
+
+.vk-btn {
+  padding: 0 16px;
+  gap: 8px;
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.vk-btn-primary {
+  background: var(--vk-gold);
+  color: #1a1408;
+}
+.vk-btn-primary:hover { background: color-mix(in oklab, var(--vk-gold) 80%, white); }
+.vk-btn-ghost {
+  background: transparent;
+  color: var(--vk-ink-2);
+  border: 1px solid var(--vk-line);
+}
+.vk-btn-ghost:hover { color: var(--vk-ink-1); border-color: var(--vk-ink-4); }
+
+/* ============================================================
+   Auth screens (login + register share this shell)
+   ============================================================ */
+
+.vk-login {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  background: var(--vk-bg-0);
+}
+.vk-login-form-side {
+  padding: 56px 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  z-index: 2;
+  border-right: 1px solid var(--vk-line);
+  overflow-y: auto;
+}
+.vk-login-form {
+  max-width: 360px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-top: 48px;
+}
+.vk-login-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vk-gold);
+  font-weight: 600;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vk-login-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: var(--vk-gold);
+}
+.vk-login-title {
+  font-family: var(--font-display), serif;
+  font-size: 44px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--vk-ink-1);
+  margin: 0 0 12px;
+}
+.vk-login-title em {
+  font-style: italic;
+  color: var(--vk-gold);
+}
+.vk-login-sub {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vk-ink-2);
+  margin: 0 0 32px;
+  max-width: 320px;
+}
+.vk-login-input {
+  display: block;
+  margin-bottom: 14px;
+}
+.vk-login-input span {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vk-ink-3);
+  margin-bottom: 6px;
+}
+/* Only declare what differs from the base input rule (width, border, radius,
+   color, focus are all inherited from `input, select, textarea` above). */
+.vk-login-input input {
+  height: 44px;
+  padding: 0 14px;
+  background: var(--vk-bg-1);
+  font-size: 14px;
+  transition: border-color 0.12s ease;
+}
+.vk-login-input input.invalid {
+  border-color: #d46a6a;
+}
+.vk-login-input .field-hint {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vk-ink-3);
+  margin-top: 6px;
+  font-weight: 400;
+}
+.vk-login-input .field-hint.error {
+  color: #d46a6a;
+}
+.vk-login-input .field-hint.suggestion {
+  color: var(--vk-gold-dim);
+}
+.vk-login-input .field-hint.suggestion a {
+  color: var(--vk-gold);
+  border-bottom: 1px dotted var(--vk-gold-dim);
+  cursor: pointer;
+}
+.vk-login-input .field-hint.suggestion a:hover {
+  color: color-mix(in oklab, var(--vk-gold) 80%, white);
+  border-bottom-color: var(--vk-gold);
+}
+.vk-login-btn {
+  width: 100%;
+  height: 48px;
+  background: var(--vk-gold);
+  color: #1a1408;
+  border: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.vk-login-btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--vk-gold) 82%, white);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(240, 195, 92, 0.25);
+}
+.vk-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.vk-login-error {
+  color: #d46a6a;
+  font-size: 12px;
+  margin: 12px 0 0;
+}
+.vk-login-meta {
+  margin-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--vk-ink-3);
+  gap: 16px;
+}
+.vk-login-meta a {
+  color: var(--vk-ink-2);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--vk-ink-4);
+  cursor: pointer;
+  background: transparent;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  padding: 0 0 1px;
+  font-family: inherit;
+  font-size: inherit;
+}
+.vk-login-meta a:hover {
+  color: var(--vk-gold);
+  border-color: var(--vk-gold);
+}
+.vk-login-foot {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  color: var(--vk-ink-4);
+  letter-spacing: 0.08em;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 32px;
+}
+.vk-login-hero-side {
+  position: relative;
+  overflow: hidden;
+  background: var(--vk-bg-1);
+  background-image:
+    radial-gradient(ellipse at 70% 30%, rgba(240, 195, 92, 0.12), transparent 50%),
+    radial-gradient(ellipse at 30% 80%, rgba(93, 58, 110, 0.15), transparent 50%);
+}
+.vk-hero-bottom {
+  position: absolute;
+  bottom: 32px;
+  right: 32px;
+  z-index: 4;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vk-ink-3);
+}
+@media (max-width: 900px) {
+  .vk-login {
+    grid-template-columns: 1fr;
+  }
+  .vk-login-hero-side {
+    display: none;
+  }
 }

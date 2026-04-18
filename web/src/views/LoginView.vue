@@ -2,6 +2,8 @@
 import { nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import VaultMark from '../components/VaultMark.vue'
+import HeroCardWall from '../components/HeroCardWall.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -16,9 +18,6 @@ async function onSubmit() {
   submitting.value = true
   try {
     await auth.login({ username: username.value, password: password.value })
-    // Wait one tick so the auth store mutations have flushed before the
-    // route guard re-evaluates the new token, then navigate to /collection
-    // (the old `dashboard` route was removed in 3B).
     await nextTick()
     router.push('/collection')
   } catch (e) {
@@ -31,55 +30,63 @@ async function onSubmit() {
 </script>
 
 <template>
-  <main class="login">
-    <h1>Vaultkeeper</h1>
-    <form @submit.prevent="onSubmit">
-      <label>
-        Username
-        <input id="login-username" v-model="username" type="text" autocomplete="username" required />
-      </label>
-      <label>
-        Password
-        <input id="login-password" v-model="password" type="password" autocomplete="current-password" required />
-      </label>
-      <button type="submit" :disabled="submitting">
-        {{ submitting ? 'Signing in…' : 'Sign in' }}
-      </button>
-      <p v-if="error" class="error">{{ error }}</p>
-    </form>
-  </main>
-</template>
+  <div class="vk-login">
+    <section class="vk-login-form-side">
+      <VaultMark />
 
-<style scoped>
-.login {
-  max-width: 320px;
-  margin: 4rem auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-label {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.875rem;
-  gap: 0.25rem;
-}
-input {
-  padding: 0.5rem;
-  font-size: 1rem;
-}
-button {
-  padding: 0.6rem;
-  font-size: 1rem;
-  cursor: pointer;
-}
-.error {
-  color: #b91c1c;
-  font-size: 0.875rem;
-}
-</style>
+      <form class="vk-login-form" @submit.prevent="onSubmit">
+        <div class="vk-login-eyebrow">The Collector's Archive</div>
+        <h1 class="vk-login-title">
+          Keep the <em>vault</em> behind the glass.
+        </h1>
+        <p class="vk-login-sub">
+          Catalog, value, and retrieve thousands of cards across every set you've ever sleeved — organized the way a collector thinks.
+        </p>
+
+        <label class="vk-login-input">
+          <span>Username or Email</span>
+          <input
+            id="login-username"
+            v-model="username"
+            type="text"
+            autocomplete="username"
+            required
+          />
+        </label>
+        <label class="vk-login-input">
+          <span>Password</span>
+          <input
+            id="login-password"
+            v-model="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+        </label>
+
+        <button type="submit" class="vk-login-btn" :disabled="submitting">
+          {{ submitting ? 'Signing in…' : 'Enter the Vault →' }}
+        </button>
+
+        <p v-if="error" class="vk-login-error">{{ error }}</p>
+
+        <div class="vk-login-meta">
+          <a href="#" @click.prevent>Forgot password?</a>
+          <a @click.prevent="router.push('/register')">Create an account</a>
+        </div>
+      </form>
+
+      <footer class="vk-login-foot">
+        <span>VK / v2.4.0</span>
+        <span>Est. 2026</span>
+      </footer>
+    </section>
+
+    <section class="vk-login-hero-side">
+      <HeroCardWall />
+      <div class="vk-hero-bottom">
+        <span class="ticker">AUTH / SECURE SESSION</span>
+      </div>
+    </section>
+  </div>
+</template>

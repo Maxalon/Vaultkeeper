@@ -3,6 +3,7 @@
 .idea/
 .vscode/
 notes.txt
+local/
 
 # Stray SVN client config (not part of this project — created by a tool
 # invoked with the wrong HOME at some point; auth/ may contain saved creds)
