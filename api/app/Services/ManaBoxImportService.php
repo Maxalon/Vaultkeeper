@@ -2,11 +2,10 @@
 
 namespace App\Services;
 
-use App\Jobs\FetchCardTextData;
 use App\Models\CollectionEntry;
 use App\Models\Location;
+use App\Models\ScryfallCard;
 use App\Models\User;
-use App\Models\UserCard;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -19,9 +18,11 @@ class ManaBoxImportService
 {
     /**
      * Import a ManaBox CSV export. One collection_entries row per CSV line —
-     * never aggregated. Cards are upserted on scryfall_id.
+     * never aggregated. Rows are validated against scryfall_cards so we
+     * don't accept references to cards missing from the canonical reference
+     * data (which would break image/name/type lookups downstream).
      *
-     * @return array{imported:int,cards_created:int,cards_updated:int,skipped:int,warnings:string[]}
+     * @return array{imported:int,skipped:int,warnings:string[]}
      */
     public function import(UploadedFile $file, User $user, ?int $locationId): array
     {
@@ -46,23 +47,17 @@ class ManaBoxImportService
             ]);
         }
 
-        $imported     = 0;
-        $cardsCreated = 0;
-        $cardsUpdated = 0;
-        $skipped      = 0;
-        $warnings     = [];
-        $newCardIds   = [];
+        $imported = 0;
+        $skipped  = 0;
+        $warnings = [];
 
         DB::transaction(function () use (
             $rows,
             $user,
             $locationId,
             &$imported,
-            &$cardsCreated,
-            &$cardsUpdated,
             &$skipped,
             &$warnings,
-            &$newCardIds,
         ) {
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +1 for header, +1 to make 1-indexed
@@ -79,23 +74,10 @@ class ManaBoxImportService
                     continue;
                 }
 
-                $rarity = trim((string) ($row['Rarity'] ?? ''));
-
-                $card = UserCard::updateOrCreate(
-                    ['scryfall_id' => $scryfallId],
-                    [
-                        'name'             => (string) ($row['Name'] ?? ''),
-                        'set_code'         => (string) ($row['Set code'] ?? ''),
-                        'collector_number' => (string) ($row['Collector number'] ?? ''),
-                        'rarity'           => $rarity !== '' ? $rarity : null,
-                    ],
-                );
-
-                if ($card->wasRecentlyCreated) {
-                    $cardsCreated++;
-                    $newCardIds[] = $scryfallId;
-                } else {
-                    $cardsUpdated++;
+                if (! ScryfallCard::where('scryfall_id', $scryfallId)->exists()) {
+                    $warnings[] = "Row {$rowNumber}: scryfall_id {$scryfallId} not found in scryfall_cards — run scryfall:sync-bulk and retry";
+                    $skipped++;
+                    continue;
                 }
 
                 CollectionEntry::create([
@@ -116,16 +98,10 @@ class ManaBoxImportService
             Location::find($locationId)?->refreshSetCodes();
         }
 
-        if (! empty($newCardIds)) {
-            FetchCardTextData::dispatch($newCardIds);
-        }
-
         return [
-            'imported'      => $imported,
-            'cards_created' => $cardsCreated,
-            'cards_updated' => $cardsUpdated,
-            'skipped'       => $skipped,
-            'warnings'      => $warnings,
+            'imported' => $imported,
+            'skipped'  => $skipped,
+            'warnings' => $warnings,
         ];
     }
 

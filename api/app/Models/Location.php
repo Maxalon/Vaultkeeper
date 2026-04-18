@@ -43,11 +43,11 @@ class Location extends Model
     public function refreshSetCodes(): void
     {
         $codes = $this->entries()
-            ->join('user_cards', 'collection_entries.scryfall_id', '=', 'user_cards.scryfall_id')
-            ->whereNotNull('user_cards.set_code')
-            ->where('user_cards.set_code', '!=', '')
+            ->join('scryfall_cards', 'collection_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
+            ->whereNotNull('scryfall_cards.set_code')
+            ->where('scryfall_cards.set_code', '!=', '')
             ->distinct()
-            ->pluck('user_cards.set_code')
+            ->pluck('scryfall_cards.set_code')
             ->map(fn (string $c) => strtoupper($c))
             ->sort()
             ->values()
