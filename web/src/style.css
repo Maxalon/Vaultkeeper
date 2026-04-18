@@ -63,7 +63,7 @@
   --card-image-h: calc(var(--card-width) * 680 / 488);
   --strip-expanded: calc(var(--card-image-h) + var(--strip-height));
 
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--vk-ink-1);
@@ -100,10 +100,10 @@ html, body, #app {
   color: var(--vk-ink-1);
 }
 
-body { font-family: var(--font-sans); }
+body { font-family: var(--font-sans), sans-serif; }
 
 h1, h2, h3, .display {
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--vk-ink-1);
@@ -170,7 +170,7 @@ input:focus, select:focus, textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-weight: 500;
   font-size: 20px;
   letter-spacing: -0.01em;
@@ -285,7 +285,7 @@ input:focus, select:focus, textarea:focus {
   color: var(--vk-gold);
 }
 .vk-chip-menu-item .tok-hint {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 10px;
   color: var(--vk-ink-4);
   letter-spacing: 0;
@@ -328,7 +328,7 @@ input:focus, select:focus, textarea:focus {
   inset: 0;
   display: flex;
   align-items: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 12.5px;
   line-height: 1;
   white-space: pre;
@@ -389,7 +389,7 @@ input:focus, select:focus, textarea:focus {
 }
 .vk-syntax-input::placeholder {
   color: var(--vk-ink-3);
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
   font-size: 13px;
   letter-spacing: 0;
 }
@@ -414,7 +414,7 @@ input:focus, select:focus, textarea:focus {
 }
 .vk-syntax-help:hover { color: var(--vk-ink-1); border-color: var(--vk-ink-4); }
 .vk-syntax-search .kbd {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 10px;
   color: var(--vk-ink-3);
   padding: 2px 6px;
@@ -500,7 +500,7 @@ input:focus, select:focus, textarea:focus {
   background: var(--vk-gold);
 }
 .vk-login-title {
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-size: 44px;
   font-weight: 400;
   line-height: 1.05;
@@ -629,7 +629,7 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--vk-gold);
 }
 .vk-login-foot {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 10px;
   color: var(--vk-ink-4);
   letter-spacing: 0.08em;
@@ -650,7 +650,7 @@ input:focus, select:focus, textarea:focus {
   bottom: 32px;
   right: 32px;
   z-index: 4;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;

@@ -149,7 +149,7 @@ onMounted(async () => {
 .mini-qty {
   width: 22px;
   text-align: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-mono), monospace;
   font-size: 10px;
   background: rgba(0, 0, 0, 0.35);
   height: 100%;
@@ -212,7 +212,7 @@ onMounted(async () => {
   gap: 14px;
   color: var(--vk-ink-2);
   text-align: center;
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
 }
 .hero-fallback p { margin: 0; font-size: 14px; }
 </style>

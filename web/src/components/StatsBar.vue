@@ -99,14 +99,14 @@ const showingLabel = computed(() => {
   color: var(--vk-ink-3);
 }
 .v {
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
   font-size: 20px;
   font-weight: 500;
   color: var(--vk-ink-1);
   letter-spacing: -0.01em;
 }
 .v.compact {
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
   font-size: 13px;
   color: var(--vk-ink-2);
 }
