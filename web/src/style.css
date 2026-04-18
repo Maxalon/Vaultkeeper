@@ -173,55 +173,52 @@ input:focus, select:focus, textarea:focus {
   font-family: var(--font-display), serif;
   font-weight: 500;
   font-size: 20px;
+  /* line-height: 1 collapses the em-box so it matches the rendered glyph.
+     Without this, Newsreader's tall ascender padding leaves visible space
+     above the caps, which align-items: center then treats as part of the
+     text box — the icon ends up sitting BELOW the visual text midline. */
+  line-height: 1;
   letter-spacing: -0.01em;
   color: var(--vk-ink-1);
 }
 .vk-mark-icon {
   width: 18px;
   height: 18px;
-  position: relative;
   display: inline-block;
   flex-shrink: 0;
-}
-.vk-mark-icon::before,
-.vk-mark-icon::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-}
-.vk-mark-icon::before {
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--vk-gold);
-  transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 2px;
-}
-.vk-mark-icon::after {
-  width: 6px;
-  height: 6px;
-  background: var(--vk-gold);
-  transform: translate(-50%, -50%) rotate(45deg);
+  color: var(--vk-gold);
+  overflow: visible; /* let the rotated outer outline's corners breathe past 18×18 */
+  /* Newsreader's visual baseline sits above the em-box center even after
+     line-height: 1. Nudge the icon up 2px to meet the rendered text. */
+  position: relative;
+  top: -2px;
 }
 
 /* ============================================================
    Filter chip + dropdown menu (used in AppTopBar)
    ============================================================ */
 
-.vk-chip {
+/* Shared pill base — 32px inline-flex pill, rounded, default transition.
+   .vk-chip and .vk-btn only declare what differs (padding/gap/colors/weight/etc.). */
+.vk-chip,
+.vk-btn {
   height: 32px;
-  padding: 0 12px;
   display: inline-flex;
   align-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.vk-chip {
+  padding: 0 12px;
   gap: 6px;
   background: var(--vk-bg-2);
   border: 1px solid var(--vk-line);
-  border-radius: var(--radius-sm);
   color: var(--vk-ink-2);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  transition: all 0.12s ease;
 }
 .vk-chip:hover { border-color: var(--vk-ink-3); color: var(--vk-ink-1); }
 .vk-chip.active {
@@ -329,7 +326,7 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   font-family: var(--font-mono), monospace;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1;
   white-space: pre;
   letter-spacing: 0;
@@ -428,19 +425,13 @@ input:focus, select:focus, textarea:focus {
    ============================================================ */
 
 .vk-btn {
-  height: 32px;
   padding: 0 16px;
-  display: inline-flex;
-  align-items: center;
   gap: 8px;
+  border: 0;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  border-radius: var(--radius-sm);
-  border: 0;
-  transition: all 0.12s ease;
-  cursor: pointer;
 }
 .vk-btn-primary {
   background: var(--vk-gold);
@@ -532,20 +523,14 @@ input:focus, select:focus, textarea:focus {
   color: var(--vk-ink-3);
   margin-bottom: 6px;
 }
+/* Only declare what differs from the base input rule (width, border, radius,
+   color, focus are all inherited from `input, select, textarea` above). */
 .vk-login-input input {
-  width: 100%;
   height: 44px;
   padding: 0 14px;
   background: var(--vk-bg-1);
-  border: 1px solid var(--vk-line);
-  border-radius: var(--radius-sm);
-  color: var(--vk-ink-1);
   font-size: 14px;
-  outline: 0;
   transition: border-color 0.12s ease;
-}
-.vk-login-input input:focus {
-  border-color: var(--vk-gold-dim);
 }
 .vk-login-input input.invalid {
   border-color: #d46a6a;
