@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { useCollectionStore } from '../stores/collection'
+import { useSettingsStore } from '../stores/settings'
 import SetSymbol from './SetSymbol.vue'
 import ManaCost from './ManaCost.vue'
 
@@ -9,11 +9,14 @@ const props = defineProps({
   active: { type: Boolean, default: false },
   selected: { type: Boolean, default: false },
   last: { type: Boolean, default: false },
+  // 'expand' (default) — strip grows to reveal the full card image inline.
+  // 'peek' — strip stays compact; parent renders a popover preview alongside.
+  hoverMode: { type: String, default: 'expand' },
 })
 
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'peek-show', 'peek-hide'])
 
-const collection = useCollectionStore()
+const settings = useSettingsStore()
 
 const card = computed(() => props.entry.card || {})
 const imgFailed = ref(false)
@@ -21,7 +24,21 @@ const imageLoaded = ref(false)
 
 const hasImage = computed(() => !!card.value.image_normal && !imgFailed.value)
 const isLoaded = computed(() => hasImage.value && imageLoaded.value)
-const isModeB = computed(() => collection.displayMode === 'B')
+const isModeB = computed(() => settings.displayMode === 'B')
+const isPeek = computed(() => props.hoverMode === 'peek')
+
+function onMouseEnter(event) {
+  if (!isPeek.value) return
+  emit('peek-show', {
+    entry: props.entry,
+    rect: event.currentTarget.getBoundingClientRect(),
+  })
+}
+
+function onMouseLeave() {
+  if (!isPeek.value) return
+  emit('peek-hide')
+}
 
 // Color identity skeleton — shown until the real card image loads (or as
 // the permanent placeholder for cards Scryfall doesn't return).
@@ -62,8 +79,10 @@ const skeletonStyle = computed(() => {
 <template>
   <div
     class="strip"
-    :class="{ active, loaded: isLoaded, 'mode-b': isModeB, selected, last }"
+    :class="{ active, loaded: isLoaded, 'mode-b': isModeB, selected, last, 'peek-mode': isPeek }"
     @click="emit('select', entry.id)"
+    @mouseenter="onMouseEnter"
+    @mouseleave="onMouseLeave"
   >
     <!-- Inner clipping wrapper. The visual content lives here so .strip
          itself can run with overflow: visible and host the ::after hover
@@ -141,6 +160,34 @@ const skeletonStyle = computed(() => {
 .strip.mode-b.loaded.last:not(:hover) {
   outline-color: transparent;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* Peek hover mode — strip stays compact; parent draws the popover. The
+   subtle gold outline + lift on hover is preserved so the user still gets
+   focus feedback on the row they're targeting. */
+.strip.peek-mode:hover,
+.strip.peek-mode.mode-b.loaded.last {
+  height: var(--strip-height);
+  margin-bottom: 0;
+}
+.strip.peek-mode:hover {
+  z-index: 2;
+  outline-color: var(--gold);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+/* In peek mode the bar slides down on load just like normal mode A. For
+   mode B + peek, force the overlay to always show its bottom-anchored
+   state so the strip looks identical at rest and on hover. */
+.strip.peek-mode.mode-b.loaded .overlay {
+  opacity: 1;
+  top: calc(100% - var(--strip-height));
+  transition: none;
+}
+.strip.peek-mode.mode-b.loaded:hover .qty-corner {
+  transform: translateY(0);
+}
+.strip.peek-mode.mode-b.loaded:hover .arc-bg {
+  opacity: 1;
 }
 .strip.active {
   outline-color: var(--gold-bright);

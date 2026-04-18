@@ -1,26 +1,16 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useCollectionStore } from '../stores/collection'
+import { useSettingsStore } from '../stores/settings'
 import CardStrip from './CardStrip.vue'
+import CardPeek from './CardPeek.vue'
 
 const collection = useCollectionStore()
+const settings = useSettingsStore()
+
 const moveTarget = ref('')
 const realLocations = computed(() => collection.locations)
 
-const COLORS = ['W', 'U', 'B', 'R', 'G', 'C']
-const RARITIES = ['common', 'uncommon', 'rare', 'mythic']
-const TYPES = ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Land']
-const SORTS = [
-  { value: 'name', label: 'Name' },
-  { value: 'color', label: 'Color' },
-  { value: 'set_code', label: 'Set' },
-  { value: 'rarity', label: 'Rarity' },
-  { value: 'collector_number', label: 'Number' },
-  { value: 'condition', label: 'Condition' },
-]
-
-// Card column geometry. CARD_WIDTH is read from the --card-width CSS
-// variable on document root (set in main.js based on devicePixelRatio).
 const CARD_GAP = 16
 
 const stripStack = ref(null)
@@ -37,14 +27,10 @@ function recomputeColumns() {
   if (!stripStack.value) return
   const w = stripStack.value.clientWidth
   const cardW = readCardWidth()
-  // (n * card) + ((n - 1) * gap) ≤ w  →  n ≤ (w + gap) / (card + gap)
   const n = Math.max(1, Math.floor((w + CARD_GAP) / (cardW + CARD_GAP)))
   columnCount.value = n
 }
 
-// Group entries into one array per column. Filling top-to-bottom in column 1
-// then column 2, etc., gives the user the same visual order as a single
-// column when there's only one column — important when sort=name.
 const columns = computed(() => {
   const n = columnCount.value
   const entries = collection.filteredEntries
@@ -68,35 +54,11 @@ onBeforeUnmount(() => {
   if (resizeObserver) resizeObserver.disconnect()
 })
 
-// Append a Scryfall syntax token to the search field. The store now parses
-// these client-side via filteredEntries — fetchEntries strips them out and
-// only sends the bare-name remainder to the backend.
-function appendToken(token) {
-  const trimmed = collection.filters.search.trim()
-  collection.filters.search = trimmed ? `${trimmed} ${token}` : token
-  // Token-only changes don't need a refetch (filteredEntries reacts), but
-  // we still kick off a debounced refetch in case there's also a name part.
-  scheduleFetch()
-}
-
-let debounceTimer = null
-function scheduleFetch() {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => collection.fetchEntries(), 250)
-}
-
-function toggleOrder() {
-  collection.filters.order = collection.filters.order === 'asc' ? 'desc' : 'asc'
-  collection.fetchEntries()
-}
-
-function onSelect(id) {
-  if (collection.selecting) {
-    collection.toggleSelect(id)
-  } else {
-    collection.setActiveEntry(id)
-  }
-}
+// Density changes update --card-width on <html>; recompute columns when
+// the user toggles density in settings.
+watch(() => settings.density, () => {
+  requestAnimationFrame(recomputeColumns)
+})
 
 async function batchMove() {
   if (!moveTarget.value) return
@@ -104,67 +66,45 @@ async function batchMove() {
   moveTarget.value = ''
 }
 
-watch(() => collection.filters.sort, () => collection.fetchEntries())
-// When the location changes, the column count may need to recompute on the
-// next tick (the strip-stack height can shift the scrollbar's presence).
 watch(() => collection.entries.length, () => {
-  // Vue may have already laid out — recompute on next frame to be safe.
   requestAnimationFrame(recomputeColumns)
 })
+
+function onSelect(id) {
+  if (collection.selecting) collection.toggleSelect(id)
+  else collection.setActiveEntry(id)
+}
+
+// ── Peek (popover hover) state ──────────────────────────────────────────
+const peek = ref({ entry: null, x: 0, y: 0, visible: false })
+const PEEK_W = 240
+const PEEK_H = Math.round(PEEK_W * 88 / 63) // ≈ 335
+
+function onPeekShow({ entry, rect }) {
+  if (!stripStack.value) return
+  const main = stripStack.value.getBoundingClientRect()
+  const gap = 10
+
+  // Position peek to the right of the hovered strip, flip to left if it
+  // would overflow the main area on the right.
+  let x = rect.right + gap
+  if (x + PEEK_W > window.innerWidth - 12) {
+    x = rect.left - PEEK_W - gap
+  }
+  // Vertically centre the peek on the strip's middle, clamped to viewport.
+  let y = rect.top + rect.height / 2 - PEEK_H / 2
+  y = Math.max(12, Math.min(y, window.innerHeight - PEEK_H - 12))
+
+  peek.value = { entry, x, y, visible: true }
+}
+
+function onPeekHide() {
+  peek.value = { ...peek.value, visible: false }
+}
 </script>
 
 <template>
   <main class="card-list-panel">
-    <div class="filter-bar">
-      <div class="dropdowns">
-        <select id="filter-color" @change="appendToken('c:' + $event.target.value); $event.target.value = ''">
-          <option value="" disabled selected>Color</option>
-          <option v-for="c in COLORS" :key="c" :value="c.toLowerCase()">{{ c }}</option>
-        </select>
-        <select id="filter-type" @change="appendToken('t:' + $event.target.value.toLowerCase()); $event.target.value = ''">
-          <option value="" disabled selected>Type</option>
-          <option v-for="t in TYPES" :key="t" :value="t">{{ t }}</option>
-        </select>
-        <select id="filter-rarity" @change="appendToken('r:' + $event.target.value); $event.target.value = ''">
-          <option value="" disabled selected>Rarity</option>
-          <option v-for="r in RARITIES" :key="r" :value="r">{{ r }}</option>
-        </select>
-        <input
-          class="set-input"
-          type="text"
-          maxlength="6"
-          placeholder="Set"
-          @keyup.enter="appendToken('s:' + $event.target.value); $event.target.value = ''"
-        />
-      </div>
-
-      <div class="search-area">
-        <input
-          v-model="collection.filters.search"
-          type="text"
-          placeholder="Search by name…"
-          @input="scheduleFetch"
-        />
-      </div>
-
-      <div class="sort">
-        <select v-model="collection.filters.sort">
-          <option v-for="s in SORTS" :key="s.value" :value="s.value">{{ s.label }}</option>
-        </select>
-        <button type="button" class="order-btn" @click="toggleOrder" :title="collection.filters.order">
-          {{ collection.filters.order === 'asc' ? '↑' : '↓' }}
-        </button>
-      </div>
-
-      <button
-        type="button"
-        class="select-toggle"
-        :class="{ active: collection.selecting }"
-        @click="collection.toggleSelecting()"
-        title="Multi-select"
-      >Select</button>
-    </div>
-
     <div v-if="collection.selecting" class="select-bar">
       <span class="sel-count">{{ collection.selectedIds.length }} selected</span>
       <button type="button" class="sel-btn" @click="collection.selectAll()">All</button>
@@ -192,8 +132,6 @@ watch(() => collection.entries.length, () => {
           <div class="empty">No cards match the current filters</div>
         </template>
         <template v-else>
-          <!-- One DOM container per column. CardStrip's hover-driven flex
-               reflow stays scoped to each column. -->
           <div v-for="(col, ci) in columns" :key="ci" class="column">
             <CardStrip
               v-for="(entry, ei) in col"
@@ -202,12 +140,22 @@ watch(() => collection.entries.length, () => {
               :active="entry.id === collection.activeEntryId"
               :selected="collection.selectedIds.includes(entry.id)"
               :last="ei === col.length - 1"
+              :hover-mode="settings.hoverMode"
               @select="onSelect"
+              @peek-show="onPeekShow"
+              @peek-hide="onPeekHide"
             />
           </div>
         </template>
       </div>
     </div>
+
+    <CardPeek
+      :entry="peek.entry"
+      :x="peek.x"
+      :y="peek.y"
+      :visible="peek.visible"
+    />
   </main>
 </template>
 
@@ -215,97 +163,23 @@ watch(() => collection.entries.length, () => {
 .card-list-panel {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: var(--bg-0);
+  background: var(--vk-bg-0);
   overflow: hidden;
   min-height: 0;
-}
-.filter-bar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-  background: var(--bg-1);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-/* Shared sizing for every control in the filter bar. */
-.filter-bar select,
-.filter-bar input,
-.filter-bar button {
-  height: 30px;
-  font-size: 12px;
-  padding: 0 10px;
-  box-sizing: border-box;
-}
-.filter-bar select {
-  appearance: none;
-  padding-right: 26px;
-  background-image: url('../assets/chevron-down.svg');
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-}
-.dropdowns {
-  display: flex;
-  gap: 6px;
-}
-.dropdowns select, .dropdowns .set-input {
-  width: auto;
-  min-width: 80px;
-}
-.set-input {
-  width: 70px !important;
-}
-.search-area {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 200px;
-}
-.hint {
-  font-size: 10px;
-  color: var(--text-faint);
-  font-style: italic;
-}
-.sort {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.sort select {
-  width: auto;
-}
-.select-toggle {
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
-.select-toggle:hover {
-  border-color: var(--gold-dim);
-  color: var(--text);
-}
-.select-toggle.active {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: var(--bg-0);
 }
 .select-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+  background: var(--vk-bg-2);
+  border-bottom: 1px solid var(--vk-line);
   flex-shrink: 0;
 }
 .sel-count {
   font-size: 12px;
-  color: var(--gold);
+  color: var(--vk-gold);
   font-weight: 600;
   margin-right: 4px;
 }
@@ -313,22 +187,23 @@ watch(() => collection.entries.length, () => {
   padding: 5px 10px;
   font-size: 11px;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
+  border: 1px solid var(--vk-line);
+  color: var(--vk-ink-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 .sel-btn:hover {
-  border-color: var(--gold-dim);
-  color: var(--text);
+  border-color: var(--vk-ink-4);
+  color: var(--vk-ink-1);
+  background: var(--vk-bg-1);
 }
 .sel-btn.primary {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: var(--bg-0);
+  background: var(--vk-gold);
+  border-color: var(--vk-gold);
+  color: #1a1408;
   font-weight: 600;
 }
-.sel-btn.primary:disabled {
-  opacity: 0.4;
-}
+.sel-btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .sel-move {
   display: flex;
   align-items: center;
@@ -340,24 +215,18 @@ watch(() => collection.entries.length, () => {
   padding: 5px 8px;
   width: auto;
   min-width: 140px;
+  background: var(--vk-bg-0);
+  border: 1px solid var(--vk-line);
+  color: var(--vk-ink-1);
+  border-radius: var(--radius-sm);
 }
 
-/* The critical scroll fix: flex children need min-height: 0 to shrink
-   below their content size, otherwise overflow-y: auto never triggers.
-   `scrollbar-gutter: stable` reserves the scrollbar's width permanently
-   so clientWidth doesn't jump when the scrollbar appears/disappears —
-   without this, hovering a card grew the strip, triggered the scrollbar,
-   shrank the inner width, dropped a column, slid the hovered card out
-   from under the cursor, hid the scrollbar, and looped forever. */
 .list-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  /* Bottom padding must be at least --strip-expanded so the last card
-     in a column can expand on hover without growing the scrollable area
-     (which would cause a scroll-bounce loop). */
-  padding: 24px 28px var(--strip-expanded);
+  padding: 14px 20px var(--strip-expanded);
 }
 .strip-stack {
   display: flex;
@@ -375,7 +244,7 @@ watch(() => collection.entries.length, () => {
 }
 .empty {
   flex: 1;
-  color: var(--text-faint);
+  color: var(--vk-ink-3);
   text-align: center;
   padding: 60px 20px;
   font-style: italic;
