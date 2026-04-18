@@ -12,8 +12,6 @@ class ScryfallService
 {
     private const BASE = 'https://api.scryfall.com';
 
-    private const HEXPROOF_SET_CATALOG_URL = 'https://api.hexproof.io/symbols/set';
-
     /** Minimum gap between Scryfall API requests, in microseconds (100ms). */
     private const MIN_GAP_US = 100_000;
 
@@ -150,28 +148,6 @@ class ScryfallService
         }
 
         return $response->json('data', []);
-    }
-
-    /**
-     * Fetch the Hexproof set-symbol catalog.
-     *
-     * Response shape: { SET_CODE: { RARITY_LETTER: svg_url, ... }, ... }
-     * Each rarity entry's value is the direct SVG download URL — callers
-     * should use those URLs as-is rather than constructing their own.
-     *
-     * @return array<string, array<string, string>>
-     */
-    public function fetchSetCatalog(): array
-    {
-        $response = $this->http->get(self::HEXPROOF_SET_CATALOG_URL);
-
-        if (! $response->successful()) {
-            throw new RuntimeException(
-                "Hexproof fetchSetCatalog failed: status {$response->status()}"
-            );
-        }
-
-        return $response->json() ?? [];
     }
 
     /**

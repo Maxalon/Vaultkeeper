@@ -17,6 +17,7 @@ Schedule::command('scryfall:sync-bulk')->weeklyOn(0, '03:00');
 Schedule::command('scryfall:check-sets')->dailyAt('04:00');
 
 // Set-symbol SVG assets. Runs after scryfall:check-sets so the sets table
-// is fresh — the backfill step reads icon_svg_uri from there to fill
-// rarity slots that Hexproof's catalog doesn't cover (e.g. SLD, promos).
+// is fresh — the main loop reads the sets table to drive mtg-vectors
+// resolution, and the backfill step reads icon_svg_uri to fill rarity
+// slots that mtg-vectors doesn't cover (e.g. SLD, some promos).
 Schedule::command('sets:sync')->dailyAt('04:30');
