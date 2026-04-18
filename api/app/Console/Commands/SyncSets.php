@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\MtgSet;
 use App\Services\ScryfallService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -76,9 +77,77 @@ class SyncSets extends Command
         $this->newLine(2);
         $this->info("Sets sync complete. Downloaded: {$downloaded}, Skipped: {$skipped}, Failed: {$failed}");
 
+        $this->backfillFromScryfall($scryfall);
         $this->syncSymbols($scryfall);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Fill per-rarity gaps using Scryfall's icon_svg_uri (already populated
+     * in the sets table by BulkSyncService::syncSets). Hexproof's catalog
+     * doesn't cover every set — SLD, H2R, and various promo printings are
+     * missing — so for any rarity slot still empty after the Hexproof loop,
+     * we download Scryfall's single monochrome icon once and fan it out to
+     * C/U/R/M. Rarity colour-coding is lost for these sets, but a usable
+     * symbol beats the SetSymbol.vue fallback "?".
+     */
+    private function backfillFromScryfall(ScryfallService $scryfall): void
+    {
+        $disk = Storage::disk(self::DISK);
+        $sets = MtgSet::query()
+            ->whereNotNull('icon_svg_uri')
+            ->get(['code', 'icon_svg_uri']);
+
+        // List every existing key under sets/ once (one ListObjectsV2 round
+        // trip against S3/MinIO) and hash it for O(1) lookups. A naive
+        // $disk->exists() per rarity would issue 1031*4 ≈ 4000 HeadObject
+        // calls — fast on local disk, minutes over the network.
+        $existing = array_flip($disk->allFiles('sets'));
+
+        $this->info("Checking {$sets->count()} sets for missing rarity symbols.");
+
+        $downloaded = 0;
+        $skipped    = 0;
+        $failed     = 0;
+
+        $this->withProgressBar(
+            $sets->all(),
+            function (MtgSet $set) use ($existing, $disk, $scryfall, &$downloaded, &$skipped, &$failed) {
+                $code    = strtoupper($set->code);
+                $missing = [];
+                foreach (self::RARITIES as $rarity) {
+                    if (! isset($existing["sets/{$code}/{$rarity}.svg"])) {
+                        $missing[] = $rarity;
+                    }
+                }
+
+                if (empty($missing)) {
+                    $skipped++;
+                    return;
+                }
+
+                // Download Scryfall's icon into the first missing slot, then
+                // copy to the remaining ones so we only hit Scryfall once.
+                $first     = array_shift($missing);
+                $firstDest = "sets/{$code}/{$first}.svg";
+
+                if (! $scryfall->downloadToDisk($set->icon_svg_uri, self::DISK, $firstDest)) {
+                    $failed++;
+                    Log::warning("sets:sync backfill failed to download {$set->icon_svg_uri}");
+                    return;
+                }
+
+                foreach ($missing as $rarity) {
+                    $disk->copy($firstDest, "sets/{$code}/{$rarity}.svg");
+                }
+
+                $downloaded++;
+            }
+        );
+
+        $this->newLine(2);
+        $this->info("Backfill complete. Filled: {$downloaded}, Intact: {$skipped}, Failed: {$failed}");
     }
 
     /**
