@@ -161,3 +161,30 @@ jobs:
           DEPLOY_SCRIPT
 
           rm -f /tmp/deploy_key
+
+  # ─── Sync staging → main after a successful prod deploy ──────────────────
+  #
+  # Squash-merges into main leave the staging branch holding the original
+  # un-squashed commits, which makes staging look permanently "N ahead,
+  # 1 behind" main. This job resets staging to main's tip so the two
+  # branches stay identical after every prod deploy.
+  #
+  # Uses a fine-grained PAT (STAGING_SYNC_PAT) because the default
+  # GITHUB_TOKEN authenticates as github-actions[bot] and has no repo role,
+  # so it cannot bypass the staging branch's force-push protection. The PAT
+  # is owned by an admin user whose role is on the bypass list.
+  #
+  sync-staging:
+    name: sync / staging ← main
+    needs: deploy
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.STAGING_SYNC_PAT }}
+
+      - name: Force-push main to staging
+        run: git push --force origin HEAD:refs/heads/staging
