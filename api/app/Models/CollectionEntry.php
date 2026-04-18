@@ -18,11 +18,13 @@ class CollectionEntry extends Model
         'condition',
         'foil',
         'notes',
+        'needs_review',
     ];
 
     protected $casts = [
         'foil' => 'boolean',
         'quantity' => 'integer',
+        'needs_review' => 'boolean',
     ];
 
     public function user(): BelongsTo

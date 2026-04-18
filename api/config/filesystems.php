@@ -60,8 +60,8 @@ return [
             'report' => false,
         ],
 
-        // Static Scryfall / Hexproof assets (set symbols, mana symbols, card
-        // back). Served at /storage and cached aggressively by the frontend.
+        // Static set-symbol / mana-symbol / card-back assets (sourced from
+        // mtg-vectors + Scryfall). Served at /storage and cached aggressively.
         //
         // Driver is env-driven so dev runs on the local filesystem (same as
         // today) while prod / staging point at MinIO or real S3 without any

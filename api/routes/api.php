@@ -7,12 +7,22 @@ use App\Http\Controllers\DeckController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\LocationGroupController;
+use App\Http\Controllers\ScryfallCardController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login'])
         ->middleware('throttle:10,1'); // 10 attempts/minute/IP — brute force protection
+
+    // Public — same throttle as login since it's the obvious next abuse vector.
+    Route::post('register', [AuthController::class, 'register'])
+        ->middleware('throttle:10,1');
 });
+
+// Public — fed to the unauthenticated login hero. Returns one random
+// non-land card from the most recently expanded set, or null when the
+// catalogue is empty.
+Route::get('cards/featured', [CardController::class, 'featured']);
 
 Route::middleware('auth:api')->group(function () {
     Route::prefix('auth')->group(function () {
@@ -20,6 +30,12 @@ Route::middleware('auth:api')->group(function () {
         Route::post('refresh', [AuthController::class, 'refresh']);
         Route::get('me',       [AuthController::class, 'me']);
     });
+
+    // Read-only Scryfall reference DB. Defined before apiResource('cards', ...)
+    // so the literal `scryfall-cards/search` segment never collides with a
+    // parameter binding (the prefixes are different anyway, but explicit > implicit).
+    Route::get('scryfall-cards/search', [ScryfallCardController::class, 'search']);
+    Route::get('scryfall-cards/{scryfallCard}', [ScryfallCardController::class, 'show']);
 
     Route::apiResource('cards', CardController::class);
     Route::apiResource('decks', DeckController::class);

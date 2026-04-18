@@ -165,7 +165,11 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          # Headroom for the weekly scryfall:sync-bulk command — the
+          # default_cards JSON decode peaks around 3 GB. Normal request
+          # serving stays well under 512 MB; cgroup limits are a ceiling,
+          # not a reservation, so the extra cap costs nothing at rest.
+          memory: 4G
 
   # ─── Queue worker (Horizon) ────────────────────────────────────────────────
   worker:
@@ -223,6 +227,67 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # ─── Laravel scheduler ─────────────────────────────────────────────────────
+  # Fires scheduled tasks defined in routes/console.php (sets:sync,
+  # scryfall:sync-bulk, scryfall:check-sets). `schedule:work` is Laravel 11's
+  # foreground equivalent of a `* * * * * schedule:run` cron entry — it
+  # stays up and runs the schedule every minute, logging each tick to
+  # stdout (→ docker logs). Replaces the host-cron entry that previously
+  # drove this on prod only and silenced all output with >/dev/null 2>&1.
+  scheduler:
+    image: ${API_IMAGE:-vaultkeeper-api:local}
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile.prod
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY}
+      APP_URL: ${APP_URL}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-vaultkeeper}
+      DB_USERNAME: ${DB_USERNAME:-vaultkeeper}
+      DB_PASSWORD: ${DB_PASSWORD}
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_CLIENT: predis
+      FILESYSTEM_DISK: assets
+      ASSETS_DISK_DRIVER: s3
+      ASSETS_AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      ASSETS_AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      ASSETS_AWS_DEFAULT_REGION: us-east-1
+      ASSETS_BUCKET: ${ASSETS_BUCKET:-vaultkeeper-assets}
+      ASSETS_AWS_ENDPOINT: http://minio:9000
+      ASSETS_PUBLIC_URL: ${APP_URL}/storage
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          # schedule:work sleeps 59s out of every 60, so the footprint is
+          # tiny — a PHP bootstrap + a cheap query for due tasks.
+          memory: 128M
+
   # ─── nginx edge ────────────────────────────────────────────────────────────
   nginx:
     image: ${NGINX_IMAGE:-vaultkeeper-nginx:local}
@@ -230,6 +295,16 @@ services:
       context: .
       dockerfile: docker/nginx/Dockerfile.prod
     restart: unless-stopped
+    environment:
+      # Baked into /etc/nginx/conf.d/default.conf at container start by
+      # nginx:alpine's envsubst entrypoint. Must match the ASSETS_BUCKET
+      # used by the api/worker/scheduler services so /storage/* rewrites
+      # hit the correct MinIO bucket.
+      ASSETS_BUCKET: ${ASSETS_BUCKET:-vaultkeeper-assets}
+      # Restrict envsubst to ASSETS_BUCKET so none of the container's
+      # other env vars can accidentally collide with an nginx variable
+      # reference in the template.
+      NGINX_ENVSUBST_FILTER: '^ASSETS_BUCKET$$'
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"

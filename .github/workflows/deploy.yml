@@ -106,6 +106,15 @@ jobs:
       ENV_NAME: ${{ github.ref_name == 'main' && 'prod' || 'staging' }}
 
     steps:
+      # Needed so we can scp the compose file up to the host — the deploy
+      # host has no local git checkout, and `docker compose pull` only
+      # refreshes images, not the compose file itself.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: docker-compose.prod.yml
+          sparse-checkout-cone-mode: false
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v2
         with:
@@ -128,19 +137,36 @@ jobs:
           PROJECT="vaultkeeper_${ENV_NAME}"
           DEPLOY_DIR="/srv/vaultkeeper_${ENV_NAME}"
 
+          # Sync the compose file from the repo to the host so cgroup
+          # limits / volume mounts / service definitions stay in lockstep
+          # with the code. Env files (.env.${ENV_NAME}) stay on the host.
+          echo ">>> Syncing docker-compose.prod.yml to host..."
+          scp $SSH_OPTS docker-compose.prod.yml "${TARGET}:${DEPLOY_DIR}/docker-compose.prod.yml"
+
           ssh $SSH_OPTS "$TARGET" bash -s <<DEPLOY_SCRIPT
             set -euo pipefail
 
             cd "${DEPLOY_DIR}"
 
+            # Pick up docker-compose.override.yml if the host has one
+            # (typically holds host-specific bind mounts like TLS certs).
+            # Without this, `up -d` recreates containers without the
+            # override — e.g. nginx loses its cert mount and falls back
+            # to the baked-in self-signed placeholder.
+            COMPOSE_FILES="-f docker-compose.prod.yml"
+            if [ -f docker-compose.override.yml ]; then
+                COMPOSE_FILES="\$COMPOSE_FILES -f docker-compose.override.yml"
+                echo ">>> Using docker-compose.override.yml"
+            fi
+
             echo ">>> Pulling latest images..."
-            docker compose -f docker-compose.prod.yml \
+            docker compose \$COMPOSE_FILES \
                 --env-file .env.${ENV_NAME} \
                 -p ${PROJECT} \
-                pull api nginx worker
+                pull api nginx worker scheduler
 
             echo ">>> Bringing up services..."
-            docker compose -f docker-compose.prod.yml \
+            docker compose \$COMPOSE_FILES \
                 --env-file .env.${ENV_NAME} \
                 -p ${PROJECT} \
                 up -d

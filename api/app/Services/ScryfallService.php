@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -11,13 +12,16 @@ class ScryfallService
 {
     private const BASE = 'https://api.scryfall.com';
 
-    private const HEXPROOF_SET_CATALOG_URL = 'https://api.hexproof.io/symbols/set';
-
     /** Minimum gap between Scryfall API requests, in microseconds (100ms). */
     private const MIN_GAP_US = 100_000;
 
     /** Minimum gap between Scryfall /cards/collection requests, in microseconds (500ms). */
     private const COLLECTION_MIN_GAP_US = 500_000;
+
+    /** Minimum gap between Scryfall /cards/search requests, in microseconds (500ms).
+     *  Scryfall rate-limits the search endpoint harder than other endpoints
+     *  (2 req/s instead of 10), so it gets its own cool-down tracker. */
+    private const SEARCH_MIN_GAP_US = 500_000;
 
     /** Common headers required on all Scryfall API requests. */
     private const API_HEADERS = [
@@ -28,6 +32,8 @@ class ScryfallService
     private float $lastRequestAt = 0.0;
 
     private float $lastCollectionRequestAt = 0.0;
+
+    private float $lastSearchRequestAt = 0.0;
 
     public function __construct(private HttpFactory $http) {}
 
@@ -107,7 +113,9 @@ class ScryfallService
     {
         $this->throttle();
 
-        $response = $this->http->get(self::BASE.'/sets');
+        $response = $this->http
+            ->withHeaders(self::API_HEADERS)
+            ->get(self::BASE.'/sets');
 
         if (! $response->successful()) {
             throw new RuntimeException(
@@ -143,25 +151,121 @@ class ScryfallService
     }
 
     /**
-     * Fetch the Hexproof set-symbol catalog.
+     * Fetch the Scryfall bulk-data manifest. Returns the `data` array of
+     * available bulk files (each with type, download_uri, updated_at, etc.).
+     * Caller filters to the desired type (e.g. `default_cards`).
      *
-     * Response shape: { SET_CODE: { RARITY_LETTER: svg_url, ... }, ... }
-     * Each rarity entry's value is the direct SVG download URL — callers
-     * should use those URLs as-is rather than constructing their own.
-     *
-     * @return array<string, array<string, string>>
+     * @return array<int, array<string, mixed>>
      */
-    public function fetchSetCatalog(): array
+    public function fetchBulkDataManifest(): array
     {
-        $response = $this->http->get(self::HEXPROOF_SET_CATALOG_URL);
+        $this->throttle();
+
+        $response = $this->http
+            ->withHeaders(self::API_HEADERS)
+            ->get(self::BASE.'/bulk-data');
 
         if (! $response->successful()) {
             throw new RuntimeException(
-                "Hexproof fetchSetCatalog failed: status {$response->status()}"
+                "Scryfall fetchBulkDataManifest failed: status {$response->status()}"
             );
         }
 
-        return $response->json() ?? [];
+        return $response->json('data', []);
+    }
+
+    /**
+     * Fetch all Scryfall card-id migrations since the given ISO timestamp,
+     * paginating internally and returning a flat array.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchMigrations(string $sinceIso): array
+    {
+        $migrations = [];
+        $page = 1;
+
+        while (true) {
+            $this->throttle();
+
+            $response = $this->http
+                ->withHeaders(self::API_HEADERS)
+                ->get(self::BASE.'/migrations', [
+                    'page'  => $page,
+                    'since' => $sinceIso,
+                ]);
+
+            if ($response->status() === 404) {
+                // No migrations match the filter — return whatever we have.
+                break;
+            }
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "Scryfall fetchMigrations failed: status {$response->status()}"
+                );
+            }
+
+            foreach ((array) $response->json('data', []) as $row) {
+                $migrations[] = $row;
+            }
+
+            if (! $response->json('has_more', false)) {
+                break;
+            }
+
+            $page++;
+        }
+
+        return $migrations;
+    }
+
+    /**
+     * Single-page card search. Returns the raw Scryfall response so callers
+     * can inspect `has_more` and increment the page counter themselves.
+     *
+     * @return array<string, mixed>  { data: [...], has_more: bool, total_cards: int, ... }
+     */
+    public function searchCards(string $query, int $page = 1, string $unique = 'cards'): array
+    {
+        // Scryfall starts returning 429s once we've hammered the endpoint
+        // enough (syncOracleTags makes hundreds of calls in a row). When
+        // that happens the window doesn't reset immediately — retrying
+        // after a real pause (honouring Retry-After) reliably recovers,
+        // instead of dropping the whole tag on the first 429.
+        $maxAttempts = 3;
+
+        for ($attempt = 1; ; $attempt++) {
+            $this->throttleSearch();
+
+            $response = $this->http
+                ->withHeaders(self::API_HEADERS)
+                ->get(self::BASE.'/cards/search', [
+                    'q'      => $query,
+                    'page'   => $page,
+                    'unique' => $unique,
+                ]);
+
+            if ($response->status() === 404) {
+                // Scryfall returns 404 when a query has zero matches. Treat as empty.
+                return ['data' => [], 'has_more' => false, 'total_cards' => 0];
+            }
+
+            if ($response->status() === 429 && $attempt < $maxAttempts) {
+                $delay = max(30, (int) $response->header('Retry-After'));
+                Log::warning("Scryfall 429 (q={$query}, page={$page}); sleeping {$delay}s before retry {$attempt}/{$maxAttempts}.");
+                sleep($delay);
+                continue;
+            }
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "Scryfall searchCards (q={$query}, page={$page}) failed: status {$response->status()}"
+                );
+            }
+
+            return $response->json() ?? ['data' => [], 'has_more' => false];
+        }
     }
 
     /**
@@ -224,5 +328,24 @@ class ScryfallService
         }
 
         $this->lastCollectionRequestAt = microtime(true);
+    }
+
+    /**
+     * Sleep long enough to respect Scryfall's 500ms cool-down between
+     * /cards/search requests (2 req/s). Tracked separately from the
+     * single-card and collection throttles.
+     */
+    private function throttleSearch(): void
+    {
+        $now = microtime(true);
+
+        if ($this->lastSearchRequestAt > 0.0) {
+            $elapsedUs = ($now - $this->lastSearchRequestAt) * 1_000_000;
+            if ($elapsedUs < self::SEARCH_MIN_GAP_US) {
+                usleep((int) (self::SEARCH_MIN_GAP_US - $elapsedUs));
+            }
+        }
+
+        $this->lastSearchRequestAt = microtime(true);
     }
 }

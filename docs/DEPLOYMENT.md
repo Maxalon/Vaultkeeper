@@ -355,8 +355,9 @@ docker compose -p vaultkeeper_prod exec api php artisan user:create
 
 ### 7. First-time asset sync
 
-Set symbols and mana symbols are pulled from Scryfall / Hexproof into
-the MinIO bucket. This is a one-time-ish operation:
+Set symbols are pulled from mtg-vectors (with Scryfall icon fallback) and
+mana symbols from Scryfall's symbology endpoint into the MinIO bucket. This
+is a one-time-ish operation:
 
 ```bash
 docker compose -p vaultkeeper_prod exec api php artisan sets:sync
@@ -427,8 +428,9 @@ entry.
 * * * * * docker compose -p vaultkeeper_prod -f /srv/vaultkeeper_prod/docker-compose.prod.yml exec -T api php artisan schedule:run >/dev/null 2>&1
 ```
 
-The scheduler runs `sets:sync-new` nightly so newly-released MTG sets
-get their symbols downloaded without manual intervention.
+The scheduler runs `sets:sync` nightly so newly-released MTG sets
+get their symbols downloaded without manual intervention. The command
+is idempotent — existing files are skipped.
 
 ### Horizon dashboard
 
