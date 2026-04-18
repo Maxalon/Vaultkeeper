@@ -9,7 +9,7 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Set-symbol assets (SVGs on disk) — unrelated to the Scryfall reference DB.
-Schedule::command('sets:sync-new')->daily();
+Schedule::command('sets:sync')->daily();
 
 // Full Scryfall reference sync (sets + scryfall_cards + oracle tags + migrations).
 // Heavy: downloads ~700MB and processes ~100k cards. Sunday 03:00 keeps it

@@ -136,11 +136,14 @@ server {
 
     # /storage/* (set symbols, mana symbols, card back) proxies to the
     # MinIO bucket. MinIO serves objects at /<bucket>/<key>, so we rewrite
-    # /storage/sets/XYZ.svg -> /vaultkeeper-assets/sets/XYZ.svg. The
-    # bucket is marked public (download) by the minio-init one-shot, so
-    # no signed URLs are needed. Edge-cached aggressively.
+    # /storage/sets/XYZ.svg -> /${ASSETS_BUCKET}/sets/XYZ.svg. Bucket name
+    # is env-driven so staging and prod can target different buckets on
+    # the same config. The nginx:alpine entrypoint runs envsubst on
+    # /etc/nginx/templates/*.template at container start. The bucket is
+    # marked public (download) by the minio-init one-shot, so no signed
+    # URLs are needed. Edge-cached aggressively.
     location /storage/ {
-        rewrite ^/storage/(.*)$ /vaultkeeper-assets/$1 break;
+        rewrite ^/storage/(.*)$ /${ASSETS_BUCKET}/$1 break;
         proxy_pass http://minio:9000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

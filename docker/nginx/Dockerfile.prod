@@ -36,12 +36,15 @@ RUN apk add --no-cache openssl
 # Built SPA, served as static files. index.html plus fingerprinted assets.
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Prod server block + http-level rate-limit zones + shared header snippet.
-COPY docker/nginx/default.prod.conf /etc/nginx/conf.d/default.conf
+# Prod server block is an envsubst template so ${ASSETS_BUCKET} gets
+# baked in at container start — lets staging/prod target different MinIO
+# buckets without diverging nginx configs. The nginx:alpine entrypoint
+# automatically runs envsubst on /etc/nginx/templates/*.template and
+# writes the result to /etc/nginx/conf.d/ before launching nginx.
+COPY docker/nginx/default.prod.conf.template /etc/nginx/templates/default.conf.template
 COPY docker/nginx/ratelimit.conf /etc/nginx/conf.d/ratelimit.conf
 RUN mkdir -p /etc/nginx/snippets
 COPY docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
-RUN rm -f /etc/nginx/conf.d/default.conf.orig
 
 # Placeholder self-signed TLS cert so the container boots out of the box
 # without a real cert provisioned yet. The deployer is expected to

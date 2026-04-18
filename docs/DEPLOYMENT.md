@@ -427,8 +427,9 @@ entry.
 * * * * * docker compose -p vaultkeeper_prod -f /srv/vaultkeeper_prod/docker-compose.prod.yml exec -T api php artisan schedule:run >/dev/null 2>&1
 ```
 
-The scheduler runs `sets:sync-new` nightly so newly-released MTG sets
-get their symbols downloaded without manual intervention.
+The scheduler runs `sets:sync` nightly so newly-released MTG sets
+get their symbols downloaded without manual intervention. The command
+is idempotent — existing files are skipped.
 
 ### Horizon dashboard
 

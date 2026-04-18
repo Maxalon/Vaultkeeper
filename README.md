@@ -71,7 +71,3 @@ Replace `/path/to/docker-compose.yml` with the actual path to your project.
 To manually sync all set symbols (first-time setup or full refresh):
 
     docker compose exec api php artisan sets:sync
-
-To manually trigger the daily new-sets check:
-
-    docker compose exec api php artisan sets:sync-new
