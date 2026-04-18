@@ -163,7 +163,7 @@ jobs:
             docker compose \$COMPOSE_FILES \
                 --env-file .env.${ENV_NAME} \
                 -p ${PROJECT} \
-                pull api nginx worker
+                pull api nginx worker scheduler
 
             echo ">>> Bringing up services..."
             docker compose \$COMPOSE_FILES \
