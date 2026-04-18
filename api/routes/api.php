@@ -14,6 +14,11 @@ Route::prefix('auth')->group(function () {
         ->middleware('throttle:10,1'); // 10 attempts/minute/IP — brute force protection
 });
 
+// Public — fed to the unauthenticated login hero. Returns one random
+// non-land card from the most recently expanded set, or null when the
+// catalogue is empty.
+Route::get('cards/featured', [CardController::class, 'featured']);
+
 Route::middleware('auth:api')->group(function () {
     Route::prefix('auth')->group(function () {
         Route::post('logout',  [AuthController::class, 'logout']);

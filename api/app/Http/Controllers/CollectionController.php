@@ -249,6 +249,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'created_at'  => $entry->created_at?->toIso8601String(),
             'card'        => $card ? [
                 'scryfall_id'      => $card->scryfall_id,
                 'name'             => $card->name,
