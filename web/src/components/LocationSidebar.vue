@@ -187,7 +187,7 @@ function onGroupAdd(evt, group) {
                       v-model="editingGroupName"
                       @click.stop
                       @keydown.enter.stop="confirmEditGroup"
-                      @keydown.escape.stop="cancelEditGroup"
+                      @keydown.esc.stop="cancelEditGroup"
                       @blur="confirmEditGroup"
                     />
                   </template>
@@ -264,7 +264,7 @@ function onGroupAdd(evt, group) {
           placeholder="Group name…"
           maxlength="100"
           @keydown.enter="confirmCreateGroup"
-          @keydown.escape="cancelCreateGroup"
+          @keydown.esc="cancelCreateGroup"
           @blur="cancelCreateGroup"
         />
       </div>
@@ -592,11 +592,13 @@ function onGroupAdd(evt, group) {
   padding-bottom: 40px;
 }
 
-/* SortableJS ghost / drag states */
+/* SortableJS ghost / drag states — applied at runtime by vuedraggable */
+/*noinspection CssUnusedSymbol*/
 :deep(.sortable-ghost) {
   opacity: 0.4;
   background: rgba(240, 195, 92, 0.08);
 }
+/*noinspection CssUnusedSymbol*/
 :deep(.sortable-chosen) {
   background: var(--vk-bg-2);
 }
