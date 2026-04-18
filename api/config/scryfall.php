@@ -14,11 +14,11 @@ return [
     */
     'oracle_tags' => [
         'ramp', 'draw', 'removal', 'boardwipe', 'counterspell', 'tutor',
-        'reanimation', 'protection', 'recursion', 'haste-granter', 'pump',
-        'token-maker', 'sacrifice-outlet', 'graveyard-hate', 'land-destruction',
-        'extra-turn', 'copy-spell', 'blink', 'bounce', 'burn', 'lifegain',
-        'mana-rock', 'mana-dork', 'equipment', 'aura', 'combo-piece',
-        'stax', 'tax', 'wheel', 'mill',
+        'reanimate', 'gives-protection', 'recursion', 'gives-haste',
+        'repeatable-token-generator', 'sacrifice-outlet', 'graveyard-hate',
+        'land-removal', 'extra-turn', 'copy-spell', 'blink', 'bounce', 'burn',
+        'lifegain', 'mana-rock', 'mana-dork', 'tax', 'wheel', 'mill',
+        'combat-trick',
     ],
 
     /*
