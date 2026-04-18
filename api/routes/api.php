@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login'])
         ->middleware('throttle:10,1'); // 10 attempts/minute/IP — brute force protection
+
+    // Public — same throttle as login since it's the obvious next abuse vector.
+    Route::post('register', [AuthController::class, 'register'])
+        ->middleware('throttle:10,1');
 });
 
 // Public — fed to the unauthenticated login hero. Returns one random
