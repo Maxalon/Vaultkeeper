@@ -2,6 +2,7 @@
 import { ref, nextTick } from 'vue'
 import draggable from 'vuedraggable'
 import { useCollectionStore } from '../stores/collection'
+import { useSettingsStore } from '../stores/settings'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
@@ -11,7 +12,12 @@ import IconDeck from '../assets/icons/deck.svg'
 import IconEdit from '../assets/icons/edit.svg'
 import IconChevron from '../assets/chevron-down.svg'
 
+defineProps({
+  collapsed: { type: Boolean, default: false },
+})
+
 const collection = useCollectionStore()
+const settings = useSettingsStore()
 const importOpen = ref(false)
 const modalOpen = ref(false)
 const editingLocation = ref(null)
@@ -24,41 +30,25 @@ const editingGroupId = ref(null)
 const editingGroupName = ref('')
 const groupRenameInputRef = ref(null)
 
-function isActive(loc) {
-  return loc.id === collection.activeLocationId
-}
-
-function activate(loc) {
-  collection.setActiveLocation(loc.id)
-}
-
-function showAll() {
-  collection.setActiveLocation(null)
-}
+function isActive(loc) { return loc.id === collection.activeLocationId }
+function activate(loc) { collection.setActiveLocation(loc.id) }
+function showAll() { collection.setActiveLocation(null) }
 
 function openCreate() {
   editingLocation.value = null
   modalOpen.value = true
 }
-
 function openEdit(loc) {
   editingLocation.value = loc
   modalOpen.value = true
 }
-
 function closeModal() {
   modalOpen.value = false
   editingLocation.value = null
 }
 
-function toggleCollapse(groupId) {
-  collection.toggleGroupCollapse(groupId)
-}
-
-function isCollapsed(groupId) {
-  return collection.isGroupCollapsed(groupId)
-}
-
+function toggleCollapse(groupId) { collection.toggleGroupCollapse(groupId) }
+function isCollapsed(groupId) { return collection.isGroupCollapsed(groupId) }
 function groupCardCount(group) {
   return group.locations.reduce((sum, l) => sum + (l.card_count || 0), 0)
 }
@@ -69,16 +59,12 @@ async function startCreateGroup() {
   await nextTick()
   groupInputRef.value?.focus()
 }
-
 async function confirmCreateGroup() {
   const name = newGroupName.value.trim()
-  if (name) {
-    await collection.createGroup(name)
-  }
+  if (name) await collection.createGroup(name)
   creatingGroup.value = false
   newGroupName.value = ''
 }
-
 function cancelCreateGroup() {
   creatingGroup.value = false
   newGroupName.value = ''
@@ -91,7 +77,6 @@ async function startEditGroup(group) {
   groupRenameInputRef.value?.focus?.()
   groupRenameInputRef.value?.select?.()
 }
-
 async function confirmEditGroup() {
   const name = editingGroupName.value.trim()
   if (name && name !== collection.groups.find((g) => g.id === editingGroupId.value)?.name) {
@@ -100,7 +85,6 @@ async function confirmEditGroup() {
   editingGroupId.value = null
   editingGroupName.value = ''
 }
-
 function cancelEditGroup() {
   editingGroupId.value = null
   editingGroupName.value = ''
@@ -111,32 +95,12 @@ async function deleteGroup(group) {
   await collection.deleteGroup(group.id)
 }
 
-function onDragEnd() {
-  collection.reorderAll()
-}
+function onDragEnd() { collection.reorderAll() }
 
-// Unique key across the mixed top-level draggable (groups + top-level
-// locations can share ids between the two tables).
-function itemKey(item) {
-  return `${item.kind}:${item.id}`
-}
-
-// put-function for in-group draggables: accept location rows from other
-// draggables, but reject group-section drops so a group can't be nested.
+function itemKey(item) { return `${item.kind}:${item.id}` }
 function onlyAcceptLocations(_to, _from, dragEl) {
   return !dragEl.classList.contains('group-section')
 }
-
-// When a location is added to a group via cross-list drag, always append it
-// to the end of the group — regardless of where SortableJS would have placed
-// it based on pointer position. This matches the "drop on group header adds
-// to the bottom of the group" UX rule. Intra-list reorders within the same
-// group fire @update (not @add) and are unaffected.
-//
-// We locate the added element by REFERENCE (evt.item._underlying_vm_),
-// never by index. evt.newIndex is a raw SortableJS DOM index that does NOT
-// account for vuedraggable's #header slot, so using it for list splicing
-// silently corrupts the array.
 function onGroupAdd(evt, group) {
   const added = evt.item?._underlying_vm_
   if (!added) return
@@ -148,38 +112,38 @@ function onGroupAdd(evt, group) {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="location-sidebar" :class="{ collapsed }">
     <header class="brand">
-      <h1 class="display">VAULTKEEPER</h1>
+      <h3>Collections</h3>
+      <div class="mode-toggle" role="group" aria-label="Display mode">
+        <button
+          type="button"
+          class="mode-btn"
+          :class="{ active: settings.displayMode === 'A' }"
+          @click="settings.setDisplayMode('A')"
+        >A</button>
+        <button
+          type="button"
+          class="mode-btn"
+          :class="{ active: settings.displayMode === 'B' }"
+          @click="settings.setDisplayMode('B')"
+        >B</button>
+      </div>
     </header>
 
-    <div class="mode-toggle" role="group" aria-label="Display mode">
-      <button
-        type="button"
-        class="mode-btn"
-        :class="{ active: collection.displayMode === 'A' }"
-        @click="collection.setDisplayMode('A')"
-      >A</button>
-      <button
-        type="button"
-        class="mode-btn"
-        :class="{ active: collection.displayMode === 'B' }"
-        @click="collection.setDisplayMode('B')"
-      >B</button>
-    </div>
-
     <nav class="locations">
-      <div
-        class="all-cards-row"
+      <button
+        type="button"
+        class="all-cards-row sidebar-item top"
         :class="{ active: collection.activeLocationId === null }"
         @click="showAll"
       >
-        <span class="all-cards-icon" aria-hidden="true">
+        <span class="set-sym all-cards-icon" aria-hidden="true">
           <IconAllCards />
         </span>
-        <span class="name">All Cards</span>
-        <span class="count">{{ collection.totalCount }}</span>
-      </div>
+        <span class="label">All Cards</span>
+        <span class="num">{{ collection.totalCount }}</span>
+      </button>
 
       <draggable
         :list="collection.sidebarItems"
@@ -213,8 +177,9 @@ function onGroupAdd(evt, group) {
                   :class="{ collapsed: isCollapsed(item.id) }"
                   @click="toggleCollapse(item.id)"
                 >
-                  <span class="group-handle drag-handle" @click.stop>⠿</span>
-                  <IconChevron class="chevron" :class="{ rotated: !isCollapsed(item.id) }" />
+                  <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
+                    <IconChevron />
+                  </span>
                   <template v-if="editingGroupId === item.id">
                     <input
                       ref="groupRenameInputRef"
@@ -222,15 +187,16 @@ function onGroupAdd(evt, group) {
                       v-model="editingGroupName"
                       @click.stop
                       @keydown.enter.stop="confirmEditGroup"
-                      @keydown.escape.stop="cancelEditGroup"
+                      @keydown.esc.stop="cancelEditGroup"
                       @blur="confirmEditGroup"
                     />
                   </template>
                   <template v-else>
-                    <span class="group-name">{{ item.name }}</span>
+                    <span class="label">{{ item.name }}</span>
                   </template>
-                  <span class="count">{{ groupCardCount(item) }}</span>
+                  <span class="num">{{ groupCardCount(item) }}</span>
                   <span class="group-actions" @click.stop>
+                    <span class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
                     <button type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
                       <IconEdit />
                     </button>
@@ -239,50 +205,52 @@ function onGroupAdd(evt, group) {
                 </div>
               </template>
               <template #item="{ element: loc }">
-                <div
+                <button
                   v-show="!isCollapsed(item.id)"
-                  class="loc-row nested"
+                  type="button"
+                  class="loc-row sidebar-item nested"
                   :class="{ active: isActive(loc) }"
                   @click="activate(loc)"
                 >
-                  <span class="drag-handle" @click.stop>⠿</span>
-                  <span class="loc-icon" aria-hidden="true">
+                  <span class="drag drag-handle" @click.stop>⠿</span>
+                  <span class="set-sym loc-icon" aria-hidden="true">
                     <IconDrawer v-if="loc.type === 'drawer'" />
                     <IconBinder v-else-if="loc.type === 'binder'" />
                     <IconDeck v-else-if="loc.type === 'deck'" />
                   </span>
-                  <span class="name">{{ loc.name }}</span>
-                  <span class="count">{{ loc.card_count }}</span>
-                  <span class="loc-actions" @click.stop>
+                  <span class="label">{{ loc.name }}</span>
+                  <span class="num">{{ loc.card_count }}</span>
+                  <span class="edit" @click.stop>
                     <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
                       <IconEdit />
                     </button>
                   </span>
-                </div>
+                </button>
               </template>
             </draggable>
           </div>
 
-          <div
+          <button
             v-else
-            class="loc-row"
+            type="button"
+            class="loc-row sidebar-item"
             :class="{ active: isActive(item) }"
             @click="activate(item)"
           >
-            <span class="drag-handle" @click.stop>⠿</span>
-            <span class="loc-icon" aria-hidden="true">
+            <span class="drag drag-handle" @click.stop>⠿</span>
+            <span class="set-sym loc-icon" aria-hidden="true">
               <IconDrawer v-if="item.type === 'drawer'" />
               <IconBinder v-else-if="item.type === 'binder'" />
               <IconDeck v-else-if="item.type === 'deck'" />
             </span>
-            <span class="name">{{ item.name }}</span>
-            <span class="count">{{ item.card_count }}</span>
-            <span class="loc-actions" @click.stop>
+            <span class="label">{{ item.name }}</span>
+            <span class="num">{{ item.card_count }}</span>
+            <span class="edit" @click.stop>
               <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
                 <IconEdit />
               </button>
             </span>
-          </div>
+          </button>
         </template>
       </draggable>
     </nav>
@@ -296,15 +264,20 @@ function onGroupAdd(evt, group) {
           placeholder="Group name…"
           maxlength="100"
           @keydown.enter="confirmCreateGroup"
-          @keydown.escape="cancelCreateGroup"
+          @keydown.esc="cancelCreateGroup"
           @blur="cancelCreateGroup"
         />
       </div>
       <div class="footer-buttons">
-        <button type="button" class="new-btn" @click="openCreate">+ Location</button>
-        <button type="button" class="new-btn" @click="startCreateGroup">+ Group</button>
+        <button type="button" class="mini-btn" @click="openCreate">+ Location</button>
+        <button type="button" class="mini-btn" @click="startCreateGroup">+ Group</button>
       </div>
-      <button type="button" class="import-btn" @click="importOpen = true">Import CSV</button>
+      <button type="button" class="import-btn" @click="importOpen = true">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Import CSV
+      </button>
     </footer>
 
     <ImportModal v-if="importOpen" @close="importOpen = false" />
@@ -313,381 +286,416 @@ function onGroupAdd(evt, group) {
 </template>
 
 <style scoped>
-.sidebar {
+.location-sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--bg-1);
-  border-right: 1px solid var(--border);
-  height: 100vh;
+  background: var(--vk-bg-1);
+  border-right: 1px solid var(--vk-line);
   overflow: hidden;
+  height: 100%;
 }
+
 .brand {
-  padding: 26px 22px 22px;
+  padding: 14px 16px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
 }
-.brand h1 {
-  font-size: 24px;
-  letter-spacing: 0.18em;
-  color: var(--gold);
-  text-align: center;
+.brand h3 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vk-ink-3);
+  font-family: var(--font-sans), sans-serif;
 }
 
 .mode-toggle {
   display: flex;
-  margin: 12px 18px 14px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--bg-0);
+  background: var(--vk-bg-2);
+  border: 1px solid var(--vk-line);
+  border-radius: var(--radius-sm);
+  padding: 3px;
 }
 .mode-btn {
-  flex: 1;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 6px 0;
+  width: 26px;
+  height: 22px;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  font-family: var(--font-display);
-  transition: background 120ms ease, color 120ms ease;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--vk-ink-3);
+  border: 0;
+  background: transparent;
+  border-radius: 3px;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.12s ease;
 }
-.mode-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
-  border-color: transparent;
-}
+.mode-btn:hover { color: var(--vk-ink-1); }
 .mode-btn.active {
-  background: var(--gold);
-  color: var(--bg-0);
+  background: var(--vk-gold);
+  color: #1a1408;
 }
 
 .locations {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 4px 8px 0;
   display: flex;
   flex-direction: column;
 }
 
-/* "All Cards" pinned row — intentionally independent from .loc-row so
- * location-row tweaks (padding, drag handle alignment, etc.) don't
- * affect this special entry. */
-.all-cards-row {
+/* ── Sidebar item — shared by All Cards, top-level loc, and nested loc ── */
+.sidebar-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 11px 18px;
-  color: var(--text-dim);
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
-}
-.all-cards-row:hover {
-  background: var(--bg-2);
-  color: var(--text);
-}
-.all-cards-row.active {
-  background: var(--bg-2);
-  color: var(--text);
-  box-shadow: inset 3px 0 0 var(--gold);
-}
-.all-cards-row.active .count {
-  background: var(--gold);
-  color: var(--bg-0);
-  font-weight: 700;
-}
-
-.loc-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
   background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 11px 16px 11px 10px;
-  color: var(--text-dim);
+  border: 0;
+  color: var(--vk-ink-2);
+  font-size: 13px;
   text-align: left;
-  font-size: 14px;
   cursor: pointer;
-  transition: background 100ms ease, color 100ms ease;
+  transition: all 0.1s ease;
+  font-family: var(--font-sans), sans-serif;
 }
-.loc-row:hover {
-  background: var(--bg-2);
-  color: var(--text);
+.sidebar-item:hover {
+  background: var(--vk-bg-2);
+  color: var(--vk-ink-1);
 }
-.loc-row.active {
-  background: var(--bg-2);
-  color: var(--text);
-  box-shadow: inset 3px 0 0 var(--gold);
+.sidebar-item.active {
+  background: var(--vk-bg-2);
+  color: var(--vk-ink-1);
 }
-/* Nested (grouped) row styling is driven by the PARENT container, not a
- * .nested class. This way a row being dragged between groups and ungrouped
- * picks up / loses its indent and tree lines based on where it currently
- * lives in the DOM — matching what the state will be after release. */
-.group-locations .loc-row {
-  padding-left: 28px;
-}
-/* Tree connector lines for rows inside a group.
- * ::before = horizontal branch at row center
- * ::after  = vertical line segment through the row */
-.group-locations .loc-row::before {
+.sidebar-item.active::before {
   content: '';
   position: absolute;
-  left: 15px;
-  top: 50%;
-  width: 6px;
-  height: 1px;
-  background: var(--border);
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--vk-gold);
+  border-radius: 0 2px 2px 0;
 }
-.group-locations .loc-row::after {
-  content: '';
-  position: absolute;
-  left: 15px;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: var(--border);
-}
-.group-locations .loc-row:last-child::after {
-  bottom: 50%;
-}
-.loc-icon {
-  display: inline-flex;
-  margin-left: 2px;
-  margin-right: -2px;
+.sidebar-item .set-sym {
   width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vk-ink-3);
   flex-shrink: 0;
 }
-.all-cards-icon {
-  display: inline-flex;
-  width: 16px;
-  flex-shrink: 0;
-}
-.name {
+.sidebar-item.nested .set-sym { color: var(--vk-ink-4); }
+.sidebar-item.nested.active .set-sym { color: var(--vk-ink-2); }
+.sidebar-item .label {
   flex: 1;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.count {
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  background: var(--bg-0);
-  color: var(--text-dim);
-  padding: 2px 8px;
-  border-radius: 8px;
+.sidebar-item .num {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--vk-ink-3);
+  letter-spacing: 0.02em;
+  padding: 1px 8px;
+  background: var(--vk-bg-2);
+  border-radius: 999px;
   min-width: 26px;
   text-align: center;
   flex-shrink: 0;
 }
-.loc-row.active .count {
-  background: var(--gold);
-  color: var(--bg-0);
-  font-weight: 700;
-}
-.loc-actions {
-  display: none;
-  flex-shrink: 0;
-}
-.loc-row:hover .loc-actions {
-  display: flex;
-}
-.edit-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-faint);
-  padding: 2px;
-  border-radius: 3px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  line-height: 1;
-}
-.edit-btn:hover {
-  color: var(--text);
+.sidebar-item.active .num {
+  background: var(--vk-gold);
+  color: #1a1408;
+  font-weight: 600;
 }
 
-.delete-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-faint);
-  padding: 2px;
-  border-radius: 3px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  line-height: 1;
-}
-.delete-btn:hover {
-  color: #e05555;
+.sidebar-item.top {
+  font-weight: 500;
+  margin-bottom: 4px;
 }
 
-/* Drag handles */
-.drag-handle {
+/* Hover-revealed drag handle + edit (shared between top-level + nested rows) */
+.sidebar-item .drag,
+.sidebar-item .edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vk-ink-4);
   opacity: 0;
-  cursor: grab;
-  font-size: 16px;
-  color: var(--text-faint);
-  width: 10px;
+  transition: opacity 0.12s ease, width 0.15s ease, margin 0.15s ease, color 0.1s ease;
   flex-shrink: 0;
-  transition: opacity 100ms ease;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+}
+.sidebar-item .drag {
+  width: 0;
+  margin-left: -6px;
+  margin-right: 0;
+  cursor: grab;
+  font-size: 14px;
   user-select: none;
-  margin-right: -6px;
+  padding: 0;
+}
+.sidebar-item .edit {
+  width: 0;
   margin-left: 0;
-  padding: 3px 2px 0 2px;
+  margin-right: -4px;
+  padding: 0;
 }
-.loc-row:hover .drag-handle,
-.group-header:hover .drag-handle {
-  opacity: 0.7;
+.sidebar-item:hover .drag {
+  opacity: 0.6;
+  width: 10px;
+  margin-right: -2px;
 }
-.drag-handle:hover {
-  opacity: 1 !important;
+.sidebar-item:hover .edit {
+  opacity: 0.6;
+  width: 14px;
+  margin-left: 2px;
 }
-.drag-handle:active {
-  cursor: grabbing;
+.sidebar-item .drag:hover,
+.sidebar-item .edit:hover {
+  opacity: 1;
+  color: var(--vk-ink-1);
+}
+.sidebar-item .edit-btn {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
 }
 
-/* Group header */
+/* ── Group section ──────────────────────────────────────────────── */
 .group-section {
   display: flex;
   flex-direction: column;
+  margin-top: 6px;
 }
 .group-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 18px;
-  background: var(--bg-2);
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 14px;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--vk-ink-2);
+  font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.1s ease, background 0.1s ease;
   user-select: none;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  margin-top: 4px;
-  transition: padding 180ms ease, font-size 180ms ease, background 100ms ease, color 100ms ease;
 }
 .group-header:hover {
-  background: var(--border);
-  color: var(--text);
+  color: var(--vk-ink-1);
+  background: var(--vk-bg-2);
 }
-.group-header.collapsed {
-  padding: 5px 18px;
-  font-size: 12px;
+.group-header .chev {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  align-items: center;
+  justify-content: center;
+  color: var(--vk-ink-3);
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
 }
-.group-name {
+.group-header .chev.rotated { transform: rotate(0deg); }
+.group-header .label {
   flex: 1;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.group-header .num {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--vk-ink-3);
+  font-weight: 500;
+  padding: 1px 8px;
+  background: var(--vk-bg-2);
+  border-radius: 999px;
+}
 .group-rename-input {
   flex: 1;
-  background: var(--bg-0);
-  border: 1px solid var(--gold);
-  color: var(--text);
+  background: var(--vk-bg-0);
+  border: 1px solid var(--vk-gold-dim);
+  color: var(--vk-ink-1);
   padding: 3px 6px;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   border-radius: 2px;
   outline: none;
   min-width: 0;
 }
-.chevron {
-  width: 10px;
-  flex-shrink: 0;
-  color: var(--text-dim);
-  transform: rotate(-90deg);
-  transform-origin: center;
-  transition: transform 180ms ease;
-}
-.chevron.rotated {
-  transform: rotate(0deg);
-}
 .group-actions {
   display: none;
   flex-shrink: 0;
-  gap: 2px;
+  gap: 4px;
+  align-items: center;
 }
-.group-header:hover .group-actions {
+.group-header:hover .group-actions { display: flex; }
+.group-actions .drag-handle {
+  font-size: 14px;
+  color: var(--vk-ink-4);
+  cursor: grab;
+  user-select: none;
+  width: 10px;
+}
+.edit-btn,
+.delete-btn {
+  background: transparent;
+  border: 0;
+  color: var(--vk-ink-4);
+  padding: 2px;
+  border-radius: 3px;
+  cursor: pointer;
   display: flex;
+  align-items: center;
+  font-size: 14px;
+  line-height: 1;
 }
+.edit-btn:hover { color: var(--vk-ink-1); }
+.delete-btn:hover { color: #d46a6a; }
+
+/* Nested-row tree connector lines */
 .group-locations {
+  position: relative;
+  padding-left: 12px;
+  margin-top: 2px;
   min-height: 8px;
+}
+.group-locations::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: repeating-linear-gradient(to bottom, var(--vk-line) 0 3px, transparent 3px 6px);
 }
 .sidebar-dropzone {
   min-height: 40px;
-  padding-top: 8px;
   padding-bottom: 40px;
 }
 
-/* SortableJS ghost / drag states */
+/* SortableJS ghost / drag states — applied at runtime by vuedraggable */
+/*noinspection CssUnusedSymbol*/
 :deep(.sortable-ghost) {
   opacity: 0.4;
-  background: rgba(201, 162, 39, 0.08);
-  border-left-color: var(--gold) !important;
+  background: rgba(240, 195, 92, 0.08);
 }
+/*noinspection CssUnusedSymbol*/
 :deep(.sortable-chosen) {
-  background: var(--bg-2);
+  background: var(--vk-bg-2);
 }
 
-/* Footer */
+/* ── Footer ─────────────────────────────────────────────────────── */
 footer {
-  padding: 14px 18px 18px;
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  background: var(--vk-bg-1);
+  position: relative;
+  flex-shrink: 0;
 }
+footer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -32px;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, var(--vk-bg-1));
+  pointer-events: none;
+}
+
 .inline-group-input input {
   width: 100%;
-  background: var(--bg-0);
-  border: 1px solid var(--gold-dim);
-  color: var(--text);
-  padding: 8px 10px;
-  font-size: 13px;
+  background: var(--vk-bg-0);
+  border: 1px solid var(--vk-gold-dim);
+  color: var(--vk-ink-1);
+  padding: 6px 10px;
+  font-size: 12px;
   border-radius: 3px;
   outline: none;
-  transition: border-color 120ms ease;
-}
-.inline-group-input input:focus {
-  border-color: var(--gold);
 }
 .footer-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
-.footer-buttons .new-btn {
+.mini-btn {
   flex: 1;
+  height: 28px;
+  font-size: 11px;
+  color: var(--vk-ink-2);
+  border: 1px dashed var(--vk-line);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.mini-btn:hover {
+  color: var(--vk-ink-1);
+  border-color: var(--vk-ink-4);
+  border-style: solid;
 }
 .import-btn {
-  width: 100%;
-  background: var(--gold);
-  border: 1px solid var(--gold);
-  color: var(--bg-0);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 10px;
+  margin-top: 4px;
+  height: 36px;
+  background: var(--vk-gold);
+  color: #1a1408;
+  border: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 .import-btn:hover {
-  filter: brightness(1.1);
+  background: color-mix(in oklab, var(--vk-gold) 85%, white);
 }
-.new-btn {
-  background: transparent;
-  border: 1px dashed var(--gold-dim);
-  color: var(--gold);
-  font-size: 13px;
-  padding: 10px;
+
+/* ── Collapsed state ────────────────────────────────────────────── */
+.location-sidebar.collapsed .brand,
+.location-sidebar.collapsed footer,
+.location-sidebar.collapsed .group-header,
+.location-sidebar.collapsed .sidebar-item .label,
+.location-sidebar.collapsed .sidebar-item .num,
+.location-sidebar.collapsed .sidebar-item .drag,
+.location-sidebar.collapsed .sidebar-item .edit {
+  display: none !important;
 }
-.new-btn:hover {
-  background: rgba(201, 162, 39, 0.07);
-  border-color: var(--gold);
+.location-sidebar.collapsed .sidebar-item {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
 }
+.location-sidebar.collapsed .group-locations { padding-left: 0; }
+.location-sidebar.collapsed .group-locations::before { display: none; }
+.location-sidebar.collapsed .locations { padding: 8px 0; }
 </style>

@@ -107,7 +107,9 @@ class ScryfallService
     {
         $this->throttle();
 
-        $response = $this->http->get(self::BASE.'/sets');
+        $response = $this->http
+            ->withHeaders(self::API_HEADERS)
+            ->get(self::BASE.'/sets');
 
         if (! $response->successful()) {
             throw new RuntimeException(
@@ -162,6 +164,108 @@ class ScryfallService
         }
 
         return $response->json() ?? [];
+    }
+
+    /**
+     * Fetch the Scryfall bulk-data manifest. Returns the `data` array of
+     * available bulk files (each with type, download_uri, updated_at, etc.).
+     * Caller filters to the desired type (e.g. `default_cards`).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchBulkDataManifest(): array
+    {
+        $this->throttle();
+
+        $response = $this->http
+            ->withHeaders(self::API_HEADERS)
+            ->get(self::BASE.'/bulk-data');
+
+        if (! $response->successful()) {
+            throw new RuntimeException(
+                "Scryfall fetchBulkDataManifest failed: status {$response->status()}"
+            );
+        }
+
+        return $response->json('data', []);
+    }
+
+    /**
+     * Fetch all Scryfall card-id migrations since the given ISO timestamp,
+     * paginating internally and returning a flat array.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchMigrations(string $sinceIso): array
+    {
+        $migrations = [];
+        $page = 1;
+
+        while (true) {
+            $this->throttle();
+
+            $response = $this->http
+                ->withHeaders(self::API_HEADERS)
+                ->get(self::BASE.'/migrations', [
+                    'page'  => $page,
+                    'since' => $sinceIso,
+                ]);
+
+            if ($response->status() === 404) {
+                // No migrations match the filter — return whatever we have.
+                break;
+            }
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "Scryfall fetchMigrations failed: status {$response->status()}"
+                );
+            }
+
+            foreach ((array) $response->json('data', []) as $row) {
+                $migrations[] = $row;
+            }
+
+            if (! $response->json('has_more', false)) {
+                break;
+            }
+
+            $page++;
+        }
+
+        return $migrations;
+    }
+
+    /**
+     * Single-page card search. Returns the raw Scryfall response so callers
+     * can inspect `has_more` and increment the page counter themselves.
+     *
+     * @return array<string, mixed>  { data: [...], has_more: bool, total_cards: int, ... }
+     */
+    public function searchCards(string $query, int $page = 1, string $unique = 'cards'): array
+    {
+        $this->throttle();
+
+        $response = $this->http
+            ->withHeaders(self::API_HEADERS)
+            ->get(self::BASE.'/cards/search', [
+                'q'      => $query,
+                'page'   => $page,
+                'unique' => $unique,
+            ]);
+
+        if ($response->status() === 404) {
+            // Scryfall returns 404 when a query has zero matches. Treat as empty.
+            return ['data' => [], 'has_more' => false, 'total_cards' => 0];
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException(
+                "Scryfall searchCards (q={$query}, page={$page}) failed: status {$response->status()}"
+            );
+        }
+
+        return $response->json() ?? ['data' => [], 'has_more' => false];
     }
 
     /**

@@ -14,12 +14,14 @@ class DeckEntry extends Model
         'is_sideboard',
         'wanted',
         'physical_copy_id',
+        'needs_review',
     ];
 
     protected $casts = [
         'is_sideboard' => 'boolean',
         'wanted' => 'boolean',
         'quantity' => 'integer',
+        'needs_review' => 'boolean',
     ];
 
     public function deck(): BelongsTo

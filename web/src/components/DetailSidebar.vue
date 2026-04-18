@@ -1,7 +1,6 @@
 <script setup>
 import { computed, ref, h } from 'vue'
 import { useCollectionStore } from '../stores/collection'
-import SetSymbol from './SetSymbol.vue'
 import ManaCost from './ManaCost.vue'
 import ManaSymbol from './ManaSymbol.vue'
 
@@ -35,13 +34,12 @@ const OracleText = {
   setup(p) {
     return () => {
       if (!p.text) return null
-      const tokens = p.text.split(/(\{[^}]+\})/g).filter(Boolean)
+      const tokens = p.text.split(/({[^}]+})/g).filter(Boolean)
       return h(
         'div',
         { class: 'oracle' },
         tokens.flatMap((tok, i) => {
-          if (/^\{[^}]+\}$/.test(tok)) return [h(ManaSymbol, { key: i, symbol: tok })]
-          // Preserve newlines
+          if (/^{[^}]+}$/.test(tok)) return [h(ManaSymbol, { key: i, symbol: tok })]
           return tok.split(/\n+/).flatMap((line, li, arr) => {
             const out = [h('span', { key: `${i}-${li}` }, line)]
             if (li < arr.length - 1) out.push(h('br', { key: `${i}-${li}-br` }))
@@ -63,14 +61,11 @@ const FORMATS = [
   ['pauper', 'Pauper'],
 ]
 
-const rarityLabel = computed(() => {
-  const r = card.value?.rarity || ''
-  return r ? r[0].toUpperCase() + r.slice(1) : ''
-})
-
 const ptOrLoyalty = computed(() => {
   if (!card.value) return null
-  if (card.value.loyalty != null && card.value.loyalty !== '') return { kind: 'L', value: card.value.loyalty }
+  if (card.value.loyalty != null && card.value.loyalty !== '') {
+    return { kind: 'L', value: card.value.loyalty }
+  }
   if (card.value.power != null && card.value.power !== '' && card.value.toughness != null) {
     return { kind: 'PT', value: `${card.value.power}/${card.value.toughness}` }
   }
@@ -82,35 +77,35 @@ async function patch(payload) {
   await collection.updateEntry(entry.value.id, payload)
 }
 
-function onConditionChange(e) {
-  patch({ condition: e.target.value })
-}
+function onConditionChange(e) { patch({ condition: e.target.value }) }
 function onLocationChange(e) {
   const val = e.target.value
   patch({ location_id: val === '' ? null : Number(val) })
 }
-function onFoilChange(e) {
-  patch({ foil: e.target.checked })
+function onFoilChange(e) { patch({ foil: e.target.checked }) }
+function onQuantityChange(e) {
+  const q = Math.max(1, Math.min(9999, Number(e.target.value) || 1))
+  patch({ quantity: q })
 }
 
-function close() {
-  collection.closeActiveEntry()
-}
+function close() { collection.closeActiveEntry() }
 
 const realLocations = computed(() => collection.locations)
 </script>
 
 <template>
-  <aside v-if="entry" class="detail-sidebar">
-    <button class="close-btn" @click="close" title="Close">×</button>
+  <aside v-if="entry" class="vk-detail">
+    <header class="vk-detail-header">
+      <button class="close" @click="close" title="Close" aria-label="Close">✕</button>
+    </header>
 
     <div v-if="collection.detailLoading" class="loading">Loading…</div>
-    <template v-else-if="card">
-      <div class="image-wrap">
+
+    <div v-else-if="card" class="vk-detail-body">
+      <div class="vk-detail-art">
         <img
           :src="displayedImage || '/storage/card-back.jpg'"
           :alt="card.name"
-          class="big-image"
           :class="{ flipping: showBack }"
         />
         <button v-if="isDfc" class="flip-btn" type="button" @click="flipped = !flipped" title="Flip card">
@@ -118,56 +113,77 @@ const realLocations = computed(() => collection.locations)
         </button>
       </div>
 
-      <h2 class="display name">{{ card.name }}</h2>
+      <h2 class="vk-detail-title">{{ card.name }}</h2>
 
-      <div class="meta">
-        <SetSymbol :set="card.set_code" :rarity="card.rarity || 'common'" :size="22" />
-        <span>{{ card.set_code?.toUpperCase() }} #{{ card.collector_number }}</span>
-        <span class="dot">·</span>
-        <span>{{ rarityLabel }}</span>
+      <div class="vk-detail-meta-row">
+        <span class="set-badge">
+          {{ (card.set_code || '').toUpperCase() }} · {{ card.collector_number }}
+        </span>
+        <span v-if="card.rarity" class="rarity" :data-r="card.rarity">{{ card.rarity }}</span>
+        <ManaCost v-if="displayedManaCost" class="mana" :cost="displayedManaCost" />
       </div>
 
-      <div v-if="displayedManaCost" class="mana-row">
-        <ManaCost :cost="displayedManaCost" />
+      <div v-if="displayedTypeLine" class="vk-detail-type">{{ displayedTypeLine }}</div>
+
+      <div class="vk-detail-sep" />
+
+      <div class="vk-detail-rules">
+        <component :is="OracleText" :text="displayedOracle" />
       </div>
 
-      <div class="type-line">{{ displayedTypeLine }}</div>
-
-      <component :is="OracleText" :text="displayedOracle" />
-
-      <div v-if="ptOrLoyalty" class="pt">
-        <span v-if="ptOrLoyalty.kind === 'L'">Loyalty: {{ ptOrLoyalty.value }}</span>
-        <span v-else>{{ ptOrLoyalty.value }}</span>
+      <div v-if="ptOrLoyalty" class="vk-detail-pt">
+        <div class="pt">
+          <span v-if="ptOrLoyalty.kind === 'L'">Loyalty: {{ ptOrLoyalty.value }}</span>
+          <span v-else>{{ ptOrLoyalty.value }}</span>
+        </div>
       </div>
 
-      <hr />
+      <section class="vk-detail-section">
+        <h4>Your Copies</h4>
 
-      <div class="controls">
-        <label class="control">
-          <span>Condition</span>
-          <select id="detail-condition" :value="entry.condition" @change="onConditionChange">
-            <option>NM</option>
-            <option>LP</option>
-            <option>MP</option>
-            <option>HP</option>
-            <option>DMG</option>
-          </select>
-        </label>
+        <div class="vk-field-row">
+          <label class="vk-field">
+            <span class="vk-field-label">Condition</span>
+            <select :value="entry.condition" @change="onConditionChange" class="vk-field-input">
+              <option>NM</option>
+              <option>LP</option>
+              <option>MP</option>
+              <option>HP</option>
+              <option>DMG</option>
+            </select>
+          </label>
+          <label class="vk-field">
+            <span class="vk-field-label">Location</span>
+            <select :value="entry.location_id ?? ''" @change="onLocationChange" class="vk-field-input">
+              <option value="">Unassigned</option>
+              <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
+            </select>
+          </label>
+        </div>
 
-        <label class="control">
-          <span>Location</span>
-          <select id="detail-location" :value="entry.location_id ?? ''" @change="onLocationChange">
-            <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
-          </select>
-        </label>
+        <div class="vk-field-row">
+          <label class="vk-field">
+            <span class="vk-field-label">Quantity</span>
+            <input
+              type="number"
+              min="1"
+              max="9999"
+              :value="entry.quantity"
+              class="vk-field-input"
+              @change="onQuantityChange"
+            />
+          </label>
+          <label class="vk-field foil-field">
+            <span class="vk-field-label">Foil</span>
+            <span class="foil-toggle">
+              <input type="checkbox" :checked="entry.foil" @change="onFoilChange" />
+              <span>{{ entry.foil ? 'Yes' : 'No' }}</span>
+            </span>
+          </label>
+        </div>
+      </section>
 
-        <label class="control inline">
-          <input id="detail-foil" type="checkbox" :checked="entry.foil" @change="onFoilChange" />
-          <span>Foil</span>
-        </label>
-      </div>
-
-      <div v-if="entry.wanted_by_decks?.length" class="wanted">
+      <section v-if="entry.wanted_by_decks?.length" class="wanted">
         <span class="warn">⚠</span>
         <div>
           <div class="wanted-title">Wanted by decks</div>
@@ -175,218 +191,321 @@ const realLocations = computed(() => collection.locations)
             <li v-for="(name, i) in entry.wanted_by_decks" :key="i">{{ name }}</li>
           </ul>
         </div>
-      </div>
+      </section>
 
-      <div v-if="card.legalities" class="legalities">
-        <h3>Legalities</h3>
+      <section v-if="card.legalities" class="vk-detail-section">
+        <h4>Legalities</h4>
         <div class="legality-grid">
           <template v-for="[key, label] in FORMATS" :key="key">
             <div class="leg-format">{{ label }}</div>
-            <div class="leg-status" :class="`leg-${(card.legalities[key] || 'unknown').replace('_', '-')}`">
+            <div
+              class="leg-status"
+              :class="`leg-${(card.legalities[key] || 'unknown').replace('_', '-')}`"
+            >
               {{ (card.legalities[key] || '—').replace('_', ' ') }}
             </div>
           </template>
         </div>
-      </div>
-    </template>
+      </section>
+    </div>
   </aside>
 </template>
 
 <style scoped>
-.detail-sidebar {
-  position: relative;
-  background: var(--bg-1);
-  border-left: 1px solid var(--border);
-  height: 100vh;
-  overflow-y: auto;
-  padding: 22px 22px 60px;
+.vk-detail {
+  width: var(--detail-width);
+  flex-shrink: 0;
+  border-left: 1px solid var(--vk-line);
+  background: var(--vk-bg-1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
 }
-.close-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+
+.vk-detail-header {
+  padding: 10px 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.close {
   background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 24px;
-  width: 32px;
-  height: 32px;
+  border: 0;
+  color: var(--vk-ink-3);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
   padding: 0;
-  border-radius: 50%;
+  transition: background 0.1s ease, color 0.1s ease;
 }
-.close-btn:hover {
-  background: var(--bg-2);
-  color: var(--text);
-  border-color: transparent;
-}
+.close:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
+
 .loading {
-  color: var(--text-dim);
+  color: var(--vk-ink-3);
   text-align: center;
   padding: 60px 0;
   font-style: italic;
 }
-.image-wrap {
-  position: relative;
-  display: flex;
-  justify-content: center;
-  margin-bottom: 14px;
-  margin-top: 18px;
+
+.vk-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
 }
-.big-image {
+
+.vk-detail-art {
+  position: relative;
+  aspect-ratio: 63 / 88;
+  border-radius: 10px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #2a3544, #1a1a22);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.vk-detail-art img {
   width: 100%;
-  max-width: 340px;
-  border-radius: 12px;
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.6);
+  height: 100%;
+  object-fit: cover;
+  display: block;
   transition: transform 400ms ease;
 }
-.big-image.flipping {
+.vk-detail-art img.flipping {
   transform: scaleX(-1) rotate(180deg);
 }
 .flip-btn {
   position: absolute;
   bottom: 10px;
-  right: 10%;
-  width: 36px;
-  height: 36px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
-  border: 1px solid var(--gold-dim);
-  color: var(--gold);
-  font-size: 18px;
+  border: 1px solid var(--vk-gold-dim);
+  color: var(--vk-gold);
+  font-size: 16px;
+  cursor: pointer;
   padding: 0;
 }
-.flip-btn:hover {
-  background: var(--gold);
-  color: var(--bg-0);
+.flip-btn:hover { background: var(--vk-gold); color: #1a1408; }
+
+.vk-detail-title {
+  margin-top: 16px;
+  font-family: var(--font-display), serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--vk-gold);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
-.name {
-  font-size: 24px;
-  color: var(--gold);
-  margin-bottom: 6px;
-  text-align: center;
-}
-.meta {
+
+.vk-detail-meta-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-dim);
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--vk-ink-2);
+  flex-wrap: wrap;
 }
-.dot { color: var(--text-faint); }
-.mana-row {
-  font-size: 18px;
-  text-align: center;
-  margin-bottom: 8px;
+.vk-detail-meta-row .set-badge {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--vk-line);
+  border-radius: 3px;
+  color: var(--vk-ink-2);
+  letter-spacing: 0.04em;
 }
-.type-line {
-  text-align: center;
+.vk-detail-meta-row .rarity {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  font-size: 10px;
+}
+.vk-detail-meta-row .rarity[data-r="mythic"]   { color: var(--r-mythic); }
+.vk-detail-meta-row .rarity[data-r="rare"]     { color: var(--r-rare); }
+.vk-detail-meta-row .rarity[data-r="uncommon"] { color: var(--r-uncommon); }
+.vk-detail-meta-row .rarity[data-r="common"]   { color: var(--r-common); }
+.vk-detail-meta-row .mana {
+  margin-left: auto;
   font-size: 14px;
-  color: var(--text);
-  margin-bottom: 12px;
+}
+
+.vk-detail-type {
+  margin-top: 10px;
+  font-family: var(--font-display), serif;
   font-style: italic;
-}
-:deep(.oracle) {
   font-size: 14px;
-  line-height: 1.55;
-  color: var(--text);
-  background: var(--bg-0);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
+  color: var(--vk-ink-2);
+}
+
+.vk-detail-sep {
+  height: 1px;
+  background: var(--vk-line);
+  margin: 14px 0;
+  position: relative;
+}
+.vk-detail-sep::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--vk-bg-1);
+  border: 1px solid var(--vk-gold-dim);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.vk-detail-rules {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vk-ink-1);
+}
+/* .oracle is rendered by the OracleText functional component (h('div', { class: 'oracle' })) */
+/*noinspection CssUnusedSymbol*/
+:deep(.oracle) {
   white-space: pre-wrap;
 }
-.pt {
-  text-align: right;
-  font-family: var(--font-display);
-  font-size: 18px;
-  color: var(--gold);
-  margin-bottom: 6px;
-}
-hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 18px 0 14px;
-}
-.controls {
+
+.vk-detail-pt {
+  margin-top: 12px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
+  justify-content: flex-end;
 }
-.control {
+.vk-detail-pt .pt {
+  font-family: var(--font-display), serif;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--vk-ink-1);
+  padding: 2px 14px;
+  background: var(--vk-bg-2);
+  border: 1px solid var(--vk-line);
+  border-radius: 3px;
+}
+
+.vk-detail-section {
+  margin-top: 20px;
+}
+.vk-detail-section h4 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vk-ink-3);
+  margin: 0 0 10px;
+  font-family: var(--font-sans), sans-serif;
+}
+
+.vk-field {
+  display: block;
+  margin-bottom: 0;
+  flex: 1;
+}
+.vk-field-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vk-ink-3);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.vk-field-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--vk-bg-0);
+  border: 1px solid var(--vk-line);
+  border-radius: var(--radius-sm);
+  color: var(--vk-ink-1);
+  font-size: 13px;
+  font-family: inherit;
+  outline: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.vk-field-input:focus { border-color: var(--vk-gold-dim); }
+select.vk-field-input {
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236d6d78' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 26px;
+}
+.vk-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.foil-field .foil-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-.control select {
-  width: 60%;
-  font-size: 12px;
-  padding: 6px 8px;
-}
-.control.inline {
-  justify-content: flex-start;
   gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  background: var(--vk-bg-0);
+  border: 1px solid var(--vk-line);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--vk-ink-1);
+  cursor: pointer;
 }
-.control.inline input[type="checkbox"] {
+.foil-field input[type="checkbox"] {
   width: auto;
+  margin: 0;
+  accent-color: var(--vk-gold);
 }
+
 .wanted {
+  margin-top: 16px;
   display: flex;
   gap: 10px;
   background: rgba(251, 146, 60, 0.08);
   border: 1px solid rgba(251, 146, 60, 0.3);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
-  margin-bottom: 14px;
 }
-.warn {
-  font-size: 18px;
-  color: var(--cond-hp);
-}
+.warn { font-size: 18px; color: var(--cond-hp); }
 .wanted-title {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-dim);
+  color: var(--vk-ink-3);
   margin-bottom: 4px;
 }
 .wanted ul {
   margin: 0;
   padding-left: 16px;
   font-size: 12px;
-  color: var(--text);
+  color: var(--vk-ink-1);
 }
-.legalities h3 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
-  margin-bottom: 8px;
-  font-family: var(--font-body);
-  font-weight: 600;
-}
+
 .legality-grid {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 10px;
   font-size: 11px;
 }
-.leg-format {
-  color: var(--text-dim);
-}
+.leg-format { color: var(--vk-ink-2); }
 .leg-status {
   text-transform: capitalize;
   font-weight: 600;
   text-align: right;
 }
+/* .leg-* class names are built dynamically from card.legalities[format] in the template */
+/*noinspection CssUnusedSymbol*/
 .leg-legal       { color: var(--cond-nm); }
-.leg-not-legal   { color: var(--text-faint); }
+/*noinspection CssUnusedSymbol*/
+.leg-not-legal   { color: var(--vk-ink-3); }
+/*noinspection CssUnusedSymbol*/
 .leg-restricted  { color: var(--cond-mp); }
+/*noinspection CssUnusedSymbol*/
 .leg-banned      { color: var(--cond-dmg); }
 </style>

@@ -312,7 +312,7 @@ async function submit() {
   font-size: 24px;
   font-weight: 700;
   color: var(--gold);
-  font-family: var(--font-display);
+  font-family: var(--font-display), serif;
 }
 .stat-lbl {
   display: block;

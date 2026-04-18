@@ -9,9 +9,20 @@ const routes = [
     component: LoginView,
   },
   {
+    path: '/register',
+    name: 'register',
+    component: () => import('../views/RegisterView.vue'),
+  },
+  {
     path: '/collection',
     name: 'collection',
     component: CollectionView,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('../views/SettingsView.vue'),
     meta: { requiresAuth: true },
   },
   {
@@ -30,7 +41,9 @@ router.beforeEach((to) => {
   if (to.meta.requiresAuth && !token) {
     return { name: 'login' }
   }
-  if (to.name === 'login' && token) {
+  // If the user is already signed in, both /login and /register should bounce
+  // them back into the app.
+  if ((to.name === 'login' || to.name === 'register') && token) {
     return { name: 'collection' }
   }
 })
