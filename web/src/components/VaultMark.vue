@@ -1,10 +1,12 @@
 <script setup>
+import VaultMarkIcon from '../assets/icons/vault-mark.svg'
+
 defineProps({ small: { type: Boolean, default: false } })
 </script>
 
 <template>
   <span class="vk-mark" :class="{ small }">
-    <span class="vk-mark-icon" />
+    <VaultMarkIcon class="vk-mark-icon" />
     Vaultkeeper
   </span>
 </template>
