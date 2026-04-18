@@ -165,7 +165,11 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          # Headroom for the weekly scryfall:sync-bulk command — the
+          # default_cards JSON decode peaks around 3 GB. Normal request
+          # serving stays well under 512 MB; cgroup limits are a ceiling,
+          # not a reservation, so the extra cap costs nothing at rest.
+          memory: 4G
 
   # ─── Queue worker (Horizon) ────────────────────────────────────────────────
   worker:

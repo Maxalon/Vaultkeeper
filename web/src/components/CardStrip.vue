@@ -146,7 +146,6 @@ const skeletonStyle = computed(() => {
               outline-color 120ms ease, box-shadow 160ms ease;
   content-visibility: auto;
   contain-intrinsic-size: auto var(--card-width) auto var(--strip-height);
-  will-change: transform;
 }
 .strip:hover,
 .strip.mode-b.loaded.last {
@@ -175,14 +174,18 @@ const skeletonStyle = computed(() => {
   outline-color: var(--gold);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
-/* In peek mode the bar slides down on load just like normal mode A. For
-   mode B + peek, force the overlay to always show its bottom-anchored
-   state so the strip looks identical at rest and on hover. */
-.strip.peek-mode.mode-b.loaded .overlay {
-  opacity: 1;
-  top: calc(100% - var(--strip-height));
+/* Mode B + peek: strip never expands, so the overlay bar stays hidden
+   at rest and on hover — the corner badge is the only label, matching
+   mode B's collapsed appearance. Without this override the base mode-b
+   rule at the bottom of this file would pop the bar in on hover. */
+.strip.peek-mode.mode-b.loaded .overlay,
+.strip.peek-mode.mode-b.loaded:hover .overlay {
+  opacity: 0;
   transition: none;
 }
+/* Keep the corner badge locked in place in peek mode — the mode-b default
+   slides it into the bar on hover, which we don't want when the bar stays
+   hidden. */
 .strip.peek-mode.mode-b.loaded:hover .qty-corner {
   transform: translateY(0);
 }
@@ -272,7 +275,6 @@ const skeletonStyle = computed(() => {
   );
   color: var(--text);
   transition: top 200ms ease-out;
-  will-change: transform;
 }
 .strip.loaded .overlay {
   top: calc(100% - var(--strip-height));
