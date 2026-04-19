@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\BulkSyncService;
+use App\Services\ScryfallService;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -104,8 +106,18 @@ return new class extends Migration
 
     /**
      * Guarantee scryfall_cards contains every scryfall_id the to-be-repointed
-     * FKs will reference. Runs `scryfall:sync-bulk` if and only if there's
-     * at least one orphan — skips the ~5-minute sync on already-in-sync envs.
+     * FKs will reference. Three-stage self-healing:
+     *
+     *   1. If no orphans, skip entirely (fast path on already-in-sync envs).
+     *   2. Run `scryfall:sync-bulk` (populates ~114k English printings).
+     *   3. For any orphan still remaining, hit Scryfall's /cards/{id}
+     *      endpoint one-by-one and upsert the response. This catches
+     *      non-English printings, special variants, and anything else
+     *      outside the English default_cards bulk file.
+     *
+     * Only if orphans remain after all three stages does the migration
+     * abort — at that point the referenced scryfall_id is either fabricated
+     * or has been removed from Scryfall entirely.
      */
     private function ensureScryfallCardsCoverage(): void
     {
@@ -114,32 +126,129 @@ return new class extends Migration
         }
 
         $before = $this->countOrphans();
-        Log::info("drop_user_cards migration: {$before} FK orphan(s) detected, running scryfall:sync-bulk");
-        fwrite(STDERR, ">>> {$before} FK orphan(s) detected; running scryfall:sync-bulk (this may take several minutes)...\n");
 
-        try {
-            Artisan::call('scryfall:sync-bulk');
-        } catch (\Throwable $e) {
-            throw new \RuntimeException(
-                'Aborted: scryfall:sync-bulk failed during migration pre-flight: '.$e->getMessage(),
-                previous: $e,
-            );
+        // Skip sync-bulk on retry if it already ran within the last hour
+        // (migration 2 runs it, and if this migration failed after that the
+        // retry shouldn't pay the 5-10 min cost again). If sync-bulk hasn't
+        // run recently, fall through and run it now.
+        $mostRecent = DB::table('scryfall_cards')->max('last_synced_at');
+        $recentlySynced = $mostRecent && strtotime((string) $mostRecent) > time() - 3600;
+
+        if (! $recentlySynced) {
+            Log::info("drop_user_cards migration: {$before} FK orphan(s) detected, running scryfall:sync-bulk");
+            fwrite(STDERR, ">>> {$before} FK orphan(s) detected; running scryfall:sync-bulk (this may take several minutes)...\n");
+            try {
+                Artisan::call('scryfall:sync-bulk');
+            } catch (\Throwable $e) {
+                throw new \RuntimeException(
+                    'Aborted: scryfall:sync-bulk failed during migration pre-flight: '.$e->getMessage(),
+                    previous: $e,
+                );
+            }
+        } else {
+            fwrite(STDERR, ">>> {$before} FK orphan(s) detected; scryfall:sync-bulk ran recently, skipping to per-card fetches...\n");
         }
 
-        $after = $this->countOrphans();
-        if ($after > 0) {
+        $remaining = $this->countOrphans();
+        if ($remaining > 0) {
+            fwrite(STDERR, ">>> {$remaining} orphan(s) still missing; fetching individually from Scryfall /cards/{id}...\n");
+            $this->backfillOrphansFromScryfallApi();
+        }
+
+        $final = $this->countOrphans();
+        if ($final > 0) {
             throw new \RuntimeException(sprintf(
                 'Aborted: %d FK orphan(s) remain in collection_entries/deck_entries '
-                .'after running scryfall:sync-bulk. The referenced scryfall_ids do not '
-                .'exist in the Scryfall bulk data — likely deleted printings. Inspect '
-                .'the orphan rows with:\n'
-                ."  SELECT * FROM collection_entries ce LEFT JOIN scryfall_cards sc "
-                ."ON sc.scryfall_id = ce.scryfall_id WHERE sc.scryfall_id IS NULL;\n"
-                ."  SELECT * FROM deck_entries de LEFT JOIN scryfall_cards sc "
-                ."ON sc.scryfall_id = de.scryfall_id WHERE sc.scryfall_id IS NULL;\n"
-                .'Then either delete the orphans or manually insert stub scryfall_cards rows.',
-                $after,
+                .'after bulk sync AND per-card Scryfall fetches. The scryfall_ids are '
+                ."either fabricated or have been permanently removed from Scryfall.\n"
+                ."Inspect with:\n"
+                ."  SELECT ce.scryfall_id, uc.name, uc.set_code FROM collection_entries ce "
+                ."LEFT JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id "
+                ."LEFT JOIN user_cards uc ON uc.scryfall_id = ce.scryfall_id "
+                ."WHERE sc.scryfall_id IS NULL;\n"
+                ."Remediation: delete the orphan entries, or manually insert stub "
+                .'scryfall_cards rows if the card data should be preserved.',
+                $final,
             ));
+        }
+    }
+
+    /**
+     * Fetch each remaining orphan scryfall_id individually from Scryfall's
+     * /cards/{id} endpoint and upsert into scryfall_cards. This endpoint
+     * returns non-English printings and variants that the default_cards
+     * bulk file excludes. Uses the same BulkSyncService row-mapping logic
+     * so the inserted rows are identical to bulk-synced ones.
+     */
+    private function backfillOrphansFromScryfallApi(): void
+    {
+        /** @var ScryfallService $scryfall */
+        $scryfall = app(ScryfallService::class);
+        /** @var BulkSyncService $bulk */
+        $bulk = app(BulkSyncService::class);
+        $now = now();
+
+        $orphanIds = DB::table('collection_entries')
+            ->select('collection_entries.scryfall_id')
+            ->leftJoin('scryfall_cards', 'scryfall_cards.scryfall_id', '=', 'collection_entries.scryfall_id')
+            ->whereNull('scryfall_cards.scryfall_id')
+            ->union(
+                DB::table('deck_entries')
+                    ->select('deck_entries.scryfall_id')
+                    ->leftJoin('scryfall_cards', 'scryfall_cards.scryfall_id', '=', 'deck_entries.scryfall_id')
+                    ->whereNull('scryfall_cards.scryfall_id')
+            )
+            ->pluck('scryfall_id')
+            ->unique()
+            ->values();
+
+        // applyBulkCardData is private on BulkSyncService, but Scryfall's
+        // /cards/{id} response uses the same shape as bulk entries and
+        // we want the same mapping (DFC handling, color canonicalisation,
+        // partner_scope derivation). Reach it via reflection — this is
+        // the only caller that lives outside the service itself.
+        $ref = new \ReflectionMethod(BulkSyncService::class, 'applyBulkCardData');
+        $ref->setAccessible(true);
+        $flushRef = new \ReflectionMethod(BulkSyncService::class, 'flushScryfallCards');
+        $flushRef->setAccessible(true);
+        $flushRawRef = new \ReflectionMethod(BulkSyncService::class, 'flushScryfallCardsRaw');
+        $flushRawRef->setAccessible(true);
+
+        $cardRows = [];
+        $rawRows = [];
+        foreach ($orphanIds as $scryfallId) {
+            try {
+                $response = $scryfall->fetchCard($scryfallId);
+            } catch (\Throwable $e) {
+                Log::warning("drop_user_cards migration: /cards/{$scryfallId} fetch failed: {$e->getMessage()}");
+                continue;
+            }
+            if ($response === null) {
+                Log::warning("drop_user_cards migration: /cards/{$scryfallId} returned 404");
+                continue;
+            }
+
+            $row = $ref->invoke($bulk, $response, $now);
+            if ($row === null) {
+                continue;
+            }
+            $cardRows[] = $row;
+
+            if (isset($response['all_parts']) && is_array($response['all_parts']) && $response['all_parts'] !== []) {
+                $rawRows[] = [
+                    'scryfall_id' => $response['id'],
+                    'all_parts'   => json_encode($response['all_parts']),
+                    'created_at'  => $now,
+                    'updated_at'  => $now,
+                ];
+            }
+        }
+
+        if ($cardRows) {
+            $flushRef->invoke($bulk, $cardRows);
+        }
+        if ($rawRows) {
+            $flushRawRef->invoke($bulk, $rawRows);
         }
     }
 
