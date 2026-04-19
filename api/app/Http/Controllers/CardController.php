@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MtgSet;
 use App\Models\ScryfallCard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,25 +18,47 @@ class CardController extends Controller
     /**
      * GET /api/cards/featured (public — used by the login hero).
      *
-     * Picks one random non-land card from the most recently released set
-     * in the scryfall_cards table. Returns null when the table is empty
-     * so the frontend can render a built-in fallback.
+     * Picks one random non-land card from the most recent mainline release.
+     * Scryfall ships companion sets (bonus sheets, commander decks, etc.)
+     * on the same day as the main expansion, so "most recent release" is
+     * defined as all non-token, non-SLD sets sharing the latest released_at
+     * date — e.g. Secrets of Strixhaven + its Mystical Archive count as one.
+     * Returns null when no suitable card exists so the frontend can render
+     * a built-in fallback.
      */
     public function featured(): JsonResponse
     {
-        $newestSet = ScryfallCard::query()
-            ->select('set_code')
-            ->groupBy('set_code')
-            ->orderByRaw('MAX(created_at) DESC')
-            ->limit(1)
-            ->value('set_code');
+        // Token sets (TSOS, TSOA, …) and Secret Lair drops shouldn't compete
+        // for "newest release": tokens aren't real cards, and SLD releases
+        // continuously and would win almost every time.
+        $excludedTypes = ['token'];
+        $excludedCodes = ['sld'];
 
-        if (! $newestSet) {
+        // Scryfall lists upcoming sets with a future released_at (e.g. Marvel,
+        // Strixhaven are announced ahead of their street date). Clamp to today
+        // so the hero only shows sets that have actually released.
+        $today = now()->toDateString();
+
+        $latestDate = MtgSet::query()
+            ->whereNotNull('released_at')
+            ->where('released_at', '<=', $today)
+            ->whereNotIn('set_type', $excludedTypes)
+            ->whereNotIn('code', $excludedCodes)
+            ->max('released_at');
+
+        if (! $latestDate) {
             return response()->json(null);
         }
 
+        $setCodes = MtgSet::query()
+            ->where('released_at', $latestDate)
+            ->whereNotIn('set_type', $excludedTypes)
+            ->whereNotIn('code', $excludedCodes)
+            ->pluck('code')
+            ->all();
+
         $card = ScryfallCard::query()
-            ->where('set_code', $newestSet)
+            ->whereIn('set_code', $setCodes)
             ->where(function ($q) {
                 $q->whereNull('type_line')->orWhere('type_line', 'not like', '%Land%');
             })
