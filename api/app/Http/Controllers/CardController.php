@@ -34,8 +34,14 @@ class CardController extends Controller
         $excludedTypes = ['token'];
         $excludedCodes = ['sld'];
 
+        // Scryfall lists upcoming sets with a future released_at (e.g. Marvel,
+        // Strixhaven are announced ahead of their street date). Clamp to today
+        // so the hero only shows sets that have actually released.
+        $today = now()->toDateString();
+
         $latestDate = MtgSet::query()
             ->whereNotNull('released_at')
+            ->where('released_at', '<=', $today)
             ->whereNotIn('set_type', $excludedTypes)
             ->whereNotIn('code', $excludedCodes)
             ->max('released_at');
