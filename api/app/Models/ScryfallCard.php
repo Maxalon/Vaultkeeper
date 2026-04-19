@@ -6,14 +6,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Canonical Scryfall card reference. One row per English printing,
- * synced from the Default Cards bulk file.
+ * synced from the Default Cards bulk file by BulkSyncService.
  *
- * Distinct from UserCard, which only contains cards a user has imported.
- * Both share `scryfall_id` as a join key but have no FK relationship —
- * a card can exist in either table without the other.
+ * collection_entries.scryfall_id and deck_entries.scryfall_id FK here.
  */
 class ScryfallCard extends Model
 {
@@ -52,19 +51,22 @@ class ScryfallCard extends Model
         'oracle_text_back',
         'edhrec_rank',
         'reserved',
+        'commander_game_changer',
+        'partner_scope',
         'last_synced_at',
     ];
 
     protected $casts = [
-        'is_dfc'         => 'boolean',
-        'reserved'       => 'boolean',
-        'colors'         => 'array',
-        'color_identity' => 'array',
-        'legalities'     => 'array',
-        'keywords'       => 'array',
-        'cmc'            => 'decimal:2',
-        'edhrec_rank'    => 'integer',
-        'last_synced_at' => 'datetime',
+        'is_dfc'                 => 'boolean',
+        'reserved'               => 'boolean',
+        'commander_game_changer' => 'boolean',
+        'colors'                 => 'array',
+        'color_identity'         => 'array',
+        'legalities'             => 'array',
+        'keywords'               => 'array',
+        'cmc'                    => 'decimal:2',
+        'edhrec_rank'            => 'integer',
+        'last_synced_at'         => 'datetime',
     ];
 
     public function set(): BelongsTo
@@ -75,6 +77,11 @@ class ScryfallCard extends Model
     public function tags(): HasMany
     {
         return $this->hasMany(CardOracleTag::class, 'oracle_id', 'oracle_id');
+    }
+
+    public function raw(): HasOne
+    {
+        return $this->hasOne(ScryfallCardRaw::class, 'scryfall_id', 'scryfall_id');
     }
 
     public function getRouteKeyName(): string
