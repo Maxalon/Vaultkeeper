@@ -3,8 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\CollectionEntry;
+use App\Models\Deck;
+use App\Models\DeckEntry;
+use App\Models\DeckIgnoredIllegality;
 use App\Models\Location;
 use App\Models\LocationGroup;
+use App\Services\DeckLegalityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -12,6 +16,8 @@ use Illuminate\Support\Facades\DB;
 
 class LocationGroupController extends Controller
 {
+    public function __construct(private DeckLegalityService $legality) {}
+
     /**
      * GET /api/location-groups
      *
@@ -83,7 +89,75 @@ class LocationGroupController extends Controller
         return response()->json([
             'items'       => $items,
             'total_count' => $total,
+            'decks'       => $this->sidebarDecks($userId),
         ]);
+    }
+
+    /**
+     * Decks payload for the sidebar. Each deck includes its commander1
+     * thumbnail plus a pre-computed illegality_count so the frontend can
+     * show a warning badge without a follow-up round-trip.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function sidebarDecks(int $userId): array
+    {
+        $decks = Deck::query()
+            ->where('user_id', $userId)
+            ->with(['commander1:scryfall_id,name,image_small', 'entries.card', 'commander2'])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $deckIds = $decks->pluck('id')->all();
+
+        $entryCounts = DeckEntry::query()
+            ->whereIn('deck_id', $deckIds)
+            ->where('zone', 'main')
+            ->select('deck_id', DB::raw('SUM(quantity) AS total'))
+            ->groupBy('deck_id')
+            ->pluck('total', 'deck_id');
+
+        $ignoredByDeck = DeckIgnoredIllegality::query()
+            ->whereIn('deck_id', $deckIds)
+            ->get()
+            ->groupBy('deck_id');
+
+        return $decks->map(function (Deck $deck) use ($entryCounts, $ignoredByDeck) {
+            $illegalities = $this->legality->check($deck);
+            $ignored = $ignoredByDeck->get($deck->id, collect());
+            $active = 0;
+            foreach ($illegalities as $ill) {
+                $match = false;
+                foreach ($ignored as $row) {
+                    if ($row->illegality_type === $ill['type']
+                        && $row->scryfall_id_1 === $ill['scryfall_id_1']
+                        && $row->scryfall_id_2 === $ill['scryfall_id_2']
+                        && $row->oracle_id     === $ill['oracle_id']) {
+                        $match = true;
+                        break;
+                    }
+                }
+                if (! $match) {
+                    $active++;
+                }
+            }
+
+            return [
+                'id'               => $deck->id,
+                'name'             => $deck->name,
+                'format'           => $deck->format,
+                'color_identity'   => $deck->color_identity,
+                'group_id'         => $deck->group_id,
+                'sort_order'       => $deck->sort_order,
+                'entry_count'      => (int) ($entryCounts[$deck->id] ?? 0),
+                'illegality_count' => $active,
+                'commander1'       => $deck->commander1 ? [
+                    'name'        => $deck->commander1->name,
+                    'image_small' => $deck->commander1->image_small,
+                ] : null,
+            ];
+        })->values()->all();
     }
 
     public function store(Request $request): JsonResponse

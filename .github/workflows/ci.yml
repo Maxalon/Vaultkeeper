@@ -91,8 +91,11 @@ jobs:
           echo "mysql did not become ready in time" >&2
           exit 1
 
-      - name: Run PHPUnit
-        run: php artisan test
+      - name: Run Unit tests
+        run: php artisan test --testsuite=Unit
+
+      - name: Run Feature tests
+        run: php artisan test --testsuite=Feature
 
   web-build:
     name: web / vite build

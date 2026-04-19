@@ -2,14 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\FetchCardTextData;
 use App\Models\CollectionEntry;
 use App\Models\Location;
+use App\Models\ScryfallCard;
 use App\Models\User;
-use App\Models\UserCard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -19,6 +17,11 @@ class ImportControllerTest extends TestCase
 
     private User $user;
     private string $token;
+
+    /** Scryfall IDs used across the happy-path CSVs. Seeded into scryfall_cards
+     *  in setUp so the import's FK check passes. */
+    private const BOLT_ID   = '77c6fa74-5543-42ac-9ead-0e890b188e99';
+    private const COUNTER_ID = '0d1498c7-2cc6-4a1f-ab96-97f6a4c18a3e';
 
     protected function setUp(): void
     {
@@ -30,9 +33,10 @@ class ImportControllerTest extends TestCase
         Storage::fake('assets');
         Storage::disk('assets')->put('sets/.test-keep', '');
 
-        // FetchCardTextData calls Scryfall on dispatch. Fake the bus so the
-        // job is only recorded, not run.
-        Bus::fake([FetchCardTextData::class]);
+        // The import now rejects any scryfall_id not present in scryfall_cards.
+        // Seed the canonical rows so the CSV rows are accepted.
+        ScryfallCard::factory()->create(['scryfall_id' => self::BOLT_ID,    'name' => 'Lightning Bolt']);
+        ScryfallCard::factory()->create(['scryfall_id' => self::COUNTER_ID, 'name' => 'Counterspell']);
 
         $this->user = User::factory()->create();
         $this->token = auth('api')->login($this->user);
@@ -57,7 +61,7 @@ class ImportControllerTest extends TestCase
         CSV;
     }
 
-    public function test_import_happy_path_creates_cards_and_entries(): void
+    public function test_import_happy_path_creates_entries(): void
     {
         $response = $this->withHeaders($this->authHeaders())
             ->post('/api/import', [
@@ -65,27 +69,17 @@ class ImportControllerTest extends TestCase
             ])
             ->assertOk()
             ->assertJson([
-                'imported'      => 2,
-                'cards_created' => 2,
-                'cards_updated' => 0,
-                'skipped'       => 0,
+                'imported' => 2,
+                'skipped'  => 0,
             ]);
 
         $this->assertSame([], $response->json('warnings'));
 
-        $this->assertDatabaseCount('user_cards', 2);
         $this->assertDatabaseCount('collection_entries', 2);
-
-        $this->assertDatabaseHas('user_cards', [
-            'scryfall_id' => '77c6fa74-5543-42ac-9ead-0e890b188e99',
-            'name'        => 'Lightning Bolt',
-            'set_code'    => 'LEB',
-            'rarity'      => 'common',
-        ]);
 
         $this->assertDatabaseHas('collection_entries', [
             'user_id'     => $this->user->id,
-            'scryfall_id' => '77c6fa74-5543-42ac-9ead-0e890b188e99',
+            'scryfall_id' => self::BOLT_ID,
             'quantity'    => 2,
             'condition'   => 'NM',
             'foil'        => false,
@@ -93,45 +87,32 @@ class ImportControllerTest extends TestCase
 
         $this->assertDatabaseHas('collection_entries', [
             'user_id'     => $this->user->id,
-            'scryfall_id' => '0d1498c7-2cc6-4a1f-ab96-97f6a4c18a3e',
+            'scryfall_id' => self::COUNTER_ID,
             'quantity'    => 1,
             'condition'   => 'LP',
             'foil'        => true,
         ]);
-
-        Bus::assertDispatched(FetchCardTextData::class);
     }
 
-    public function test_import_updates_existing_card_row(): void
+    public function test_import_skips_row_for_unknown_scryfall_id(): void
     {
-        UserCard::factory()->create([
-            'scryfall_id' => '77c6fa74-5543-42ac-9ead-0e890b188e99',
-            'name'        => 'Stale Name',
-            'set_code'    => 'XXX',
-        ]);
-
+        $unknown = '11111111-1111-1111-1111-111111111111';
         $csv = <<<CSV
         Name,Set code,Collector number,Rarity,Quantity,Foil,Condition,Language,Scryfall ID
         Lightning Bolt,LEB,161,common,1,normal,near_mint,en,77c6fa74-5543-42ac-9ead-0e890b188e99
+        Unknown,LEB,999,common,1,normal,near_mint,en,{$unknown}
         CSV;
 
-        $this->withHeaders($this->authHeaders())
+        $response = $this->withHeaders($this->authHeaders())
             ->post('/api/import', ['csv_file' => $this->csvFile($csv)])
             ->assertOk()
             ->assertJson([
-                'imported'      => 1,
-                'cards_created' => 0,
-                'cards_updated' => 1,
+                'imported' => 1,
+                'skipped'  => 1,
             ]);
 
-        $this->assertDatabaseHas('user_cards', [
-            'scryfall_id' => '77c6fa74-5543-42ac-9ead-0e890b188e99',
-            'name'        => 'Lightning Bolt',
-            'set_code'    => 'LEB',
-        ]);
-
-        // Existing-only imports don't need the text-fetch job.
-        Bus::assertNotDispatched(FetchCardTextData::class);
+        $this->assertStringContainsString('not found in scryfall_cards', $response->json('warnings.0'));
+        $this->assertDatabaseMissing('collection_entries', ['scryfall_id' => $unknown]);
     }
 
     public function test_import_assigns_entries_to_location(): void
@@ -184,7 +165,7 @@ class ImportControllerTest extends TestCase
 
         // Unknown condition defaults to NM
         $this->assertDatabaseHas('collection_entries', [
-            'scryfall_id' => '77c6fa74-5543-42ac-9ead-0e890b188e99',
+            'scryfall_id' => self::BOLT_ID,
             'condition'   => 'NM',
         ]);
     }

@@ -3,8 +3,8 @@
 namespace Database\Factories;
 
 use App\Models\CollectionEntry;
+use App\Models\ScryfallCard;
 use App\Models\User;
-use App\Models\UserCard;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -18,7 +18,7 @@ class CollectionEntryFactory extends Factory
     {
         return [
             'user_id'     => User::factory(),
-            'scryfall_id' => fn () => UserCard::factory()->create()->scryfall_id,
+            'scryfall_id' => fn () => ScryfallCard::factory()->create()->scryfall_id,
             'location_id' => null,
             'quantity'    => 1,
             'condition'   => 'NM',

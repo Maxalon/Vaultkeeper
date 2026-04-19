@@ -2,10 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\UserCard;
+use App\Models\ScryfallCard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class CardController extends Controller
 {
@@ -18,13 +17,13 @@ class CardController extends Controller
     /**
      * GET /api/cards/featured (public — used by the login hero).
      *
-     * Picks one random non-land card from the most recently expanded set
-     * in the user_cards table. Returns null when the table is empty so
-     * the frontend can render a built-in fallback.
+     * Picks one random non-land card from the most recently released set
+     * in the scryfall_cards table. Returns null when the table is empty
+     * so the frontend can render a built-in fallback.
      */
     public function featured(): JsonResponse
     {
-        $newestSet = UserCard::query()
+        $newestSet = ScryfallCard::query()
             ->select('set_code')
             ->groupBy('set_code')
             ->orderByRaw('MAX(created_at) DESC')
@@ -35,7 +34,7 @@ class CardController extends Controller
             return response()->json(null);
         }
 
-        $card = UserCard::query()
+        $card = ScryfallCard::query()
             ->where('set_code', $newestSet)
             ->where(function ($q) {
                 $q->whereNull('type_line')->orWhere('type_line', 'not like', '%Land%');
