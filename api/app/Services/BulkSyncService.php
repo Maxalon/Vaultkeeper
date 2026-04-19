@@ -237,7 +237,7 @@ class BulkSyncService
      */
     private function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
     {
-        if (! isset($c['id'], $c['oracle_id'], $c['name'], $c['set'])) {
+        if (! isset($c['id'], $c['name'], $c['set'])) {
             return null;
         }
 
@@ -246,6 +246,16 @@ class BulkSyncService
         $isDfc  = is_array($faces)
             && isset($faces[0], $faces[1])
             && in_array($layout, self::DFC_LAYOUTS, true);
+
+        // Reversible cards don't carry a top-level oracle_id — each face has
+        // its own. Use the front face's oracle_id as the card's canonical
+        // oracle identity so downstream oracle_id joins (tags, duplicates,
+        // etc.) still work.
+        $oracleId = $c['oracle_id']
+            ?? ($isDfc ? ($faces[0]['oracle_id'] ?? null) : null);
+        if ($oracleId === null) {
+            return null;
+        }
 
         if ($isDfc) {
             $front = $faces[0];
@@ -305,7 +315,7 @@ class BulkSyncService
 
         return array_merge($faceFields, [
             'scryfall_id'      => $c['id'],
-            'oracle_id'        => $c['oracle_id'],
+            'oracle_id'        => $oracleId,
             'name'             => $c['name'],
             'set_code'         => strtolower($c['set']),
             'collector_number' => (string) ($c['collector_number'] ?? ''),
