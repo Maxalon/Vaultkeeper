@@ -354,27 +354,27 @@ class CardSearchServiceTest extends TestCase
     public function test_playtest_hidden_by_default(): void
     {
         $out = $this->svc()->search('lightning');
-        $sql = $out['builder']->toSql();
-        $this->assertStringContainsString("`scryfall_cards`.`set_type` !=", $sql);
-        $bindings = $out['builder']->getBindings();
-        $this->assertContains('playtest', $bindings);
+        $sql = strtolower($out['builder']->toSql());
+        $this->assertStringContainsString('`scryfall_cards`.`is_playtest` =', $sql);
     }
 
     public function test_is_playtest_surfaces_playtest_and_disables_default_hide(): void
     {
         $out = $this->svc()->search('is:playtest');
-        $sql = $out['builder']->toSql();
+        $sql = strtolower($out['builder']->toSql());
+        // is:playtest emits `is_playtest = 1`; the default hide would
+        // emit `is_playtest = 0` — so count of `= 1` clauses tells us
+        // the default hide didn't piggyback.
+        $this->assertStringContainsString('`scryfall_cards`.`is_playtest` =', $sql);
         $bindings = $out['builder']->getBindings();
-        $this->assertContains('playtest', $bindings);
-        // The default hide should NOT also be applied.
-        $this->assertStringNotContainsString("`scryfall_cards`.`set_type` != ?", $sql);
+        $this->assertContains(true, $bindings, 'is:playtest should set is_playtest=true');
+        $this->assertNotContains(false, $bindings, 'default hide should not also be applied');
     }
 
-    public function test_is_playtest_clause_matches_set_type_or_codes(): void
+    public function test_is_play_test_hyphen_alias(): void
     {
-        $out = $this->svc()->search('is:playtest');
+        $out = $this->svc()->search('is:play-test');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('`scryfall_cards`.`set_type` =', $sql);
-        $this->assertStringContainsString('`scryfall_cards`.`set_code` in', $sql);
+        $this->assertStringContainsString('`scryfall_cards`.`is_playtest` =', $sql);
     }
 }

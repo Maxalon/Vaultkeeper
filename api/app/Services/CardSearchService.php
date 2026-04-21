@@ -611,26 +611,18 @@ class CardSearchService
     }
 
     /**
-     * Hide playtest cards unless is:playtest was requested. Matches both
-     * the Scryfall-canonical `set_type='playtest'` AND the legacy set_code
-     * list (cmb1, cmb2 still filed under 'funny' in our current sets
-     * sync — the controller's hard-exclusion carve-out lets them through,
-     * and this filter hides them by default).
+     * Hide playtest cards unless is:playtest was requested. Uses the
+     * `is_playtest` column populated at bulk sync from Scryfall's
+     * `promo_types` array — the canonical signal that catches both CMB
+     * playtest sets AND the MB2 #501-#602 playtest subset (the latter
+     * lives in a regular-looking `set_type='masters'` set, so neither a
+     * set_type nor set_code heuristic can distinguish it).
      */
     private function applyDefaultPlaytestFilter(Builder $b): void
     {
-        // Columns are qualified to scryfall_cards.* because the controller
-        // joins a `sets`-derived alias `ms` that also exposes `set_type`;
-        // an unqualified column reference blows up on ambiguity.
-        $codes = BulkSyncService::PLAYTEST_SET_CODES;
-        $b->where(function (Builder $q) use ($codes) {
-            $q->where(function (Builder $inner) {
-                $inner->where('scryfall_cards.set_type', '!=', 'playtest')
-                      ->orWhereNull('scryfall_cards.set_type');
-            });
-            if (! empty($codes)) {
-                $q->whereNotIn('scryfall_cards.set_code', $codes);
-            }
+        $b->where(function (Builder $q) {
+            $q->where('scryfall_cards.is_playtest', false)
+              ->orWhereNull('scryfall_cards.is_playtest');
         });
     }
 
@@ -1170,17 +1162,10 @@ class CardSearchService
                 return;
 
             case 'playtest':
-                // Scryfall's newer taxonomy uses set_type='playtest'; our
-                // current sets sync still has cmb1/cmb2 under 'funny'.
-                // Match either route until the sync catches up. Columns
-                // qualified because the controller also joins `ms.set_type`.
-                $codes = BulkSyncService::PLAYTEST_SET_CODES;
-                $b->where(function (Builder $q) use ($codes) {
-                    $q->where('scryfall_cards.set_type', 'playtest');
-                    if (! empty($codes)) {
-                        $q->orWhereIn('scryfall_cards.set_code', $codes);
-                    }
-                });
+                // Backed by the is_playtest column which BulkSyncService
+                // populates from Scryfall's promo_types array at sync
+                // time (plus the CMB set-code fallback).
+                $b->where('scryfall_cards.is_playtest', true);
                 return;
         }
     }

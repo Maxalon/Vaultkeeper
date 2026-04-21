@@ -578,6 +578,11 @@ class BulkSyncService
             'set_type'         => $setType,
             'oversized'        => $oversized,
             'is_default_eligible' => $this->deriveDefaultEligible($c),
+            'is_playtest'         =>
+                in_array('playtest', (array) ($c['promo_types'] ?? []), true)
+                // Fallback for Mystery Booster Playtest sets, which mark
+                // cards via set membership rather than promo_types.
+                || in_array($c['set'] ?? '', self::PLAYTEST_SET_CODES, true),
             'edhrec_rank'      => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
             'reserved'         => (bool) ($c['reserved'] ?? false),
             'commander_game_changer' => (bool) ($c['game_changer'] ?? false),
@@ -735,7 +740,7 @@ class BulkSyncService
                 'printed_text', 'printed_text_back',
                 'supertypes', 'types', 'subtypes',
                 'released_at', 'promo', 'variation', 'set_type',
-                'oversized', 'is_default_eligible',
+                'oversized', 'is_default_eligible', 'is_playtest',
                 'edhrec_rank', 'reserved',
                 'commander_game_changer', 'partner_scope',
                 'last_synced_at', 'updated_at',
