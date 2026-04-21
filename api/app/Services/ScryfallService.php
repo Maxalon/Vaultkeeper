@@ -151,6 +151,34 @@ class ScryfallService
     }
 
     /**
+     * Fetch a Scryfall `/catalog/<name>` endpoint and return the `data` array
+     * of canonical strings. Used by BulkSyncService::syncTypeCatalog() to pull
+     * supertypes / card types / per-permanent subtypes so the parser can
+     * recognise multi-word subtypes before whitespace-splitting.
+     *
+     * @return array<int, string>
+     */
+    public function fetchCatalog(string $catalog): array
+    {
+        $this->throttle();
+
+        $response = $this->http
+            ->withHeaders(self::API_HEADERS)
+            ->get(self::BASE.'/catalog/'.$catalog);
+
+        if (! $response->successful()) {
+            throw new RuntimeException(
+                "Scryfall fetchCatalog({$catalog}) failed: status {$response->status()}"
+            );
+        }
+
+        return array_values(array_filter(
+            (array) $response->json('data', []),
+            fn ($v) => is_string($v) && $v !== '',
+        ));
+    }
+
+    /**
      * Fetch the Scryfall bulk-data manifest. Returns the `data` array of
      * available bulk files (each with type, download_uri, updated_at, etc.).
      * Caller filters to the desired type (e.g. `default_cards`).

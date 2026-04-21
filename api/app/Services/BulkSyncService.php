@@ -6,6 +6,7 @@ use App\Models\CardOracleTag;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\MtgSet;
+use App\Models\MtgType;
 use App\Models\ScryfallCard;
 use App\Models\ScryfallCardRaw;
 use App\Models\SyncState;
@@ -47,9 +48,204 @@ class BulkSyncService
     /** All Scryfall-recognized colour letters, sorted W U B R G. */
     private const ALL_COLORS = ['W', 'U', 'B', 'R', 'G'];
 
+    /**
+     * Supertype whitelist for type-line parsing. Kept as a constant rather
+     * than a DB lookup because the list is stable (Wizards rarely introduces
+     * new supertypes) and parsing runs per card during bulk sync.
+     */
+    private const SUPERTYPES = [
+        'Basic', 'Legendary', 'Snow', 'World', 'Elite', 'Ongoing', 'Host', 'Token',
+    ];
+
+    /** Scryfall /catalog/* endpoints we pull into mtg_type_catalog. */
+    private const TYPE_CATALOG_ENDPOINTS = [
+        'supertype'            => 'supertypes',
+        'card_type'            => 'card-types',
+        'creature_subtype'     => 'creature-types',
+        'planeswalker_subtype' => 'planeswalker-types',
+        'land_subtype'         => 'land-types',
+        'artifact_subtype'     => 'artifact-types',
+        'enchantment_subtype'  => 'enchantment-types',
+        'spell_subtype'        => 'spell-types',
+    ];
+
+    /**
+     * Set types that are hard-excluded from the catalog entirely.
+     * art_series is Wizards' gallery-style reprint sets (alternate-art
+     * Commanders with no gameplay function). vanguard/planechase/archenemy
+     * are special-format supplements with no paper-deck utility.
+     * Public so the catalog controller applies the same exclusion list.
+     */
+    public const INELIGIBLE_SET_TYPES = [
+        'memorabilia', 'funny', 'token', 'minigame',
+        'art_series', 'vanguard', 'planechase', 'archenemy',
+    ];
+
+    /**
+     * Set types that disqualify a printing from being the DEFAULT
+     * representative but are still catalogued. The hard-exclude list
+     * (INELIGIBLE_SET_TYPES) is intentionally duplicated here too, so
+     * every excluded card is also tagged ineligible-as-default — belt
+     * and suspenders, since those rows never reach the catalog anyway.
+     *
+     * The "premium product" set types catch printings that DON'T get
+     * caught by the per-card frame/border/foil/promo checks, most notably
+     * Secret Lair (`box`) — SLD cards can be perfectly normal-looking
+     * (nonfoil, black border, no frame_effects) but still shouldn't be
+     * the default representative when a real expansion printing exists.
+     * If an oracle only has SLD / masterpiece / eternal printings, every
+     * printing ties on eligibility and the released-date sort picks
+     * the newest — so SLD-only cards still surface correctly.
+     */
+    private const NOT_DEFAULT_SET_TYPES = [
+        // Hard-excluded types (duplicated for defense in depth).
+        'memorabilia', 'funny', 'token', 'minigame',
+        // Premium / special-printing products — in-catalog but never default.
+        'box',            // Secret Lair Drop, Secret Lair: Ultimate, Secret Lair Countdown
+        'masterpiece',    // Expeditions / Invocations / Inventions / Through the Ages
+        'from_the_vault', 'premium_deck', 'spellbook',
+        'eternal',        // all-foil premium supplements (Avatar: TLA Eternal, …)
+        'promo',          // caught by the per-card promo flag too, but be explicit
+    ];
+
+    /**
+     * In-memory cache of multi-word subtypes loaded once per bulk sync from
+     * mtg_type_catalog. Populated by loadMultiWordSubtypes() — parseTypeLine
+     * consults this before whitespace-splitting the subtype half of a type line.
+     *
+     * @var array<int, string>
+     */
+    private array $multiWordSubtypes = [];
+
     public function __construct(
         private ScryfallService $scryfall,
     ) {}
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Type catalog
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Pull every Scryfall /catalog/* list into mtg_type_catalog. Run at the
+     * start of bulk sync so parseTypeLine() can recognise multi-word subtypes
+     * like "Time Lord" before splitting on whitespace.
+     *
+     * @return array<string, int>  per-category count of upserted rows
+     */
+    public function syncTypeCatalog(): array
+    {
+        $now = now();
+        $counts = [];
+
+        foreach (self::TYPE_CATALOG_ENDPOINTS as $category => $endpoint) {
+            try {
+                $names = $this->scryfall->fetchCatalog($endpoint);
+            } catch (Throwable $e) {
+                Log::warning("syncTypeCatalog {$endpoint} failed: {$e->getMessage()}");
+                $counts[$category] = 0;
+                continue;
+            }
+
+            $rows = [];
+            foreach ($names as $name) {
+                $rows[] = [
+                    'category'      => $category,
+                    'name'          => $name,
+                    'is_multi_word' => str_contains($name, ' '),
+                    'created_at'    => $now,
+                    'updated_at'    => $now,
+                ];
+            }
+
+            foreach (array_chunk($rows, self::UPSERT_CHUNK) as $chunk) {
+                MtgType::upsert(
+                    $chunk,
+                    ['category', 'name'],
+                    ['is_multi_word', 'updated_at'],
+                );
+            }
+
+            $counts[$category] = count($rows);
+        }
+
+        Log::info('BulkSyncService::syncTypeCatalog — done', $counts);
+
+        return $counts;
+    }
+
+    /**
+     * Populate $this->multiWordSubtypes from mtg_type_catalog. Call after
+     * syncTypeCatalog() and before the first applyBulkCardData() invocation.
+     */
+    private function loadMultiWordSubtypes(): void
+    {
+        $this->multiWordSubtypes = MtgType::query()
+            ->whereIn('category', MtgType::SUBTYPE_CATEGORIES)
+            ->where('is_multi_word', true)
+            ->orderByRaw('LENGTH(name) DESC') // longest match wins when scanning
+            ->pluck('name')
+            ->all();
+    }
+
+    /**
+     * Parse a Scryfall `type_line` into {supertypes, types, subtypes}. Splits
+     * on em-dash (U+2014), en-dash (U+2013), or hyphen. Greedy-matches known
+     * multi-word subtypes (from mtg_type_catalog, passed in via $multiWord)
+     * before splitting the subtype half on whitespace.
+     *
+     * Public so tests can drive the pure function directly.
+     *
+     * @param  array<int, string>  $multiWord  multi-word subtypes, longest first
+     * @return array{supertypes: array<int, string>, types: array<int, string>, subtypes: array<int, string>}
+     */
+    public function parseTypeLine(string $typeLine, array $multiWord): array
+    {
+        $typeLine = trim($typeLine);
+        if ($typeLine === '') {
+            return ['supertypes' => [], 'types' => [], 'subtypes' => []];
+        }
+
+        // Handle em-dash (U+2014), en-dash (U+2013), or plain hyphen.
+        $parts = preg_split('/\s+[\x{2014}\x{2013}\-]\s+/u', $typeLine, 2);
+        $left  = $parts[0] ?? '';
+        $right = $parts[1] ?? '';
+
+        $supertypes = [];
+        $types = [];
+        foreach (preg_split('/\s+/', trim($left)) ?: [] as $tok) {
+            if ($tok === '') {
+                continue;
+            }
+            if (in_array($tok, self::SUPERTYPES, true)) {
+                $supertypes[] = $tok;
+            } else {
+                $types[] = $tok;
+            }
+        }
+
+        $subtypes = [];
+        $remaining = trim($right);
+        foreach ($multiWord as $mw) {
+            // Match word-bounded so "Time" doesn't clobber "Time Lord".
+            // preg_quote handles edge characters safely.
+            $pattern = '/(?<!\S)' . preg_quote($mw, '/') . '(?!\S)/u';
+            if (preg_match($pattern, $remaining)) {
+                $subtypes[] = $mw;
+                $remaining = trim(preg_replace($pattern, ' ', $remaining, 1));
+            }
+        }
+        foreach (preg_split('/\s+/', $remaining) ?: [] as $tok) {
+            if ($tok !== '') {
+                $subtypes[] = $tok;
+            }
+        }
+
+        return [
+            'supertypes' => $supertypes,
+            'types'      => $types,
+            'subtypes'   => $subtypes,
+        ];
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Sets
@@ -135,6 +331,11 @@ class BulkSyncService
      */
     public function syncBulkCards(?callable $onProgress = null): array
     {
+        // Type catalog feeds parseTypeLine's multi-word subtype matcher.
+        // Run first so the very first card in the bulk feed parses correctly.
+        $this->syncTypeCatalog();
+        $this->loadMultiWordSubtypes();
+
         $manifest = $this->scryfall->fetchBulkDataManifest();
         $entry = collect($manifest)->firstWhere('type', 'default_cards');
         if (! $entry || empty($entry['download_uri'])) {
@@ -241,6 +442,13 @@ class BulkSyncService
             return null;
         }
 
+        // Paper-only filter. Arena-only / MTGO-only printings never show up
+        // in our catalog, so drop them at intake rather than carrying them
+        // through the catalog search.
+        if (! in_array('paper', (array) ($c['games'] ?? []), true)) {
+            return null;
+        }
+
         $layout = $c['layout'] ?? null;
         $faces  = $c['card_faces'] ?? null;
         $isDfc  = is_array($faces)
@@ -276,6 +484,8 @@ class BulkSyncService
                 'type_line_back'    => $back['type_line'] ?? null,
                 'oracle_text'       => $front['oracle_text'] ?? null,
                 'oracle_text_back'  => $back['oracle_text'] ?? null,
+                'printed_text'      => $front['printed_text'] ?? null,
+                'printed_text_back' => $back['printed_text'] ?? null,
                 'power'             => $front['power'] ?? null,
                 'toughness'         => $front['toughness'] ?? null,
                 'loyalty'           => $front['loyalty'] ?? null,
@@ -295,6 +505,8 @@ class BulkSyncService
                 'type_line_back'    => null,
                 'oracle_text'       => $c['oracle_text'] ?? null,
                 'oracle_text_back'  => null,
+                'printed_text'      => $c['printed_text'] ?? null,
+                'printed_text_back' => null,
                 'power'             => $c['power'] ?? null,
                 'toughness'         => $c['toughness'] ?? null,
                 'loyalty'           => $c['loyalty'] ?? null,
@@ -313,6 +525,19 @@ class BulkSyncService
             $colors = array_values(array_unique($faceColors));
         }
 
+        // Derive split types from the front-face (or single) type line. DFC
+        // backs can have their own subtypes but we don't index them yet;
+        // full-body search via `fo:`/`o:` still picks those up textually.
+        $parsedTypes = $this->parseTypeLine(
+            $faceFields['type_line'] ?? '',
+            $this->multiWordSubtypes,
+        );
+
+        $promo      = (bool) ($c['promo']      ?? false);
+        $variation  = (bool) ($c['variation']  ?? false);
+        $oversized  = (bool) ($c['oversized']  ?? false);
+        $setType    = $c['set_type'] ?? null;
+
         return array_merge($faceFields, [
             'scryfall_id'      => $c['id'],
             'oracle_id'        => $oracleId,
@@ -327,6 +552,15 @@ class BulkSyncService
             'color_identity'   => json_encode($this->canonicaliseColors($colorIdentity)),
             'legalities'       => isset($c['legalities']) ? json_encode($c['legalities']) : null,
             'keywords'         => isset($c['keywords']) ? json_encode($c['keywords']) : null,
+            'supertypes'       => json_encode($parsedTypes['supertypes']),
+            'types'            => json_encode($parsedTypes['types']),
+            'subtypes'         => json_encode($parsedTypes['subtypes']),
+            'released_at'      => $c['released_at'] ?? null,
+            'promo'            => $promo,
+            'variation'        => $variation,
+            'set_type'         => $setType,
+            'oversized'        => $oversized,
+            'is_default_eligible' => $this->deriveDefaultEligible($c),
             'edhrec_rank'      => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
             'reserved'         => (bool) ($c['reserved'] ?? false),
             'commander_game_changer' => (bool) ($c['game_changer'] ?? false),
@@ -355,6 +589,89 @@ class BulkSyncService
      *
      * @param  array<int, string>  $keywords
      */
+    /**
+     * Frame effects that mark a printing as an alt treatment. Presence
+     * of ANY of these on a card disqualifies it from being a default
+     * representative. Everything else is treated as intrinsic — the
+     * ordinary frame for that card type (enchantment-frame, legendary
+     * gold border, snow, spree, lesson, tombstone, devoid, miracle,
+     * companion stamp, DFC layout markers, …) — which are normal
+     * printings, not alt-art variants.
+     */
+    public const ALT_FRAME_EFFECTS = [
+        'showcase',
+        'extendedart',
+        'etched',
+        'nyxtouched',
+        'colorshifted',
+        'inverted',
+        'shatteredglass',
+    ];
+
+    /**
+     * Border colors acceptable for a default printing. Everything else —
+     * borderless (alt-art), silver (Un-sets), gold (World Championship
+     * decks), yellow (Alchemy rebalanced / digital-only frame) — is
+     * either not tournament-legal on paper or is a collector variant.
+     */
+    public const ALLOWED_BORDER_COLORS = ['black', 'white'];
+
+    /**
+     * True when a printing is a sensible "default representative" for its
+     * oracle — a normal, non-promo, non-alt-treatment printing that a user
+     * would expect to see when browsing the catalog. Run per card during
+     * bulk sync; public for the unit test DataProvider.
+     *
+     * Rules (ALL must hold):
+     *   - nonfoil is true              — rules out foil-only alt treatments
+     *   - frame_effects contains none of ALT_FRAME_EFFECTS — the list is
+     *                                    a denylist, not an allowlist,
+     *                                    because many frame effects are
+     *                                    intrinsic to a card's nature
+     *                                    (enchantment, legendary, snow,
+     *                                    spree, tombstone, devoid, …) —
+     *                                    they'd falsely trigger an
+     *                                    allowlist approach.
+     *   - border_color in ALLOWED_BORDER_COLORS — only black/white qualify
+     *   - promo is false               — catches promo-stamped printings
+     *                                    regardless of set_type
+     *   - variation is false           — Scryfall's flag for alternate
+     *                                    versions of the same collector number
+     *   - oversized is false           — old Plane / oversized commander cards
+     *   - set_type is not in the "not default" list — even if all the
+     *     frame flags look normal, these sets never contain sensible
+     *     defaults (memorabilia / funny / token / minigame, plus
+     *     premium-product lines; see NOT_DEFAULT_SET_TYPES).
+     *
+     * Callers that want the hard-exclusion list (art_series, vanguard,
+     * planechase, archenemy as well) use INELIGIBLE_SET_TYPES at the
+     * catalog-query layer — those rows never appear in the catalog and
+     * don't need per-card marking.
+     *
+     * @param  array<string, mixed>  $c  raw Scryfall bulk card object
+     */
+    public function deriveDefaultEligible(array $c): bool
+    {
+        if (! (bool) ($c['nonfoil'] ?? false)) return false;
+
+        $frameEffects = (array) ($c['frame_effects'] ?? []);
+        if (count(array_intersect($frameEffects, self::ALT_FRAME_EFFECTS)) > 0) return false;
+
+        if (! in_array($c['border_color'] ?? null, self::ALLOWED_BORDER_COLORS, true)) {
+            return false;
+        }
+
+        if ((bool) ($c['promo']     ?? false)) return false;
+        if ((bool) ($c['variation'] ?? false)) return false;
+        if ((bool) ($c['oversized'] ?? false)) return false;
+
+        if (in_array($c['set_type'] ?? null, self::NOT_DEFAULT_SET_TYPES, true)) {
+            return false;
+        }
+
+        return true;
+    }
+
     public function derivePartnerScope(array $keywords, ?string $oracleText): ?string
     {
         if (! in_array('Partner', $keywords, true)) {
@@ -398,6 +715,10 @@ class BulkSyncService
                 'image_small', 'image_normal', 'image_large',
                 'image_small_back', 'image_normal_back', 'image_large_back',
                 'mana_cost_back', 'type_line_back', 'oracle_text_back',
+                'printed_text', 'printed_text_back',
+                'supertypes', 'types', 'subtypes',
+                'released_at', 'promo', 'variation', 'set_type',
+                'oversized', 'is_default_eligible',
                 'edhrec_rank', 'reserved',
                 'commander_game_changer', 'partner_scope',
                 'last_synced_at', 'updated_at',
@@ -425,15 +746,21 @@ class BulkSyncService
      * are processed, delete tag rows whose oracle_id is no longer in
      * scryfall_cards (orphan cleanup).
      *
+     * @param  callable|null  $onProgress  fn(int $tagsDone, int $totalTags, string $currentTag): void
+     *                                     fires once when a tag starts (count not yet incremented)
+     *                                     and again when that tag completes
      * @return array<string, int>  per-tag count of unique oracle_ids written
      */
-    public function syncOracleTags(): array
+    public function syncOracleTags(?callable $onProgress = null): array
     {
         $tags = config('scryfall.oracle_tags', []);
+        $totalTags = count($tags);
         $now = now();
         $perTagCounts = [];
+        $done = 0;
 
         foreach ($tags as $tag) {
+            if ($onProgress) $onProgress($done, $totalTags, $tag);
             $oracleIds = [];
             $page = 1;
             $hasMore = true;
@@ -475,6 +802,8 @@ class BulkSyncService
             }
 
             $perTagCounts[$tag] = count($rows);
+            $done++;
+            if ($onProgress) $onProgress($done, $totalTags, $tag);
         }
 
         // Orphan cleanup — tag rows for cards we no longer have.
