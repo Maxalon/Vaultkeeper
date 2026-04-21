@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { colorSkeletonStyle } from '../composables/useColorSkeleton'
+import CornerCountBadge from './CornerCountBadge.vue'
 import SetSymbol from './SetSymbol.vue'
 import ManaCost from './ManaCost.vue'
 
@@ -42,38 +44,9 @@ function onMouseLeave() {
 
 // Color identity skeleton — shown until the real card image loads (or as
 // the permanent placeholder for cards Scryfall doesn't return).
-const COLOR_HUE = {
-  W: '#f8f4d6',
-  U: '#0e68ab',
-  B: '#1a1410',
-  R: '#d3202a',
-  G: '#00733e',
-}
-// Canonical MTG color order: White, Blue, Black, Red, Green.
-const WUBRG_ORDER = { W: 0, U: 1, B: 2, R: 3, G: 4 }
-
-const sortedColors = computed(() => {
-  const cs = card.value.colors || []
-  return [...cs]
-    .filter((c) => c in WUBRG_ORDER)
-    .sort((a, b) => WUBRG_ORDER[a] - WUBRG_ORDER[b])
-})
-
-const skeletonStyle = computed(() => {
-  const cs = sortedColors.value
-  if (cs.length === 0) {
-    return { background: '#3a3a42' } // colorless / artifact / land
-  }
-  if (cs.length === 1) {
-    return { background: COLOR_HUE[cs[0]] }
-  }
-  if (cs.length === 2) {
-    return {
-      background: `linear-gradient(90deg, ${COLOR_HUE[cs[0]]} 0%, ${COLOR_HUE[cs[1]]} 100%)`,
-    }
-  }
-  return { background: '#c9a227' } // 3+ colors → MTG gold
-})
+// Style resolver extracted to composables/useColorSkeleton so CardStrip
+// (collection) and CatalogStrip (catalog) agree on the palette.
+const skeletonStyle = computed(() => colorSkeletonStyle(card.value.colors))
 </script>
 
 <template>
@@ -104,15 +77,11 @@ const skeletonStyle = computed(() => {
         @error="imgFailed = true"
       />
 
-      <!-- Mode B only: quarter-circle dark blob in the top-left corner that
-           sits behind the floating quantity counter. Fades out as soon as
-           the strip is hovered (the counter is sliding away from it). -->
-      <div class="arc-bg" aria-hidden="true"></div>
-
-      <!-- Mode B only: floating quantity counter. Rests in the top-left
-           corner over the arc, then slides down into the bar's left edge
-           on hover. -->
-      <span class="qty-corner">×{{ entry.quantity }}</span>
+      <!-- Mode B only: floating corner badge (arc + gold quantity text).
+           The base visual lives in CornerCountBadge; Mode B's fade-in /
+           slide-to-bar animation is applied from the outer strip below
+           via :deep() so the inner component stays mode-agnostic. -->
+      <CornerCountBadge :count="entry.quantity" />
 
       <!-- Name + mana overlay (the "bar"). In Mode A this anchors via top
            and slides on load + hover. In Mode B + loaded it's hidden when
@@ -190,10 +159,10 @@ const skeletonStyle = computed(() => {
 /* Keep the corner badge locked in place in peek mode — the mode-b default
    slides it into the bar on hover, which we don't want when the bar stays
    hidden. */
-.strip.peek-mode.mode-b.loaded:hover .qty-corner {
+.strip.peek-mode.mode-b.loaded:hover :deep(.qty-corner) {
   transform: translateY(0);
 }
-.strip.peek-mode.mode-b.loaded:hover .arc-bg {
+.strip.peek-mode.mode-b.loaded:hover :deep(.arc-bg) {
   opacity: 1;
 }
 .strip.active {
@@ -325,55 +294,25 @@ const skeletonStyle = computed(() => {
 
 /* ─────────────────────────────────────────────────────────────────────
    Mode B only — corner quantity badge with arc background
+   The visual lives in CornerCountBadge; Mode B animations reach in
+   via :deep() to drive opacity (fade-in) and transform (slide to the
+   overlay bar on hover). Mode A leaves the badge hidden.
    ───────────────────────────────────────────────────────────────────── */
 
-/* Both arc and corner counter are always rendered but invisible by
-   default; they only fade in when the strip is in Mode B AND the card
-   image has loaded. Mode A is unaffected. */
-.arc-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 32px;
-  height: 32px;
-  z-index: 2;
-  pointer-events: none;
-  /* Tight, concentrated falloff so the blob stays well inside the corner
-     and clears the printed card name area entirely. */
-  background: radial-gradient(
-    circle at top left,
-    rgba(0, 0, 0, 0.95) 0%,
-    rgba(0, 0, 0, 0.75) 40%,
-    rgba(0, 0, 0, 0) 80%
-  );
+/* Hide the badge at rest — it only exists in Mode B. */
+:deep(.corner-count-badge) {
   opacity: 0;
   transition: opacity 150ms ease-out;
 }
-.qty-corner {
-  position: absolute;
-  top: 3px;
-  left: 5px;
-  z-index: 3;
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--gold);
-  /* 1px outline via 4-direction text-shadows. text-stroke would be cleaner
-     but webkit-only. */
-  text-shadow:
-    -1px -1px 0 #000,
-     1px -1px 0 #000,
-    -1px  1px 0 #000,
-     1px  1px 0 #000,
-     0    0   2px rgba(0, 0, 0, 0.9);
-  pointer-events: none;
-  opacity: 0;
+:deep(.qty-corner) {
   transform: translateY(0);
-  transition: transform 150ms ease-out, opacity 150ms ease-out;
+  transition: transform 150ms ease-out;
+}
+:deep(.arc-bg) {
+  transition: opacity 150ms ease-out;
 }
 
-.strip.mode-b.loaded .arc-bg,
-.strip.mode-b.loaded .qty-corner {
+.strip.mode-b.loaded :deep(.corner-count-badge) {
   opacity: 1;
 }
 
@@ -381,12 +320,12 @@ const skeletonStyle = computed(() => {
    translateY = (bar-top - rest-top) + center-offset
               = (strip-expanded - strip-height - 3) + 9
               = strip-expanded - strip-height + 6 */
-.strip.mode-b.loaded:hover .qty-corner,
-.strip.mode-b.loaded.last .qty-corner {
+.strip.mode-b.loaded:hover :deep(.qty-corner),
+.strip.mode-b.loaded.last :deep(.qty-corner) {
   transform: translateY(calc(var(--strip-expanded) - var(--strip-height) + 6px));
 }
-.strip.mode-b.loaded:hover .arc-bg,
-.strip.mode-b.loaded.last .arc-bg {
+.strip.mode-b.loaded:hover :deep(.arc-bg),
+.strip.mode-b.loaded.last :deep(.arc-bg) {
   opacity: 0;
 }
 
