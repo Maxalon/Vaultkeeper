@@ -63,7 +63,14 @@ class CardSearchService
     ];
 
     /**
-     * @return array{builder: Builder, warnings: array<int, string>, sort: array{column: string, direction: string}}
+     * @param  array{disable_defaults?: bool}  $options
+     * @return array{builder: Builder, warnings: array<int, string>, sort: array{column: string, direction: string}, defaults_applied: bool}
+     *
+     * `disable_defaults=true` skips the default-hidden-type and
+     * default-playtest filters. Controller uses this as a second-pass
+     * retry when the first pass returned zero results — if the user's
+     * query happened to match *only* hidden/playtest cards, the retry
+     * surfaces them.
      */
     public function search(string $query, array $options = []): array
     {
@@ -74,7 +81,7 @@ class CardSearchService
 
         $trimmed = trim($query);
         if ($trimmed === '') {
-            return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort];
+            return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort, 'defaults_applied' => false];
         }
 
         $tokens = $this->tokenize($trimmed);
@@ -92,16 +99,21 @@ class CardSearchService
         // Default "hidden" categories the user didn't ask for. Skipped
         // entirely when the user bang-exact-matched a card name — if they
         // typed `!"Blessed Hippogriff"` they get the exact card they asked
-        // for, regardless of type or set.
-        $analysis = $this->analyzeQuery($ast);
-        if (! $analysis['hasExactMatch']) {
-            $this->applyDefaultHiddenTypeFilter($builder, $analysis['requestedHiddenTypes']);
-            if (! $analysis['isPlaytestRequested']) {
-                $this->applyDefaultPlaytestFilter($builder);
+        // for, regardless of type or set. Also skipped when the caller
+        // explicitly asks (retry path when the first pass found nothing).
+        $defaultsApplied = false;
+        if (! ($options['disable_defaults'] ?? false)) {
+            $analysis = $this->analyzeQuery($ast);
+            if (! $analysis['hasExactMatch']) {
+                $this->applyDefaultHiddenTypeFilter($builder, $analysis['requestedHiddenTypes']);
+                if (! $analysis['isPlaytestRequested']) {
+                    $this->applyDefaultPlaytestFilter($builder);
+                }
+                $defaultsApplied = true;
             }
         }
 
-        return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort];
+        return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort, 'defaults_applied' => $defaultsApplied];
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -575,7 +587,7 @@ class CardSearchService
                 $state['requestedHiddenTypes'][] = $titled;
             }
         }
-        if ($op === 'is' && strtolower($value) === 'playtest') {
+        if ($op === 'is' && in_array(strtolower($value), ['playtest', 'play-test'], true)) {
             $state['isPlaytestRequested'] = true;
         }
     }
@@ -1076,6 +1088,9 @@ class CardSearchService
      */
     private function applyIsClause(Builder $b, string $value, array &$warnings): void
     {
+        // `is:play-test` is accepted as a hyphen-alias of `is:playtest`.
+        if ($value === 'play-test') $value = 'playtest';
+
         if (! in_array($value, self::IS_VALUES, true)) {
             $warnings[] = "is:{$value} is not supported";
             return;
