@@ -140,8 +140,14 @@ class ScryfallCardController extends Controller
             . "FROM sets"
             . ") ms ON ms.code = scryfall_cards.set_code";
         $excluded = "'" . implode("','", BulkSyncService::INELIGIBLE_SET_TYPES) . "'";
+        // Playtest sets live under set_type='funny' in our current data
+        // (cmb1, cmb2). They're carved out so is:playtest can surface them;
+        // the soft filter in CardSearchService hides them by default.
+        $playtestExemption = empty(BulkSyncService::PLAYTEST_SET_CODES)
+            ? ''
+            : " OR scryfall_cards.set_code IN ('" . implode("','", BulkSyncService::PLAYTEST_SET_CODES) . "')";
         $setTypeFilter =
-            "(ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}))";
+            "(ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}){$playtestExemption})";
 
         $whereClause = $innerSql === ''
             ? "WHERE {$setTypeFilter}"
@@ -253,10 +259,11 @@ class ScryfallCardController extends Controller
         $userId = auth()->id();
         $oracleId = $data['oracle_id'];
 
-        // Same hard exclusion as search — art_series / tokens / memorabilia
-        // / funny / vanguard / planechase / archenemy never appear as a
-        // selectable printing.
+        // Same hard exclusion as search.
         $excluded = "'" . implode("','", BulkSyncService::INELIGIBLE_SET_TYPES) . "'";
+        $playtestExemption = empty(BulkSyncService::PLAYTEST_SET_CODES)
+            ? ''
+            : " OR sc.set_code IN ('" . implode("','", BulkSyncService::PLAYTEST_SET_CODES) . "')";
 
         $rows = DB::select("
             SELECT sc.*,
@@ -266,7 +273,7 @@ class ScryfallCardController extends Controller
             FROM scryfall_cards sc
             LEFT JOIN sets ms ON ms.code = sc.set_code
             WHERE sc.oracle_id = ?
-              AND (ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}))
+              AND (ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}){$playtestExemption})
             ORDER BY COALESCE(sc.released_at, ms.released_at) DESC, sc.set_code ASC
         ", [$oracleId]);
 

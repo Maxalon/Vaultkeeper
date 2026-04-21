@@ -305,4 +305,76 @@ class CardSearchServiceTest extends TestCase
         $this->assertStringContainsString('json_overlaps(keywords', $sql);
         $this->assertContains('["Flying"]', $out['builder']->getBindings());
     }
+
+    public function test_a_prefix_sort_strips_leading_a_dash(): void
+    {
+        $svc = $this->svc();
+        $out = $svc->buildOrderBy(['column' => 'name', 'direction' => 'asc']);
+        // A-rebalanced cards should sort by the non-prefixed name so they
+        // don't clump at the top.
+        $this->assertStringContainsString("IF(name LIKE 'A-%', SUBSTRING(name, 3), name)", $out);
+    }
+
+    public function test_build_order_by_cmc_uses_sortable_name_tiebreak(): void
+    {
+        $out = $this->svc()->buildOrderBy(['column' => 'cmc', 'direction' => 'asc']);
+        $this->assertStringContainsString('SUBSTRING(name, 3)', $out);
+    }
+
+    public function test_default_hidden_types_excluded_by_default(): void
+    {
+        $out = $this->svc()->search('bare text');
+        $sql = strtolower($out['builder']->toSql());
+        $this->assertStringContainsString('not json_overlaps(types', $sql);
+        // Verify the full hidden-type list was sent.
+        $this->assertContains(
+            json_encode(['Scheme', 'Plane', 'Phenomenon', 'Vanguard', 'Conspiracy', 'Dungeon']),
+            $out['builder']->getBindings(),
+        );
+    }
+
+    public function test_t_scheme_drops_scheme_from_hidden(): void
+    {
+        $out = $this->svc()->search('t:scheme');
+        $bindings = $out['builder']->getBindings();
+        // The NOT JSON_OVERLAPS payload should no longer include 'Scheme'.
+        // Other hidden types stay.
+        $hiddenPayload = json_encode(['Plane', 'Phenomenon', 'Vanguard', 'Conspiracy', 'Dungeon']);
+        $this->assertContains($hiddenPayload, $bindings);
+    }
+
+    public function test_exact_bang_match_disables_hidden_filter(): void
+    {
+        $out = $this->svc()->search('!"Every Hope Shall Vanish"');
+        $sql = strtolower($out['builder']->toSql());
+        // Exact match → no default hiding.
+        $this->assertStringNotContainsString('not json_overlaps(types', $sql);
+    }
+
+    public function test_playtest_hidden_by_default(): void
+    {
+        $out = $this->svc()->search('lightning');
+        $sql = $out['builder']->toSql();
+        $this->assertStringContainsString("`scryfall_cards`.`set_type` !=", $sql);
+        $bindings = $out['builder']->getBindings();
+        $this->assertContains('playtest', $bindings);
+    }
+
+    public function test_is_playtest_surfaces_playtest_and_disables_default_hide(): void
+    {
+        $out = $this->svc()->search('is:playtest');
+        $sql = $out['builder']->toSql();
+        $bindings = $out['builder']->getBindings();
+        $this->assertContains('playtest', $bindings);
+        // The default hide should NOT also be applied.
+        $this->assertStringNotContainsString("`scryfall_cards`.`set_type` != ?", $sql);
+    }
+
+    public function test_is_playtest_clause_matches_set_type_or_codes(): void
+    {
+        $out = $this->svc()->search('is:playtest');
+        $sql = strtolower($out['builder']->toSql());
+        $this->assertStringContainsString('`scryfall_cards`.`set_type` =', $sql);
+        $this->assertStringContainsString('`scryfall_cards`.`set_code` in', $sql);
+    }
 }
