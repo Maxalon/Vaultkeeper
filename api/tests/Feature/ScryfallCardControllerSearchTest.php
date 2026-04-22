@@ -7,12 +7,16 @@ use App\Models\Deck;
 use App\Models\DeckEntry;
 use App\Models\ScryfallCard;
 use App\Models\User;
+use App\Services\BulkSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
- * End-to-end search endpoint tests. Hits the window-wrapped oracle-grouping
- * query with real data so we catch SQL issues early.
+ * End-to-end search endpoint tests. Hits the scryfall_oracles-backed search
+ * with real data so we catch SQL issues early. Each test seeds scryfall_cards
+ * first, then getSearchJson() rebuilds the oracle table before issuing the
+ * request — matching what scryfall:sync-bulk does in production.
  */
 class ScryfallCardControllerSearchTest extends TestCase
 {
@@ -31,6 +35,17 @@ class ScryfallCardControllerSearchTest extends TestCase
     private function headers(): array
     {
         return ['Authorization' => "Bearer {$this->token}"];
+    }
+
+    /**
+     * Rebuild scryfall_oracles from the current scryfall_cards fixtures,
+     * then issue the GET with auth headers. Every test should go through
+     * this helper so the oracle table is in sync with the seeded printings.
+     */
+    private function getSearchJson(string $path): TestResponse
+    {
+        app(BulkSyncService::class)->syncOracleTable();
+        return $this->withHeaders($this->headers())->getJson($path);
     }
 
     public function test_search_returns_one_row_per_oracle(): void
@@ -56,19 +71,24 @@ class ScryfallCardControllerSearchTest extends TestCase
             'subtypes'   => ['Elf', 'Druid'],
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson('/api/scryfall-cards/search?q=llanowar');
+        $resp = $this->getSearchJson('/api/scryfall-cards/search?q=llanowar');
 
         $resp->assertOk();
         $this->assertCount(1, $resp->json('data'));
         $this->assertSame(2, $resp->json('data.0.printing_count'));
     }
 
-    public function test_representative_prefers_owned_printing(): void
+    /**
+     * The default representative is now user-agnostic and resolved at
+     * sync time: is_default_eligible → non-promo → newest released_at →
+     * set_code → collector_number. Ownership only affects the aggregate
+     * owned_count (see #30's "Behaviour tradeoff to flag" in the plan).
+     */
+    public function test_representative_picks_newest_default_eligible(): void
     {
         $oracleId = '00000000-0000-0000-0000-000000000002';
 
-        $olderOwned = ScryfallCard::factory()->create([
+        $older = ScryfallCard::factory()->create([
             'oracle_id'           => $oracleId,
             'name'                => 'Sol Ring',
             'set_code'            => 'old',
@@ -76,7 +96,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'is_default_eligible' => true,
             'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
         ]);
-        ScryfallCard::factory()->create([
+        $newer = ScryfallCard::factory()->create([
             'oracle_id'           => $oracleId,
             'name'                => 'Sol Ring',
             'set_code'            => 'new',
@@ -85,20 +105,19 @@ class ScryfallCardControllerSearchTest extends TestCase
             'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
         ]);
 
-        // User owns the older printing.
+        // User owns the older printing — should no longer sway the rep.
         CollectionEntry::create([
             'user_id'     => $this->user->id,
-            'scryfall_id' => $olderOwned->scryfall_id,
+            'scryfall_id' => $older->scryfall_id,
             'quantity'    => 1,
             'condition'   => 'nm',
             'foil'        => false,
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson('/api/scryfall-cards/search?q=sol ring');
+        $resp = $this->getSearchJson('/api/scryfall-cards/search?q=sol ring');
 
         $resp->assertOk();
-        $this->assertSame($olderOwned->scryfall_id, $resp->json('data.0.scryfall_id'));
+        $this->assertSame($newer->scryfall_id, $resp->json('data.0.scryfall_id'));
         $this->assertSame(1, $resp->json('data.0.owned_count'));
     }
 
@@ -122,8 +141,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'foil'        => false,
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson('/api/scryfall-cards/search?owned_only=1');
+        $resp = $this->getSearchJson('/api/scryfall-cards/search?owned_only=1');
 
         $resp->assertOk();
         $this->assertSame(1, $resp->json('total'));
@@ -139,8 +157,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'format'  => 'commander',
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson("/api/scryfall-cards/search?deck_id={$otherDeck->id}");
+        $resp = $this->getSearchJson("/api/scryfall-cards/search?deck_id={$otherDeck->id}");
 
         $resp->assertNotFound();
     }
@@ -170,8 +187,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson("/api/scryfall-cards/search?deck_id={$deck->id}");
+        $resp = $this->getSearchJson("/api/scryfall-cards/search?deck_id={$deck->id}");
 
         $resp->assertOk();
         $names = collect($resp->json('data'))->pluck('name')->all();
@@ -196,8 +212,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'supertypes' => [], 'types' => ['Instant'], 'subtypes' => [],
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson("/api/scryfall-cards/search?deck_id={$deck->id}&apply_identity=0&q=lightning");
+        $resp = $this->getSearchJson("/api/scryfall-cards/search?deck_id={$deck->id}&apply_identity=0&q=lightning");
 
         $resp->assertOk();
         $this->assertSame(1, $resp->json('total'));
@@ -210,8 +225,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson('/api/scryfall-cards/search?q=art:terese');
+        $resp = $this->getSearchJson('/api/scryfall-cards/search?q=art:terese');
 
         $resp->assertOk();
         $this->assertNotEmpty($resp->json('warnings'));
@@ -238,8 +252,7 @@ class ScryfallCardControllerSearchTest extends TestCase
             'quantity' => 1, 'condition' => 'nm', 'foil' => false,
         ]);
 
-        $resp = $this->withHeaders($this->headers())
-            ->getJson('/api/scryfall-cards/search?q=sol');
+        $resp = $this->getSearchJson('/api/scryfall-cards/search?q=sol');
 
         $resp->assertOk();
         $this->assertSame(3, $resp->json('data.0.owned_count'));
@@ -270,13 +283,11 @@ class ScryfallCardControllerSearchTest extends TestCase
         ]);
 
         // Without deck_id: wanted_by_others = 3 (both decks).
-        $resp = $this->withHeaders($this->headers())
-            ->getJson('/api/scryfall-cards/search?q=rampant');
+        $resp = $this->getSearchJson('/api/scryfall-cards/search?q=rampant');
         $this->assertSame(3, $resp->json('data.0.wanted_by_others'));
 
         // With deck_id=X: wanted_by_others = 1 (only Y counts).
-        $resp = $this->withHeaders($this->headers())
-            ->getJson("/api/scryfall-cards/search?q=rampant&deck_id={$deckX->id}&apply_format=0&apply_identity=0");
+        $resp = $this->getSearchJson("/api/scryfall-cards/search?q=rampant&deck_id={$deckX->id}&apply_format=0&apply_identity=0");
         $this->assertSame(1, $resp->json('data.0.wanted_by_others'));
     }
 }
