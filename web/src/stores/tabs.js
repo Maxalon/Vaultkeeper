@@ -125,8 +125,10 @@ export const useTabsStore = defineStore('tabs', {
     /**
      * Open or focus a tab of the given type. Single-instance types reuse
      * an existing tab; multi-instance types always create a new one.
+     * If panelId is provided, new tabs land in that leaf; otherwise the
+     * first leaf is used.
      */
-    openTab(type, options = {}) {
+    openTab(type, options = {}, panelId = null) {
       if (SINGLE_INSTANCE.has(type)) {
         const hit = findFirstTabByType(this.root, type)
         if (hit) {
@@ -135,9 +137,12 @@ export const useTabsStore = defineStore('tabs', {
           return hit.tab.id
         }
       }
-      // Append to the first leaf.
-      const leaves = allLeaves(this.root)
-      const target = leaves[0]
+      let target = null
+      if (panelId) {
+        const hit = findNode(this.root, panelId)
+        if (hit && hit.node.type === 'leaf') target = hit.node
+      }
+      if (!target) target = allLeaves(this.root)[0]
       const tab = {
         id: nanoid(8),
         type,

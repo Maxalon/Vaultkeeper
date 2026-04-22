@@ -135,7 +135,7 @@ button.primary {
 }
 button.primary:hover { background: color-mix(in oklab, var(--vk-gold) 80%, white); }
 
-input, select, textarea {
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   font-family: inherit;
   font-size: inherit;
   background: var(--vk-bg-0);
@@ -145,7 +145,7 @@ input, select, textarea {
   padding: 8px 10px;
   width: 100%;
 }
-input:focus, select:focus, textarea:focus {
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--vk-gold-dim);
 }

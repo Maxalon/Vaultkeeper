@@ -8,8 +8,8 @@ defineProps({
 <template>
   <div class="commander-strip">
     <img
-      v-if="card.image_small || card.image_normal"
-      :src="card.image_small || card.image_normal"
+      v-if="card.image_normal || card.image_small"
+      :src="card.image_normal || card.image_small"
       :alt="card.name"
     />
     <div v-else class="strip-fallback">{{ card.name }}</div>

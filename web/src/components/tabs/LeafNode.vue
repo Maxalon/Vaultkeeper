@@ -97,8 +97,8 @@ function findTabsOwner(id) {
   return null
 }
 
-function onOpenCatalog() {
-  tabs.openTab('catalog', {})
+function onOpenCatalog(panelId) {
+  tabs.openTab('catalog', {}, panelId || props.node.id)
 }
 
 function onAddToDeck(payload) {

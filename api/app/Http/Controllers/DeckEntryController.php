@@ -163,7 +163,7 @@ class DeckEntryController extends Controller
     // Category resolution
     // ─────────────────────────────────────────────────────────────────────
 
-    private function autoCategory(ScryfallCard $card): ?string
+    public function autoCategory(ScryfallCard $card): ?string
     {
         $allowlist = (array) config('scryfall.oracle_tags', []);
         if ($card->oracle_id) {

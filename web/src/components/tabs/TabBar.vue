@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref } from 'vue'
 import { useTabsStore } from '../../stores/tabs'
 import { useDeckStore } from '../../stores/deck'
 
@@ -12,6 +12,38 @@ const tabs = useTabsStore()
 const deck = useDeckStore()
 
 const menuOpen = ref(false)
+const addBtnRef = ref(null)
+const menuStyle = ref({ top: '0px', left: '0px' })
+
+async function toggleMenu() {
+  if (menuOpen.value) {
+    menuOpen.value = false
+    return
+  }
+  menuOpen.value = true
+  await nextTick()
+  if (addBtnRef.value) {
+    const rect = addBtnRef.value.getBoundingClientRect()
+    menuStyle.value = {
+      top: `${rect.bottom}px`,
+      left: `${rect.left}px`,
+    }
+  }
+  document.addEventListener('mousedown', onDocMouseDown, true)
+}
+
+function onDocMouseDown(e) {
+  if (!menuOpen.value) return
+  const target = e.target
+  if (addBtnRef.value && addBtnRef.value.contains(target)) return
+  if (target.closest && target.closest('.tab-add-menu')) return
+  menuOpen.value = false
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+}
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+})
 
 function onTabClick(i) {
   tabs.setActiveTab(props.node.id, i)
@@ -42,8 +74,9 @@ function onDragStart(e, tab) {
 
 function addTab(type) {
   menuOpen.value = false
-  if (type === 'catalog') emit('open-catalog')
-  else tabs.openTab(type)
+  document.removeEventListener('mousedown', onDocMouseDown, true)
+  if (type === 'catalog') emit('open-catalog', props.node.id)
+  else tabs.openTab(type, {}, props.node.id)
 }
 </script>
 
@@ -75,14 +108,16 @@ function addTab(type) {
     </div>
 
     <div class="tab-add">
-      <button type="button" class="tab-add-btn" @click="menuOpen = !menuOpen">+</button>
-      <div v-if="menuOpen" class="tab-add-menu" @mouseleave="menuOpen = false">
-        <button type="button" @click="addTab('catalog')">Catalog</button>
-        <button type="button" @click="addTab('analysis')">Analysis</button>
-        <button type="button" @click="addTab('illegalities')">Illegalities</button>
-      </div>
+      <button ref="addBtnRef" type="button" class="tab-add-btn" @click="toggleMenu">+</button>
     </div>
   </div>
+  <Teleport to="body">
+    <div v-if="menuOpen" class="tab-add-menu" :style="menuStyle">
+      <button type="button" @click="addTab('catalog')">Catalog</button>
+      <button type="button" @click="addTab('analysis')">Analysis</button>
+      <button type="button" @click="addTab('illegalities')">Illegalities</button>
+    </div>
+  </Teleport>
 </template>
 
 <style>
@@ -136,13 +171,11 @@ function addTab(type) {
 }
 .tab-add-btn:hover { background: var(--vk-surface-raised, #26241f); }
 .tab-add-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
+  position: fixed;
   background: var(--vk-surface-raised, #26241f);
   border: 1px solid var(--vk-border, #33312c);
   border-radius: 4px;
-  z-index: 10;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   min-width: 140px;

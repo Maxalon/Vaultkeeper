@@ -194,7 +194,7 @@ class BulkSyncService
      * Populate $this->multiWordSubtypes from mtg_type_catalog. Call after
      * syncTypeCatalog() and before the first applyBulkCardData() invocation.
      */
-    private function loadMultiWordSubtypes(): void
+    public function loadMultiWordSubtypes(): void
     {
         $this->multiWordSubtypes = MtgType::query()
             ->whereIn('category', MtgType::SUBTYPE_CATEGORIES)
@@ -453,7 +453,7 @@ class BulkSyncService
      * @param  array<string, mixed>  $c
      * @return array<string, mixed>|null
      */
-    private function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
+    public function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
     {
         if (! isset($c['id'], $c['name'], $c['set'])) {
             return null;
@@ -725,7 +725,7 @@ class BulkSyncService
     }
 
     /** Batch upsert helper for scryfall_cards. */
-    private function flushScryfallCards(array $rows): void
+    public function flushScryfallCards(array $rows): void
     {
         ScryfallCard::upsert(
             $rows,

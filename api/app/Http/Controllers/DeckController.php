@@ -23,9 +23,9 @@ class DeckController extends Controller
         $userId = auth()->id();
         $decks = Deck::query()
             ->where('user_id', $userId)
-            ->with(['commander1:scryfall_id,name,image_small,color_identity,commander_game_changer',
-                    'commander2:scryfall_id,name,image_small,color_identity,commander_game_changer',
-                    'companion:scryfall_id,name,image_small,color_identity,keywords'])
+            ->with(['commander1:scryfall_id,name,image_small,image_normal,color_identity,commander_game_changer',
+                    'commander2:scryfall_id,name,image_small,image_normal,color_identity,commander_game_changer',
+                    'companion:scryfall_id,name,image_small,image_normal,color_identity,keywords'])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -221,6 +221,7 @@ class DeckController extends Controller
             'scryfall_id'            => $card->scryfall_id,
             'name'                   => $card->name,
             'image_small'            => $card->image_small,
+            'image_normal'           => $card->image_normal,
             'color_identity'         => $card->color_identity,
             'commander_game_changer' => (bool) $card->commander_game_changer,
         ];
@@ -235,6 +236,7 @@ class DeckController extends Controller
             'scryfall_id'    => $card->scryfall_id,
             'name'           => $card->name,
             'image_small'    => $card->image_small,
+            'image_normal'   => $card->image_normal,
             'color_identity' => $card->color_identity,
             'keywords'       => $card->keywords,
         ];

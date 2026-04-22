@@ -1,10 +1,12 @@
 <script setup>
+import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import DeckInfoPanel from './DeckInfoPanel.vue'
 import CommanderZone from './CommanderZone.vue'
 import DeckFilterBar from './DeckFilterBar.vue'
 import DeckGrid from './DeckGrid.vue'
 import ZoneDivider from './ZoneDivider.vue'
+import LocationModal from '../LocationModal.vue'
 
 defineProps({
   zone: { type: String, default: null },  // when set (side|maybe), render only that zone
@@ -12,9 +14,23 @@ defineProps({
 
 const deck = useDeckStore()
 
+const editOpen = ref(false)
+const editLocation = computed(() =>
+  deck.deck ? { ...deck.deck, kind: 'deck' } : null,
+)
+
 function onEdit() {
-  // LocationModal extension (Part 9) hooks here; stub event for now.
-  window.dispatchEvent(new CustomEvent('vk-edit-deck', { detail: { deckId: deck.deck?.id } }))
+  if (deck.deck) editOpen.value = true
+}
+async function onEditClosed() {
+  editOpen.value = false
+  const id = deck.deck?.id
+  if (!id) return
+  await Promise.all([
+    deck.loadDeck(id),
+    deck.loadEntries(id),
+    deck.loadIllegalities(id),
+  ])
 }
 </script>
 
@@ -48,6 +64,11 @@ function onEdit() {
       </template>
     </template>
   </div>
+  <LocationModal
+    v-if="editOpen && editLocation"
+    :location="editLocation"
+    @close="onEditClosed"
+  />
 </template>
 
 <style scoped>

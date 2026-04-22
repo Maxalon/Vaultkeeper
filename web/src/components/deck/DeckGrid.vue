@@ -51,7 +51,9 @@ function typeOf(card) {
 
 const filtered = computed(() => {
   const q = (deck.view.search || '').trim().toLowerCase()
-  const zoneEntries = deck.entriesByZone(props.zone)
+  const zoneEntries = deck.entriesByZone(props.zone).filter(
+    (e) => !e.is_commander && !e.is_signature_spell,
+  )
   if (!q) return zoneEntries
   return zoneEntries.filter((e) =>
     (e.scryfall_card?.name || '').toLowerCase().includes(q),
