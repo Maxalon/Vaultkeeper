@@ -1023,4 +1023,153 @@ class BulkSyncService
 
         return ['set' => $setCode, 'cards' => $count];
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Oracle table (catalog search acceleration — issue #30)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * WUBRG bit-mask from a sequence of colour letters. W=1, U=2, B=4,
+     * R=8, G=16; unknown letters are ignored; duplicates are deduped so
+     * `['W','W']` and `['W']` both yield 1. Public so tests can exercise
+     * it directly and the controller can bind deck-identity predicates.
+     *
+     * @param  array<int, string>|null  $letters
+     */
+    public static function buildColorBits(?array $letters): int
+    {
+        if ($letters === null) {
+            return 0;
+        }
+        $bit = ['W' => 1, 'U' => 2, 'B' => 4, 'R' => 8, 'G' => 16];
+        $mask = 0;
+        foreach ($letters as $l) {
+            $m = $bit[strtoupper((string) $l)] ?? 0;
+            $mask |= $m;
+        }
+        return $mask;
+    }
+
+    /**
+     * Rebuild scryfall_oracles from scryfall_cards. One row per oracle_id.
+     *
+     * - Picks the default representative printing with the same priority
+     *   order the controller used to resolve on every query (minus the
+     *   user-specific "owned wins" tier — default rep is user-agnostic).
+     * - Aggregates printing_count, max_released_at, is_playtest_any, and
+     *   excluded_from_catalog (set_type hard-exclude rolled up to oracle
+     *   grain) so the search path doesn't need the sets LEFT JOIN anymore.
+     * - Computes color_identity_bits / colors_bits via JSON_CONTAINS so
+     *   parser color clauses collapse to a single integer op.
+     *
+     * Idempotent: TRUNCATE + INSERT SELECT. Run after handleMigrations so
+     * post-merge scryfall_ids are reflected in default_scryfall_id.
+     *
+     * @return array{oracles: int}
+     */
+    public function syncOracleTable(): array
+    {
+        $excludedList = "'" . implode("','", self::INELIGIBLE_SET_TYPES) . "'";
+
+        DB::statement('TRUNCATE TABLE scryfall_oracles');
+
+        DB::statement(<<<SQL
+            INSERT INTO scryfall_oracles (
+                oracle_id,
+                default_scryfall_id, default_set_code, default_collector_number,
+                default_released_at, default_rarity,
+                default_image_small, default_image_normal, default_image_large,
+                name, layout, is_dfc, mana_cost, cmc, colors, color_identity,
+                type_line, supertypes, types, subtypes,
+                oracle_text, printed_text, power, toughness, loyalty,
+                legalities, keywords, edhrec_rank, reserved,
+                commander_game_changer, partner_scope,
+                mana_cost_back, type_line_back, oracle_text_back, printed_text_back,
+                image_small_back, image_normal_back, image_large_back,
+                printing_count, max_released_at,
+                is_playtest_any, excluded_from_catalog,
+                is_transform, is_mdfc, is_flip, is_meld, is_split, is_leveler,
+                color_identity_bits, colors_bits,
+                last_synced_at, created_at, updated_at
+            )
+            SELECT
+                reps.oracle_id,
+                reps.scryfall_id, reps.set_code, reps.collector_number,
+                reps.released_at, reps.rarity,
+                reps.image_small, reps.image_normal, reps.image_large,
+                reps.name, reps.layout, reps.is_dfc, reps.mana_cost, reps.cmc,
+                reps.colors, reps.color_identity,
+                reps.type_line, reps.supertypes, reps.types, reps.subtypes,
+                reps.oracle_text, reps.printed_text,
+                reps.power, reps.toughness, reps.loyalty,
+                reps.legalities, reps.keywords, reps.edhrec_rank, reps.reserved,
+                reps.commander_game_changer, reps.partner_scope,
+                reps.mana_cost_back, reps.type_line_back,
+                reps.oracle_text_back, reps.printed_text_back,
+                reps.image_small_back, reps.image_normal_back, reps.image_large_back,
+                aggs.printing_count, aggs.max_released_at,
+                aggs.is_playtest_any, aggs.excluded_from_catalog,
+                (reps.layout = 'transform'),
+                (reps.layout = 'modal_dfc'),
+                (reps.layout = 'flip'),
+                (reps.layout = 'meld'),
+                (reps.layout = 'split'),
+                (reps.layout = 'leveler'),
+                (COALESCE(JSON_CONTAINS(reps.color_identity, '"W"'), 0) * 1
+                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"U"'), 0) * 2
+                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"B"'), 0) * 4
+                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"R"'), 0) * 8
+                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"G"'), 0) * 16),
+                (COALESCE(JSON_CONTAINS(reps.colors, '"W"'), 0) * 1
+                 + COALESCE(JSON_CONTAINS(reps.colors, '"U"'), 0) * 2
+                 + COALESCE(JSON_CONTAINS(reps.colors, '"B"'), 0) * 4
+                 + COALESCE(JSON_CONTAINS(reps.colors, '"R"'), 0) * 8
+                 + COALESCE(JSON_CONTAINS(reps.colors, '"G"'), 0) * 16),
+                NOW(), NOW(), NOW()
+            FROM (
+                SELECT sc.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY sc.oracle_id
+                           ORDER BY
+                               CASE WHEN sc.is_default_eligible THEN 0 ELSE 1 END,
+                               sc.promo ASC,
+                               COALESCE(sc.released_at, ms.released_at) DESC,
+                               sc.set_code ASC,
+                               -- collector_number can be '14p', '★123',
+                               -- 'prerelease'… extract leading/embedded
+                               -- digits via REGEXP_SUBSTR so strict-mode
+                               -- INSERT doesn't trip on the cast. NULLs
+                               -- sort last under ASC when paired with a
+                               -- string fallback.
+                               CAST(REGEXP_SUBSTR(sc.collector_number, '[0-9]+') AS UNSIGNED) ASC,
+                               sc.collector_number ASC
+                       ) AS rn
+                FROM scryfall_cards sc
+                LEFT JOIN sets ms ON ms.code = sc.set_code
+            ) reps
+            JOIN (
+                SELECT
+                    sc.oracle_id,
+                    COUNT(*) AS printing_count,
+                    MAX(COALESCE(sc.released_at, ms.released_at)) AS max_released_at,
+                    MAX(CASE WHEN sc.is_playtest THEN 1 ELSE 0 END) AS is_playtest_any,
+                    CASE WHEN SUM(
+                        CASE WHEN (ms.set_type IS NULL
+                                   OR ms.set_type NOT IN ({$excludedList})
+                                   OR sc.is_playtest = 1)
+                             THEN 1 ELSE 0 END
+                    ) = 0 THEN 1 ELSE 0 END AS excluded_from_catalog
+                FROM scryfall_cards sc
+                LEFT JOIN sets ms ON ms.code = sc.set_code
+                GROUP BY sc.oracle_id
+            ) aggs ON aggs.oracle_id = reps.oracle_id
+            WHERE reps.rn = 1
+SQL
+        );
+
+        $count = (int) DB::table('scryfall_oracles')->count();
+        Log::info("BulkSyncService::syncOracleTable — inserted {$count} oracles");
+
+        return ['oracles' => $count];
+    }
 }

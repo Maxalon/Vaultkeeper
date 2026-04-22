@@ -3,15 +3,22 @@
 namespace App\Services;
 
 use Illuminate\Database\Eloquent\Builder;
-use App\Models\ScryfallCard;
+use App\Models\ScryfallOracle;
 use App\Services\BulkSyncService;
 
 /**
  * Parses Scryfall-style search syntax into an Eloquent builder against
- * scryfall_cards. Returns {builder, warnings, sort} so the controller can:
+ * scryfall_oracles (the denormalised oracle-level table populated by
+ * BulkSyncService::syncOracleTable()). Returns {builder, warnings, sort}
+ * so the controller can:
  *   1. Apply controller-level constraints (deck_id, owned_only) on top,
- *   2. Wrap the builder in the oracle-grouping window query,
+ *   2. Issue a direct SELECT against scryfall_oracles,
  *   3. Emit the user-visible warnings list.
+ *
+ * Colour operators (c:, ci:, commander:) emit bit-mask predicates against
+ * colors_bits / color_identity_bits — indexable integer ops that replace
+ * the non-sargable JSON_CONTAINS / JSON_OVERLAPS / JSON_LENGTH chain on
+ * scryfall_cards.
  *
  * Grammar (informal):
  *   expr     := orGroup
@@ -77,7 +84,7 @@ class CardSearchService
         $warnings = [];
         $sort = ['column' => 'name', 'direction' => 'asc'];
 
-        $builder = ScryfallCard::query();
+        $builder = ScryfallOracle::query();
 
         $trimmed = trim($query);
         if ($trimmed === '') {
@@ -612,18 +619,13 @@ class CardSearchService
 
     /**
      * Hide playtest cards unless is:playtest was requested. Uses the
-     * `is_playtest` column populated at bulk sync from Scryfall's
-     * `promo_types` array — the canonical signal that catches both CMB
-     * playtest sets AND the MB2 #501-#602 playtest subset (the latter
-     * lives in a regular-looking `set_type='masters'` set, so neither a
-     * set_type nor set_code heuristic can distinguish it).
+     * `is_playtest_any` column on scryfall_oracles — true when any
+     * printing of the oracle is marked playtest at sync time (Scryfall's
+     * promo_types array, plus the CMB set-code fallback).
      */
     private function applyDefaultPlaytestFilter(Builder $b): void
     {
-        $b->where(function (Builder $q) {
-            $q->where('scryfall_cards.is_playtest', false)
-              ->orWhereNull('scryfall_cards.is_playtest');
-        });
+        $b->where('is_playtest_any', false);
     }
 
     /**
@@ -748,24 +750,24 @@ class CardSearchService
                 return;
 
             case 'color':
-                $this->applyColorClause($b, 'colors', $value, $comparator);
+                $this->applyColorClause($b, 'colors_bits', $value, $comparator);
                 return;
 
             case 'identity':
-                $this->applyColorClause($b, 'color_identity', $value, $comparator);
+                $this->applyColorClause($b, 'color_identity_bits', $value, $comparator);
                 return;
 
             case 'commander':
-                // Subset-only — no comparators allowed.
+                // Subset-only — no comparators allowed. Matches any oracle
+                // whose color identity is a subset of the commander's
+                // identity. Bit-mask form: `(bits & ~target) = 0`, which
+                // also cleanly covers colourless (bits = 0).
                 if ($comparator !== ':' && $comparator !== '=') {
                     $warnings[] = "commander: does not accept comparator '{$comparator}'";
                     return;
                 }
-                $letters = $this->parseColorLetters($value);
-                $b->whereRaw(
-                    '(JSON_LENGTH(color_identity) = 0 OR JSON_CONTAINS(?, color_identity))',
-                    [json_encode($letters)],
-                );
+                $mask = BulkSyncService::buildColorBits($this->parseColorLetters($value));
+                $b->whereRaw('(color_identity_bits & ?) = 0', [~$mask & 0b11111]);
                 return;
 
             case 'mana':
@@ -795,11 +797,25 @@ class CardSearchService
                 return;
 
             case 'set':
-                $b->where('set_code', '=', strtolower($value));
+                // "Oracle has any printing in this set." EXISTS correlated
+                // on oracle_id — preserves the per-printing semantic the
+                // window-wrapped query had, without reintroducing a JOIN.
+                $set = strtolower($value);
+                $b->whereExists(function ($q) use ($set) {
+                    $q->select('*')
+                      ->from('scryfall_cards as sc')
+                      ->whereColumn('sc.oracle_id', 'scryfall_oracles.oracle_id')
+                      ->where('sc.set_code', '=', $set);
+                });
                 return;
 
             case 'number':
-                $b->where('collector_number', '=', $value);
+                $b->whereExists(function ($q) use ($value) {
+                    $q->select('*')
+                      ->from('scryfall_cards as sc')
+                      ->whereColumn('sc.oracle_id', 'scryfall_oracles.oracle_id')
+                      ->where('sc.collector_number', '=', $value);
+                });
                 return;
 
             case 'format':
@@ -822,13 +838,12 @@ class CardSearchService
                 return;
 
             case 'otag':
-                // EXISTS subquery against card_oracle_tags. Using whereRaw
-                // so the EXISTS can reference scryfall_cards.oracle_id —
-                // the outer table's column — from within a correlated join.
+                // EXISTS subquery against card_oracle_tags, correlated on
+                // the outer scryfall_oracles.oracle_id.
                 $b->whereExists(function ($q) use ($value) {
                     $q->select('*')
                       ->from('card_oracle_tags as cot')
-                      ->whereColumn('cot.oracle_id', 'scryfall_cards.oracle_id')
+                      ->whereColumn('cot.oracle_id', 'scryfall_oracles.oracle_id')
                       ->where('cot.tag', '=', $value);
                 });
                 return;
@@ -907,69 +922,62 @@ class CardSearchService
 
     /**
      * `c:` / `ci:` with all comparators. `c:c` / `c:m` shortcuts handled
-     * before the letter parsing branch.
+     * before the letter parsing branch. Operates on the TINYINT bit-mask
+     * columns (colors_bits / color_identity_bits) — W=1, U=2, B=4, R=8,
+     * G=16. Comparators:
+     *
+     *   c:wu / c<=wu  subset of WU     — (bits & ~target) = 0
+     *   c=wu          exactly WU       — bits = target
+     *   c<wu          strict subset    — (bits & ~target) = 0 AND bits != target
+     *   c>=wu         superset         — (bits & target) = target
+     *   c>wu          strict superset  — (bits & target) = target AND bits != target
+     *   c!=wu         not exactly WU   — bits != target
+     *
+     * 0b11111 (31) is the full WUBRG mask; we AND ~target with it to
+     * normalise the complement to a 5-bit space.
      */
     private function applyColorClause(Builder $b, string $column, string $value, string $comparator): void
     {
         $lower = strtolower($value);
         if ($lower === 'c' || $lower === 'colorless') {
-            $b->whereRaw("JSON_LENGTH({$column}) = 0");
+            $b->where($column, '=', 0);
             return;
         }
         if ($lower === 'm' || $lower === 'multicolor') {
-            $b->whereRaw("JSON_LENGTH({$column}) >= 2");
+            // Two-or-more bits set — no clean bitwise form, use bit-count.
+            $b->whereRaw("BIT_COUNT({$column}) >= 2");
             return;
         }
 
-        $letters = $this->parseColorLetters($value);
-        $target = json_encode($letters);
+        $target = BulkSyncService::buildColorBits($this->parseColorLetters($value));
+        $comp = $comparator === ':' ? '>=' : $comparator;
+        $complement = ~$target & 0b11111;
 
-        switch ($comparator) {
-            case ':':
+        switch ($comp) {
             case '>=':
-                // Superset: card's color set ⊇ target letters.
-                foreach ($letters as $l) {
-                    $b->whereRaw("JSON_CONTAINS({$column}, ?)", [json_encode($l)]);
-                }
+                $b->whereRaw("({$column} & ?) = ?", [$target, $target]);
                 return;
 
             case '=':
-                $b->whereRaw("JSON_LENGTH({$column}) = ?", [count($letters)]);
-                foreach ($letters as $l) {
-                    $b->whereRaw("JSON_CONTAINS({$column}, ?)", [json_encode($l)]);
-                }
+                $b->where($column, '=', $target);
                 return;
 
             case '<=':
-                // Subset: card's set ⊆ target (no letter outside target).
-                $disallowed = array_values(array_diff(self::COLORS, $letters));
-                foreach ($disallowed as $l) {
-                    $b->whereRaw("NOT JSON_CONTAINS({$column}, ?)", [json_encode($l)]);
-                }
+                $b->whereRaw("({$column} & ?) = 0", [$complement]);
                 return;
 
             case '<':
-                $disallowed = array_values(array_diff(self::COLORS, $letters));
-                foreach ($disallowed as $l) {
-                    $b->whereRaw("NOT JSON_CONTAINS({$column}, ?)", [json_encode($l)]);
-                }
-                $b->whereRaw("JSON_LENGTH({$column}) < ?", [count($letters)]);
+                $b->whereRaw("({$column} & ?) = 0", [$complement]);
+                $b->where($column, '!=', $target);
                 return;
 
             case '>':
-                foreach ($letters as $l) {
-                    $b->whereRaw("JSON_CONTAINS({$column}, ?)", [json_encode($l)]);
-                }
-                $b->whereRaw("JSON_LENGTH({$column}) > ?", [count($letters)]);
+                $b->whereRaw("({$column} & ?) = ?", [$target, $target]);
+                $b->where($column, '!=', $target);
                 return;
 
             case '!=':
-                $b->where(function (Builder $q) use ($column, $letters) {
-                    $q->whereRaw("JSON_LENGTH({$column}) != ?", [count($letters)]);
-                    foreach ($letters as $l) {
-                        $q->orWhereRaw("NOT JSON_CONTAINS({$column}, ?)", [json_encode($l)]);
-                    }
-                });
+                $b->where($column, '!=', $target);
                 return;
         }
     }
@@ -1032,6 +1040,8 @@ class CardSearchService
 
     /**
      * `r:` with comparator uses FIELD() so `r>common` sorts by rarity rank.
+     * EXISTS correlated on scryfall_cards.oracle_id so "oracle has any
+     * printing at/above this rarity" matches the old per-printing semantic.
      *
      * @param  array<int, string>  $warnings
      */
@@ -1042,14 +1052,26 @@ class CardSearchService
             $warnings[] = "Unknown rarity: '{$value}'";
             return;
         }
+
         if ($comparator === ':' || $comparator === '=') {
-            $b->where('rarity', '=', $lower);
+            $b->whereExists(function ($q) use ($lower) {
+                $q->select('*')
+                  ->from('scryfall_cards as sc')
+                  ->whereColumn('sc.oracle_id', 'scryfall_oracles.oracle_id')
+                  ->where('sc.rarity', '=', $lower);
+            });
             return;
         }
+
         $sqlOp = $comparator;
         $rankList = "'" . implode("','", self::RARITIES) . "'";
         $target = array_search($lower, self::RARITIES, true) + 1;
-        $b->whereRaw("FIELD(rarity, {$rankList}) {$sqlOp} ?", [$target]);
+        $b->whereExists(function ($q) use ($rankList, $sqlOp, $target) {
+            $q->select('*')
+              ->from('scryfall_cards as sc')
+              ->whereColumn('sc.oracle_id', 'scryfall_oracles.oracle_id')
+              ->whereRaw("FIELD(sc.rarity, {$rankList}) {$sqlOp} ?", [$target]);
+        });
     }
 
     /**
@@ -1123,27 +1145,27 @@ class CardSearchService
                 return;
 
             case 'transform':
-                $b->where('layout', 'transform');
+                $b->where('is_transform', true);
                 return;
 
             case 'mdfc':
-                $b->where('layout', 'modal_dfc');
+                $b->where('is_mdfc', true);
                 return;
 
             case 'flip':
-                $b->where('layout', 'flip');
+                $b->where('is_flip', true);
                 return;
 
             case 'meld':
-                $b->where('layout', 'meld');
+                $b->where('is_meld', true);
                 return;
 
             case 'split':
-                $b->where('layout', 'split');
+                $b->where('is_split', true);
                 return;
 
             case 'leveler':
-                $b->where('layout', 'leveler');
+                $b->where('is_leveler', true);
                 return;
 
             case 'reserved':
@@ -1162,10 +1184,9 @@ class CardSearchService
                 return;
 
             case 'playtest':
-                // Backed by the is_playtest column which BulkSyncService
-                // populates from Scryfall's promo_types array at sync
-                // time (plus the CMB set-code fallback).
-                $b->where('scryfall_cards.is_playtest', true);
+                // is_playtest_any rolled up to oracle grain at sync time
+                // (Scryfall's promo_types array plus CMB set-code fallback).
+                $b->where('is_playtest_any', true);
                 return;
         }
     }
@@ -1197,9 +1218,11 @@ class CardSearchService
     }
 
     /**
-     * Emit the ORDER BY fragment for the outer window-wrapped query. Called
-     * by the controller after it wraps the inner WHERE. Returns a raw SQL
-     * fragment (no leading `ORDER BY`).
+     * Emit the ORDER BY fragment for the outer search query. Called by
+     * the controller after the builder is materialised. Returns a raw SQL
+     * fragment (no leading `ORDER BY`). Column references are all on
+     * scryfall_oracles (rarity / set_code map to the default printing's
+     * values stored as default_rarity / default_set_code).
      *
      * @param  array{column: string, direction: string}  $sort
      */
@@ -1215,7 +1238,7 @@ class CardSearchService
 
             case 'rarity':
                 $rankList = "'" . implode("','", self::RARITIES) . "'";
-                return "FIELD(rarity, {$rankList}) {$dir}, {$nameAsc}";
+                return "FIELD(default_rarity, {$rankList}) {$dir}, {$nameAsc}";
 
             case 'power':
                 return "power IS NULL ASC, CAST(CASE WHEN power IN ('*','X') THEN '0' ELSE power END AS SIGNED) {$dir}, {$nameAsc}";
@@ -1224,10 +1247,10 @@ class CardSearchService
                 return "toughness IS NULL ASC, CAST(CASE WHEN toughness IN ('*','X') THEN '0' ELSE toughness END AS SIGNED) {$dir}, {$nameAsc}";
 
             case 'set':
-                return "set_code {$dir}, {$nameAsc}";
+                return "default_set_code {$dir}, {$nameAsc}";
 
             case 'released':
-                return "oracle_max_released {$dir}, {$nameAsc}";
+                return "max_released_at {$dir}, {$nameAsc}";
 
             case 'edhrec':
                 return "edhrec_rank IS NULL ASC, edhrec_rank {$dir}, {$nameAsc}";

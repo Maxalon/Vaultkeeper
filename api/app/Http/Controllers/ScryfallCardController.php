@@ -6,6 +6,7 @@ use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
 use App\Models\ScryfallCard;
+use App\Models\ScryfallOracle;
 use App\Services\BulkSyncService;
 use App\Services\CardSearchService;
 use Illuminate\Http\JsonResponse;
@@ -93,10 +94,9 @@ class ScryfallCardController extends Controller
                 }
                 if ($applyIdentity) {
                     $deckIdentity = $this->parseDeckIdentity($deck->color_identity);
-                    $builder->whereRaw(
-                        '(JSON_LENGTH(color_identity) = 0 OR JSON_CONTAINS(?, color_identity))',
-                        [json_encode($deckIdentity)],
-                    );
+                    $mask = BulkSyncService::buildColorBits($deckIdentity);
+                    // Subset: oracle's identity must be a subset of the deck's.
+                    $builder->whereRaw('(color_identity_bits & ?) = 0', [~$mask & 0b11111]);
                 }
             }
 
@@ -114,10 +114,9 @@ class ScryfallCardController extends Controller
         $warnings      = $parsed['warnings'];
         $sort          = $parsed['sort'];
 
-        // Guardrail: the window-wrapped query is a full-table scan of
-        // scryfall_cards (~110k rows, ~30k oracles) when there's nothing
-        // in WHERE. That sort takes 10+ minutes and saturates PHP-FPM.
-        // Require at least ONE constraint — filter, deck_id, or owned_only.
+        // Guardrail: even on the much smaller scryfall_oracles (~37k
+        // rows) a naked query can't feed the deckbuilder — require at
+        // least one filter, deck_id, or owned_only.
         $hasConstraint =
             $innerSql !== ''
             || ! empty($data['deck_id'])
@@ -135,121 +134,64 @@ class ScryfallCardController extends Controller
             ]);
         }
 
-        // 4. Build the window-wrapped query. ow.qty_owned is LEFT-JOINed
-        //    so non-owned oracles still have a rep picked.
+        // Direct SELECT against scryfall_oracles. No window function —
+        // the table is pre-grouped by oracle_id. Excluded-set hard filter
+        // is a pre-baked column rather than a sets LEFT JOIN. See #30.
         $uid = (int) $userId;
 
         $ownershipJoin = "LEFT JOIN ("
-            . "SELECT ce.scryfall_id, SUM(ce.quantity) AS qty_owned "
+            . "SELECT sc.oracle_id, SUM(ce.quantity) AS qty_owned "
             . "FROM collection_entries ce "
+            . "JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id "
             . "WHERE ce.user_id = {$uid} "
-            . "GROUP BY ce.scryfall_id"
-            . ") ow ON ow.scryfall_id = scryfall_cards.scryfall_id";
+            . "GROUP BY sc.oracle_id"
+            . ") ow ON ow.oracle_id = scryfall_oracles.oracle_id";
 
-        // Always-on JOIN to sets so we can (a) hard-exclude art_series /
-        // token / memorabilia / funny / vanguard / planechase / archenemy
-        // printings, and (b) fall back to sets.released_at for the
-        // representative-picking sort while scryfall_cards.released_at is
-        // still NULL on rows that haven't been resynced through the new
-        // mapping yet.
-        //
-        // The sets table exposes `name` and other columns that collide
-        // with scryfall_cards (the CardSearchService emits unqualified
-        // `name LIKE ?` on bare-text queries). Wrap the lookup in a
-        // subquery that only projects the columns we actually need.
-        $setJoin = "LEFT JOIN ("
-            . "SELECT code, set_type, released_at AS set_released_at "
-            . "FROM sets"
-            . ") ms ON ms.code = scryfall_cards.set_code";
-        $excluded = "'" . implode("','", BulkSyncService::INELIGIBLE_SET_TYPES) . "'";
-        // Playtest-marked cards (via is_playtest column) carve through the
-        // set_type hard exclusion — CMB sets are filed under 'funny', which
-        // is hard-excluded for Un-sets, so without this exemption is:playtest
-        // couldn't reach them. Soft filter in CardSearchService still hides
-        // them by default.
-        $setTypeFilter =
-            "(ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}) OR scryfall_cards.is_playtest = 1)";
-
-        $outerOwnedFilter = $ownedOnly ? 'AND qty_owned > 0' : '';
+        $ownedOnlyFilter = $ownedOnly ? 'AND ow.qty_owned > 0' : '';
         $orderBy = $this->search->buildOrderBy($sort);
         $offset = ($page - 1) * $perPage;
 
-        // Sort resolution for the representative picker. Use
-        // COALESCE(scryfall_cards.released_at, ms.set_released_at) so the
-        // "newest printing wins" behaviour works on rows whose per-card
-        // released_at column is still NULL from before the catalog
-        // migration — sets.released_at is already populated by
-        // scryfall:sync-sets.
         /**
-         * Given a rendered inner WHERE + its bindings, build and run
-         * both the window (data) and count SQLs. Extracted so the retry
-         * path can reuse it verbatim.
+         * Run count + data queries for a rendered inner WHERE. Extracted
+         * so the retry path can reuse it verbatim.
          *
          * @param  array<int, mixed>  $bindings
          * @return array{rows: array<int, object>, total: int}
          */
-        $runWindow = function (string $whereFragment, array $bindings) use (
-            $ownershipJoin, $setJoin, $setTypeFilter, $outerOwnedFilter,
-            $orderBy, $ownedOnly, $perPage, $offset
+        $runQuery = function (string $whereFragment, array $bindings) use (
+            $ownershipJoin, $ownedOnlyFilter, $orderBy, $perPage, $offset
         ): array {
             $whereClause = $whereFragment === ''
-                ? "WHERE {$setTypeFilter}"
-                : "WHERE ({$whereFragment}) AND {$setTypeFilter}";
+                ? 'WHERE scryfall_oracles.excluded_from_catalog = 0'
+                : "WHERE ({$whereFragment}) AND scryfall_oracles.excluded_from_catalog = 0";
 
-            $windowSql = "
-                SELECT * FROM (
-                    SELECT scryfall_cards.*,
-                           ow.qty_owned,
-                           COALESCE(scryfall_cards.released_at, ms.set_released_at) AS effective_released,
-                           MAX(COALESCE(scryfall_cards.released_at, ms.set_released_at)) OVER (PARTITION BY scryfall_cards.oracle_id) AS oracle_max_released,
-                           COUNT(*)                                                 OVER (PARTITION BY scryfall_cards.oracle_id) AS printing_count,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY scryfall_cards.oracle_id
-                               ORDER BY
-                                   CASE WHEN ow.qty_owned > 0 THEN 0 ELSE 1 END,
-                                   CASE WHEN ow.qty_owned > 0 THEN NULL
-                                        WHEN scryfall_cards.is_default_eligible THEN 0 ELSE 1 END,
-                                   -- Within the ineligible tier, non-promo
-                                   -- printings beat promo-stamped ones.
-                                   -- Covers cards that only exist in an
-                                   -- eternal/box/masterpiece set plus a
-                                   -- promo print — the non-promo wins
-                                   -- regardless of set_code alphabet.
-                                   scryfall_cards.promo ASC,
-                                   COALESCE(scryfall_cards.released_at, ms.set_released_at) DESC,
-                                   scryfall_cards.set_code ASC,
-                                   CAST(scryfall_cards.collector_number AS UNSIGNED) ASC,
-                                   scryfall_cards.collector_number ASC
-                           ) AS rn
-                    FROM scryfall_cards
-                    {$ownershipJoin}
-                    {$setJoin}
-                    {$whereClause}
-                ) x
-                WHERE rn = 1 {$outerOwnedFilter}
+            $dataSql = "
+                SELECT scryfall_oracles.*,
+                       COALESCE(ow.qty_owned, 0) AS qty_owned
+                FROM scryfall_oracles
+                {$ownershipJoin}
+                {$whereClause}
+                {$ownedOnlyFilter}
                 ORDER BY {$orderBy}
                 LIMIT ? OFFSET ?
             ";
 
             $countSql = "
-                SELECT COUNT(*) AS n FROM (
-                    SELECT DISTINCT scryfall_cards.oracle_id
-                    FROM scryfall_cards
-                    {$ownershipJoin}
-                    {$setJoin}
-                    {$whereClause}
-                    " . ($ownedOnly ? "AND ow.qty_owned > 0" : "") . "
-                ) t
+                SELECT COUNT(*) AS n
+                FROM scryfall_oracles
+                {$ownershipJoin}
+                {$whereClause}
+                {$ownedOnlyFilter}
             ";
 
             $total = (int) DB::selectOne($countSql, $bindings)->n;
             $rows = $total > 0
-                ? DB::select($windowSql, array_merge($bindings, [$perPage, $offset]))
+                ? DB::select($dataSql, array_merge($bindings, [$perPage, $offset]))
                 : [];
             return ['rows' => $rows, 'total' => $total];
         };
 
-        $result = $runWindow($innerSql, $innerBindings);
+        $result = $runQuery($innerSql, $innerBindings);
         $rows = $result['rows'];
         $total = $result['total'];
 
@@ -263,7 +205,7 @@ class ScryfallCardController extends Controller
             $retryBuilt = $buildForOpts(['disable_defaults' => true]);
             $retryInnerSql = $retryBuilt['innerSql'];
             $retryBindings = $retryBuilt['innerBindings'];
-            $retryResult = $runWindow($retryInnerSql, $retryBindings);
+            $retryResult = $runQuery($retryInnerSql, $retryBindings);
             if ($retryResult['total'] > 0) {
                 $rows = $retryResult['rows'];
                 $total = $retryResult['total'];
@@ -484,8 +426,12 @@ class ScryfallCardController extends Controller
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Shape a raw stdClass row (from the window query) into the search
-     * response. JSON columns come back as strings — decode them here.
+     * Shape a raw stdClass row (from the scryfall_oracles SELECT) into
+     * the search response. The default printing's identifiers/images
+     * surface as `scryfall_id` / `set_code` / `collector_number` /
+     * `released_at` / `rarity` / `image_*` so the external contract
+     * matches the pre-#30 window-wrapped response. JSON columns come
+     * back as strings — decode them here.
      *
      * @param  array{owned: int, available: int, wanted_by_others: int}  $own
      * @return array<string, mixed>
@@ -493,13 +439,13 @@ class ScryfallCardController extends Controller
     private function presentRow(object $r, array $own): array
     {
         $out = [
-            'scryfall_id'      => $r->scryfall_id,
+            'scryfall_id'      => $r->default_scryfall_id,
             'oracle_id'        => $r->oracle_id,
             'name'             => $r->name,
-            'set_code'         => $r->set_code,
-            'collector_number' => $r->collector_number,
-            'released_at'      => $r->released_at,
-            'rarity'           => $r->rarity,
+            'set_code'         => $r->default_set_code,
+            'collector_number' => $r->default_collector_number,
+            'released_at'      => $r->default_released_at,
+            'rarity'           => $r->default_rarity,
             'layout'           => $r->layout,
             'is_dfc'           => (bool) $r->is_dfc,
             'mana_cost'        => $r->mana_cost,
@@ -521,9 +467,9 @@ class ScryfallCardController extends Controller
             'reserved'         => (bool) $r->reserved,
             'commander_game_changer' => (bool) $r->commander_game_changer,
             'partner_scope'    => $r->partner_scope,
-            'image_small'      => $r->image_small,
-            'image_normal'     => $r->image_normal,
-            'image_large'      => $r->image_large,
+            'image_small'      => $r->default_image_small,
+            'image_normal'     => $r->default_image_normal,
+            'image_large'      => $r->default_image_large,
             'printing_count'   => (int) $r->printing_count,
             'owned_count'      => $own['owned'],
             'available_count'  => $own['available'],
@@ -628,13 +574,13 @@ class ScryfallCardController extends Controller
 
     /**
      * Extract the WHERE fragment from an Eloquent builder so we can splice
-     * it into the window-wrapped raw SQL. Returns an empty string when the
-     * builder has no WHERE clauses. Bindings are still accessible via
-     * getBindings() on the original builder.
+     * it into the raw outer SELECT against scryfall_oracles. Returns an
+     * empty string when the builder has no WHERE clauses. Bindings are
+     * still accessible via getBindings() on the original builder.
      */
     private function extractWhereSql(\Illuminate\Database\Eloquent\Builder $builder): string
     {
-        $sql = $builder->toSql(); // "select * from `scryfall_cards` where …"
+        $sql = $builder->toSql(); // "select * from `scryfall_oracles` where …"
         if (stripos($sql, 'where') === false) {
             return '';
         }
@@ -646,9 +592,10 @@ class ScryfallCardController extends Controller
                 $wherePart = substr($wherePart, 0, $i);
             }
         }
-        // Outer FROM uses the un-aliased table name, so qualified
-        // `scryfall_cards.*` refs (from whereExists correlations) resolve
-        // directly and unqualified refs pick the sole scryfall_cards table.
+        // Outer FROM is scryfall_oracles. Qualified `scryfall_oracles.*`
+        // refs (from whereExists correlations) resolve directly; unqualified
+        // refs pick scryfall_oracles since the ownership LEFT JOIN only
+        // exposes `oracle_id` and `qty_owned`.
         return trim($wherePart);
     }
 

@@ -9,11 +9,15 @@ use Throwable;
 /**
  * Full Scryfall reference-data sync. Intended cadence: weekly.
  *
- * Runs four phases in order:
+ * Runs five phases in order:
  *   1. syncSets()         — refresh set catalogue
  *   2. syncBulkCards()    — Default Cards JSON → scryfall_cards
  *   3. syncOracleTags()   — per-tag search → card_oracle_tags
  *   4. handleMigrations() — apply pending Scryfall card-id migrations
+ *   5. syncOracleTable()  — rebuild scryfall_oracles (catalog search source)
+ *
+ * syncOracleTable runs last so default_scryfall_id reflects post-merge
+ * state. See issue #30 for the catalog-search acceleration design.
  *
  * The bulk JSON file is ~700 MB; full json_decode peaks around 2-3 GB.
  * memory_limit is bumped to 4 G at the top of handle().
@@ -47,9 +51,9 @@ class ScryfallSyncBulk extends Command
         $this->info('Scryfall bulk sync starting…');
 
         try {
-            $this->step('1/4  syncSets', fn () => $bulk->syncSets());
+            $this->step('1/5  syncSets', fn () => $bulk->syncSets());
 
-            $this->step('2/4  syncBulkCards', function () use ($bulk) {
+            $this->step('2/5  syncBulkCards', function () use ($bulk) {
                 $bar = null;
                 $bulk->syncBulkCards(function (int $processed, int $total) use (&$bar) {
                     if ($bar === null) {
@@ -64,7 +68,7 @@ class ScryfallSyncBulk extends Command
                 }
             });
 
-            $this->step('3/4  syncOracleTags', function () use ($bulk) {
+            $this->step('3/5  syncOracleTags', function () use ($bulk) {
                 $bar = null;
                 $bulk->syncOracleTags(function (int $done, int $total, string $tag) use (&$bar) {
                     if ($bar === null) {
@@ -86,7 +90,9 @@ class ScryfallSyncBulk extends Command
                 }
             });
 
-            $this->step('4/4  handleMigrations', fn () => $bulk->handleMigrations());
+            $this->step('4/5  handleMigrations', fn () => $bulk->handleMigrations());
+
+            $this->step('5/5  syncOracleTable', fn () => $bulk->syncOracleTable());
         } catch (Throwable $e) {
             $this->error('Bulk sync failed: ' . $e->getMessage());
             return self::FAILURE;

@@ -75,52 +75,54 @@ class CardSearchServiceTest extends TestCase
 
     public function test_color_superset_default(): void
     {
+        // c:wg → superset of WG. Bit-mask form: (colors_bits & 17) = 17.
         $out = $this->svc()->search('c:wg');
         $sql = strtolower($out['builder']->toSql());
         $bindings = $out['builder']->getBindings();
-        $this->assertStringContainsString('json_contains(colors', $sql);
-        $this->assertContains('"W"', $bindings);
-        $this->assertContains('"G"', $bindings);
+        $this->assertStringContainsString('(colors_bits & ?) = ?', $sql);
+        // 17 = W(1) | G(16) — the target mask appears in bindings.
+        $this->assertContains(17, $bindings);
     }
 
     public function test_color_equals_bounds_length(): void
     {
+        // c=wg → exactly WG. Bit-mask form: colors_bits = 17.
         $out = $this->svc()->search('c=wg');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('json_length(colors) =', $sql);
+        $this->assertStringContainsString('`colors_bits` = ', $sql);
+        $this->assertContains(17, $out['builder']->getBindings());
     }
 
-    public function test_color_subset_uses_not_contains_for_disallowed(): void
+    public function test_color_subset_uses_complement_mask(): void
     {
+        // c<=wg → subset of WG. Bit-mask form: (colors_bits & complement) = 0.
+        // Complement of 17 within WUBRG (0b11111=31) is 14 (UBR).
         $out = $this->svc()->search('c<=wg');
         $sql = strtolower($out['builder']->toSql());
-        // W and G are allowed; U, B, R are disallowed.
-        $this->assertStringContainsString('not json_contains(colors', $sql);
-        $bindings = $out['builder']->getBindings();
-        $this->assertContains('"U"', $bindings);
-        $this->assertContains('"B"', $bindings);
-        $this->assertContains('"R"', $bindings);
+        $this->assertStringContainsString('(colors_bits & ?) = 0', $sql);
+        $this->assertContains(14, $out['builder']->getBindings());
     }
 
     public function test_colorless_shortcut(): void
     {
         $out = $this->svc()->search('c:c');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('json_length(colors) = 0', $sql);
+        $this->assertStringContainsString('`colors_bits` = ', $sql);
+        $this->assertContains(0, $out['builder']->getBindings());
     }
 
     public function test_multicolor_shortcut(): void
     {
         $out = $this->svc()->search('c:m');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('json_length(colors) >= 2', $sql);
+        $this->assertStringContainsString('bit_count(colors_bits) >= 2', $sql);
     }
 
-    public function test_identity_alias_maps_to_color_identity(): void
+    public function test_identity_alias_maps_to_color_identity_bits(): void
     {
         $out = $this->svc()->search('id:wug');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('json_contains(color_identity', $sql);
+        $this->assertStringContainsString('color_identity_bits', $sql);
     }
 
     public function test_commander_subset_only_no_comparators(): void
@@ -130,11 +132,16 @@ class CardSearchServiceTest extends TestCase
         $this->assertNotEmpty($out['warnings']);
     }
 
-    public function test_commander_subset_passes_colorless(): void
+    public function test_commander_subset_emits_complement_mask(): void
     {
+        // commander:wu → subset of WU. Bit-mask form:
+        // (color_identity_bits & complement) = 0, where complement is
+        // 0b11111 & ~0b00011 = 0b11100 = 28. Colorless (bits=0) satisfies
+        // this for any commander identity.
         $out = $this->svc()->search('commander:wu');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('json_length(color_identity) = 0', $sql);
+        $this->assertStringContainsString('(color_identity_bits & ?) = 0', $sql);
+        $this->assertContains(28, $out['builder']->getBindings());
     }
 
     public function test_cmc_comparator(): void
@@ -151,11 +158,14 @@ class CardSearchServiceTest extends TestCase
         $this->assertStringContainsString("case when power in ('*','x')", $sql);
     }
 
-    public function test_rarity_comparator_uses_field(): void
+    public function test_rarity_comparator_uses_field_in_exists(): void
     {
+        // Rarity is per-printing, so the match is "oracle has any printing
+        // at/above this rarity" via EXISTS against scryfall_cards.
         $out = $this->svc()->search('r>common');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString("field(rarity, 'common','uncommon','rare','mythic')", $sql);
+        $this->assertStringContainsString("field(sc.rarity, 'common','uncommon','rare','mythic')", $sql);
+        $this->assertStringContainsString('exists', $sql);
     }
 
     public function test_format_legal(): void
@@ -271,24 +281,30 @@ class CardSearchServiceTest extends TestCase
 
     public function test_build_order_by_rarity(): void
     {
+        // default_rarity is the oracle's representative printing's rarity,
+        // stored on scryfall_oracles; see buildOrderBy.
         $svc = $this->svc();
         $out = $svc->buildOrderBy(['column' => 'rarity', 'direction' => 'desc']);
-        $this->assertStringContainsString('FIELD(rarity', $out);
+        $this->assertStringContainsString('FIELD(default_rarity', $out);
         $this->assertStringContainsString('DESC', $out);
     }
 
-    public function test_build_order_by_released_uses_oracle_max(): void
+    public function test_build_order_by_released_uses_max_released_at(): void
     {
         $svc = $this->svc();
         $out = $svc->buildOrderBy(['column' => 'released', 'direction' => 'asc']);
-        $this->assertStringContainsString('oracle_max_released', $out);
+        $this->assertStringContainsString('max_released_at', $out);
     }
 
-    public function test_set_operator(): void
+    public function test_set_operator_uses_exists(): void
     {
+        // set: is per-printing — an oracle matches if any printing is in
+        // the set. Correlated EXISTS against scryfall_cards.
         $out = $this->svc()->search('s:tdm');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('`set_code` =', $sql);
+        $this->assertStringContainsString('exists', $sql);
+        $this->assertStringContainsString('`sc`.`set_code` =', $sql);
+        $this->assertContains('tdm', $out['builder']->getBindings());
     }
 
     public function test_banned_operator(): void
@@ -353,21 +369,22 @@ class CardSearchServiceTest extends TestCase
 
     public function test_playtest_hidden_by_default(): void
     {
+        // The default hide on scryfall_oracles uses the rolled-up
+        // is_playtest_any column.
         $out = $this->svc()->search('lightning');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('`scryfall_cards`.`is_playtest` =', $sql);
+        $this->assertStringContainsString('`is_playtest_any` =', $sql);
     }
 
     public function test_is_playtest_surfaces_playtest_and_disables_default_hide(): void
     {
         $out = $this->svc()->search('is:playtest');
         $sql = strtolower($out['builder']->toSql());
-        // is:playtest emits `is_playtest = 1`; the default hide would
-        // emit `is_playtest = 0` — so count of `= 1` clauses tells us
-        // the default hide didn't piggyback.
-        $this->assertStringContainsString('`scryfall_cards`.`is_playtest` =', $sql);
+        // is:playtest emits `is_playtest_any = 1`; the default hide would
+        // emit `is_playtest_any = 0` — bindings tell us which ran.
+        $this->assertStringContainsString('`is_playtest_any` =', $sql);
         $bindings = $out['builder']->getBindings();
-        $this->assertContains(true, $bindings, 'is:playtest should set is_playtest=true');
+        $this->assertContains(true, $bindings, 'is:playtest should set is_playtest_any=true');
         $this->assertNotContains(false, $bindings, 'default hide should not also be applied');
     }
 
@@ -375,6 +392,6 @@ class CardSearchServiceTest extends TestCase
     {
         $out = $this->svc()->search('is:play-test');
         $sql = strtolower($out['builder']->toSql());
-        $this->assertStringContainsString('`scryfall_cards`.`is_playtest` =', $sql);
+        $this->assertStringContainsString('`is_playtest_any` =', $sql);
     }
 }
