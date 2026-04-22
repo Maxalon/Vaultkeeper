@@ -113,6 +113,8 @@ export const useCollectionStore = defineStore('collection', {
      * Groups carry their nested locations in `item.locations`.
      */
     sidebarItems: [],
+    /** Full decks list (flat — already split across groups by group_id). */
+    decks: [],
     collapsedGroups: loadCollapsedGroups(),
     totalCount: 0,
     activeLocationId: null, // number | null (null = all cards)
@@ -146,6 +148,39 @@ export const useCollectionStore = defineStore('collection', {
     /** Groups extracted from sidebarItems in their current order. */
     groups(state) {
       return state.sidebarItems.filter((item) => item.kind === 'group')
+    },
+
+    /**
+     * Sidebar items with each deck merged into its group.locations list (or
+     * appearing at the top level when group_id is null), interleaved by
+     * sort_order. Decks carry `kind: 'deck'`. This is the render-time list.
+     */
+    sidebarItemsMerged(state) {
+      const decksByGroup = new Map()
+      const topLevelDecks = []
+      for (const d of state.decks) {
+        const item = { ...d, kind: 'deck' }
+        if (d.group_id) {
+          if (!decksByGroup.has(d.group_id)) decksByGroup.set(d.group_id, [])
+          decksByGroup.get(d.group_id).push(item)
+        } else {
+          topLevelDecks.push(item)
+        }
+      }
+
+      const merged = state.sidebarItems.map((item) => {
+        if (item.kind !== 'group') return item
+        const groupDecks = decksByGroup.get(item.id) || []
+        if (!groupDecks.length) return item
+        const combined = [...item.locations, ...groupDecks]
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        return { ...item, locations: combined }
+      })
+
+      if (topLevelDecks.length) {
+        return [...merged, ...topLevelDecks]
+      }
+      return merged
     },
 
     parsedSearch(state) {
@@ -184,11 +219,43 @@ export const useCollectionStore = defineStore('collection', {
       const { data } = await api.get('/location-groups')
       this.sidebarItems = data.items
       this.totalCount = data.total_count
+      this.decks = data.decks || []
     },
 
     // Alias so existing callers (createLocation, updateEntry, batchMove,
     // CollectionView initial load, ImportModal) keep working unchanged.
     async fetchLocations() {
+      await this.fetchGroups()
+    },
+
+    async fetchDecks() {
+      // fetchGroups already includes decks in its response, but expose a
+      // standalone action so DeckView can refresh the list after an edit
+      // without re-fetching the entire sidebar payload.
+      const { data } = await api.get('/decks')
+      this.decks = data
+    },
+
+    async createDeck(payload) {
+      const { data } = await api.post('/decks', payload)
+      await this.fetchGroups()
+      return data
+    },
+
+    async importDeck(payload) {
+      const { data } = await api.post('/decks/import', payload)
+      await this.fetchGroups()
+      return data
+    },
+
+    async updateDeck(id, payload) {
+      const { data } = await api.put(`/decks/${id}`, payload)
+      await this.fetchGroups()
+      return data
+    },
+
+    async deleteDeck(id) {
+      await api.delete(`/decks/${id}`)
       await this.fetchGroups()
     },
 

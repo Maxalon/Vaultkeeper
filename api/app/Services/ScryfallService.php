@@ -105,6 +105,65 @@ class ScryfallService
     }
 
     /**
+     * Resolve a batch of card names (optionally scoped by set) via Scryfall's
+     * /cards/collection endpoint. Same throttling and chunking as
+     * fetchCardCollection(), but posts `{name}` / `{name, set}` identifiers
+     * instead of `{id}`.
+     *
+     * Returns a map keyed by `name|set` (set lowercased, empty string if
+     * absent), value is the Scryfall card array. Identifiers Scryfall cannot
+     * resolve are silently dropped.
+     *
+     * @param  array<int, array{name: string, set?: ?string}>  $identifiers
+     * @return array<string, array<string, mixed>>
+     */
+    public function fetchCardCollectionByName(array $identifiers): array
+    {
+        $results = [];
+
+        foreach (array_chunk($identifiers, 75) as $chunk) {
+            $this->throttleCollection();
+
+            $payload = array_values(array_map(static function (array $id): array {
+                $row = ['name' => $id['name']];
+                if (! empty($id['set'])) {
+                    $row['set'] = strtolower($id['set']);
+                }
+                return $row;
+            }, $chunk));
+
+            $response = $this->http
+                ->withHeaders(self::API_HEADERS)
+                ->post(self::BASE.'/cards/collection', [
+                    'identifiers' => $payload,
+                ]);
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "Scryfall fetchCardCollectionByName failed: status {$response->status()}"
+                );
+            }
+
+            foreach ((array) $response->json('data', []) as $card) {
+                if (! is_array($card) || ! isset($card['name'])) continue;
+                // Scryfall normalizes to the front face's canonical name, but
+                // DFC/split cards come back as "Front // Back" — index both
+                // the front-face and the combined name so callers can hit
+                // whichever they sent.
+                $setKey = strtolower((string) ($card['set'] ?? ''));
+                $canonical = (string) $card['name'];
+                $results[strtolower($canonical).'|'.$setKey] = $card;
+                if (str_contains($canonical, ' // ')) {
+                    [$front] = explode(' // ', $canonical, 2);
+                    $results[strtolower($front).'|'.$setKey] = $card;
+                }
+            }
+        }
+
+        return $results;
+    }
+
+    /**
      * Fetch the full list of Scryfall sets.
      *
      * @return array<int, array<string, mixed>>

@@ -194,7 +194,7 @@ class BulkSyncService
      * Populate $this->multiWordSubtypes from mtg_type_catalog. Call after
      * syncTypeCatalog() and before the first applyBulkCardData() invocation.
      */
-    private function loadMultiWordSubtypes(): void
+    public function loadMultiWordSubtypes(): void
     {
         $this->multiWordSubtypes = MtgType::query()
             ->whereIn('category', MtgType::SUBTYPE_CATEGORIES)
@@ -453,7 +453,7 @@ class BulkSyncService
      * @param  array<string, mixed>  $c
      * @return array<string, mixed>|null
      */
-    private function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
+    public function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
     {
         if (! isset($c['id'], $c['name'], $c['set'])) {
             return null;
@@ -567,6 +567,7 @@ class BulkSyncService
             'cmc'              => isset($c['cmc']) ? (float) $c['cmc'] : null,
             'colors'           => json_encode(array_values($colors)),
             'color_identity'   => json_encode($this->canonicaliseColors($colorIdentity)),
+            'produced_mana'    => isset($c['produced_mana']) ? json_encode(array_values($c['produced_mana'])) : null,
             'legalities'       => isset($c['legalities']) ? json_encode($c['legalities']) : null,
             'keywords'         => isset($c['keywords']) ? json_encode($c['keywords']) : null,
             'supertypes'       => json_encode($parsedTypes['supertypes']),
@@ -724,7 +725,7 @@ class BulkSyncService
     }
 
     /** Batch upsert helper for scryfall_cards. */
-    private function flushScryfallCards(array $rows): void
+    public function flushScryfallCards(array $rows): void
     {
         ScryfallCard::upsert(
             $rows,
@@ -732,7 +733,7 @@ class BulkSyncService
             [
                 'oracle_id', 'name', 'set_code', 'collector_number', 'rarity',
                 'layout', 'is_dfc', 'mana_cost', 'cmc', 'colors',
-                'color_identity', 'type_line', 'oracle_text', 'power',
+                'color_identity', 'produced_mana', 'type_line', 'oracle_text', 'power',
                 'toughness', 'loyalty', 'legalities', 'keywords',
                 'image_small', 'image_normal', 'image_large',
                 'image_small_back', 'image_normal_back', 'image_large_back',
