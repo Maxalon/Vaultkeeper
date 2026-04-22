@@ -37,6 +37,7 @@ Route::middleware('auth:api')->group(function () {
     // so the literal `scryfall-cards/search` segment never collides with a
     // parameter binding (the prefixes are different anyway, but explicit > implicit).
     Route::get('scryfall-cards/search', [ScryfallCardController::class, 'search']);
+    Route::get('scryfall-cards/printings', [ScryfallCardController::class, 'printings']);
     Route::get('scryfall-cards/{scryfallCard}', [ScryfallCardController::class, 'show']);
 
     Route::apiResource('cards', CardController::class);

@@ -64,7 +64,28 @@ class ScryfallSyncBulk extends Command
                 }
             });
 
-            $this->step('3/4  syncOracleTags', fn () => $bulk->syncOracleTags());
+            $this->step('3/4  syncOracleTags', function () use ($bulk) {
+                $bar = null;
+                $bulk->syncOracleTags(function (int $done, int $total, string $tag) use (&$bar) {
+                    if ($bar === null) {
+                        // Custom format so the current tag is visible next
+                        // to the bar — oracle-tag sync is slow and opaque
+                        // otherwise, and Scryfall rate-limits these hard.
+                        $bar = $this->output->createProgressBar($total);
+                        $bar->setFormat(' %current%/%max% [%bar%] %percent:3s%%  %message%');
+                        $bar->setMessage("starting: {$tag}");
+                        $bar->start();
+                        return;
+                    }
+                    $bar->setMessage($tag);
+                    $bar->setProgress($done);
+                });
+                if ($bar) {
+                    $bar->finish();
+                    $this->newLine();
+                }
+            });
+
             $this->step('4/4  handleMigrations', fn () => $bulk->handleMigrations());
         } catch (Throwable $e) {
             $this->error('Bulk sync failed: ' . $e->getMessage());
@@ -81,7 +102,24 @@ class ScryfallSyncBulk extends Command
         $start = microtime(true);
         $this->line("→ {$label}");
         $fn();
-        $elapsed = number_format(microtime(true) - $start, 1);
-        $this->line("  done ({$elapsed}s)");
+        $this->line('  done (' . $this->formatElapsed(microtime(true) - $start) . ')');
+    }
+
+    /**
+     * Humanise a seconds-duration. "640s" is hard to eyeball at a glance;
+     * "10m 40s" reads at human scale. Sub-minute durations keep one
+     * decimal ("3.2s") because short steps benefit from that precision.
+     */
+    private function formatElapsed(float $seconds): string
+    {
+        if ($seconds < 60) {
+            return number_format($seconds, 1) . 's';
+        }
+        $total = (int) round($seconds);
+        $h = intdiv($total, 3600);
+        $m = intdiv($total % 3600, 60);
+        $s = $total % 60;
+        if ($h > 0) return "{$h}h {$m}m {$s}s";
+        return "{$m}m {$s}s";
     }
 }
