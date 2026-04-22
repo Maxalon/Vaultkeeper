@@ -649,3 +649,36 @@ input:focus, select:focus, textarea:focus {
     display: none;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+ * DB-3 deckbuilder: shared red-glow for illegal cards/decks and the
+ * game-changer pill. illegal-glow stacks with ownership shine-* classes.
+ * ──────────────────────────────────────────────────────────────────── */
+.illegal-glow {
+  box-shadow:
+    0 0 0 2px rgba(209, 90, 74, 0.65),
+    0 0 18px 4px rgba(209, 90, 74, 0.35);
+  animation: illegal-pulse 2.4s ease-in-out infinite;
+}
+@keyframes illegal-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(209, 90, 74, 0.5),
+      0 0 14px 3px rgba(209, 90, 74, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(209, 90, 74, 0.8),
+      0 0 22px 6px rgba(209, 90, 74, 0.45);
+  }
+}
+
+.gc-badge {
+  background: linear-gradient(135deg, #f0c35c, #c99d3d);
+  color: #0f0e0b;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.05em;
+}

@@ -69,6 +69,7 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 
     Route::get('collection',               [CollectionController::class, 'index']);
+    Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);
     Route::post('collection/batch-move',   [CollectionController::class, 'batchMove']);
     Route::get('collection/{entry}',       [CollectionController::class, 'show']);
     Route::patch('collection/{entry}',     [CollectionController::class, 'update']);

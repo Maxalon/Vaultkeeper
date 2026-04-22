@@ -17,6 +17,7 @@ class DeckLegalityController extends Controller
         'duplicate_card',
         'invalid_partner',
         'invalid_commander',
+        'invalid_companion',
         'deck_size',
         'too_many_cards',
         'not_legal_in_format',

@@ -24,7 +24,8 @@ class DeckController extends Controller
         $decks = Deck::query()
             ->where('user_id', $userId)
             ->with(['commander1:scryfall_id,name,image_small,color_identity,commander_game_changer',
-                    'commander2:scryfall_id,name,image_small,color_identity,commander_game_changer'])
+                    'commander2:scryfall_id,name,image_small,color_identity,commander_game_changer',
+                    'companion:scryfall_id,name,image_small,color_identity,keywords'])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -67,6 +68,7 @@ class DeckController extends Controller
                     'illegality_count'=> $active,
                     'commander1'      => $this->presentCommander($deck->commander1),
                     'commander2'      => $this->presentCommander($deck->commander2),
+                    'companion'       => $this->presentCompanion($deck->companion),
                 ];
             })->values()
         );
@@ -80,6 +82,7 @@ class DeckController extends Controller
             'description'             => 'nullable|string',
             'commander_1_scryfall_id' => ['nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
             'commander_2_scryfall_id' => ['nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
+            'companion_scryfall_id'   => ['nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
         ]);
 
         $deck = DB::transaction(function () use ($data) {
@@ -90,20 +93,21 @@ class DeckController extends Controller
                 'description'             => $data['description'] ?? null,
                 'commander_1_scryfall_id' => $data['commander_1_scryfall_id'] ?? null,
                 'commander_2_scryfall_id' => $data['commander_2_scryfall_id'] ?? null,
+                'companion_scryfall_id'   => $data['companion_scryfall_id']   ?? null,
             ]);
             $this->syncCommanderEntries($deck);
             $this->recomputeColorIdentity($deck);
             return $deck;
         });
 
-        return response()->json($this->presentDetail($deck->fresh(['entries.card', 'commander1', 'commander2'])), 201);
+        return response()->json($this->presentDetail($deck->fresh(['entries.card', 'commander1', 'commander2', 'companion'])), 201);
     }
 
     public function show(Deck $deck): JsonResponse
     {
         $this->authorizeOwner($deck);
         return response()->json($this->presentDetail(
-            $deck->load(['entries.card', 'commander1', 'commander2', 'ignoredIllegalities'])
+            $deck->load(['entries.card', 'commander1', 'commander2', 'companion', 'ignoredIllegalities'])
         ));
     }
 
@@ -118,6 +122,7 @@ class DeckController extends Controller
             'is_archived'             => 'sometimes|boolean',
             'commander_1_scryfall_id' => ['sometimes', 'nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
             'commander_2_scryfall_id' => ['sometimes', 'nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
+            'companion_scryfall_id'   => ['sometimes', 'nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
             'group_id'                => ['sometimes', 'nullable', 'integer'],
             'sort_order'              => 'sometimes|integer',
         ]);
@@ -135,7 +140,7 @@ class DeckController extends Controller
         });
 
         return response()->json($this->presentDetail(
-            $deck->fresh(['entries.card', 'commander1', 'commander2', 'ignoredIllegalities'])
+            $deck->fresh(['entries.card', 'commander1', 'commander2', 'companion', 'ignoredIllegalities'])
         ));
     }
 
@@ -221,6 +226,20 @@ class DeckController extends Controller
         ];
     }
 
+    private function presentCompanion(?ScryfallCard $card): ?array
+    {
+        if ($card === null) {
+            return null;
+        }
+        return [
+            'scryfall_id'    => $card->scryfall_id,
+            'name'           => $card->name,
+            'image_small'    => $card->image_small,
+            'color_identity' => $card->color_identity,
+            'keywords'       => $card->keywords,
+        ];
+    }
+
     private function presentDetail(Deck $deck): array
     {
         $illegalities = $this->legality->check($deck);
@@ -241,6 +260,8 @@ class DeckController extends Controller
             'sort_order'             => $deck->sort_order,
             'commander1'             => $this->presentCommander($deck->commander1),
             'commander2'             => $this->presentCommander($deck->commander2),
+            'companion'              => $this->presentCompanion($deck->companion),
+            'companion_scryfall_id'  => $deck->companion_scryfall_id,
             'entries_by_zone'        => [
                 'main'  => $entries->where('zone', 'main')->values()->map(fn ($e) => $this->presentEntry($e)),
                 'side'  => $entries->where('zone', 'side')->values()->map(fn ($e) => $this->presentEntry($e)),
