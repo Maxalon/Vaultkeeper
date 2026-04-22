@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Database\Eloquent\Builder;
 use App\Models\ScryfallCard;
+use App\Services\BulkSyncService;
 
 /**
  * Parses Scryfall-style search syntax into an Eloquent builder against
@@ -44,11 +45,32 @@ class CardSearchService
     private const IS_VALUES = [
         'commander', 'oathbreaker', 'partner', 'gc',
         'dfc', 'transform', 'mdfc', 'flip', 'meld', 'split', 'leveler',
-        'reserved', 'brawler', 'companion',
+        'reserved', 'brawler', 'companion', 'playtest',
     ];
 
     /**
-     * @return array{builder: Builder, warnings: array<int, string>, sort: array{column: string, direction: string}}
+     * Card types hidden from default catalog results. The user's query
+     * can surface them by specifying `t:<hidden-type>` or by using an
+     * exact-bang match (`!"Every Hope Shall Vanish"`). Covers supplemental-
+     * format cards (Scheme / Plane / Phenomenon / Vanguard) that live in
+     * real sets but aren't what people are browsing for by default.
+     * Conspiracy & Dungeon are here for the same reason — Conspiracy
+     * cards appear in draft_innovation sets alongside regular cards, and
+     * Dungeons can appear in main expansion sets (AFR et al.).
+     */
+    public const DEFAULT_HIDDEN_TYPES = [
+        'Scheme', 'Plane', 'Phenomenon', 'Vanguard', 'Conspiracy', 'Dungeon',
+    ];
+
+    /**
+     * @param  array{disable_defaults?: bool}  $options
+     * @return array{builder: Builder, warnings: array<int, string>, sort: array{column: string, direction: string}, defaults_applied: bool}
+     *
+     * `disable_defaults=true` skips the default-hidden-type and
+     * default-playtest filters. Controller uses this as a second-pass
+     * retry when the first pass returned zero results — if the user's
+     * query happened to match *only* hidden/playtest cards, the retry
+     * surfaces them.
      */
     public function search(string $query, array $options = []): array
     {
@@ -59,7 +81,7 @@ class CardSearchService
 
         $trimmed = trim($query);
         if ($trimmed === '') {
-            return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort];
+            return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort, 'defaults_applied' => false];
         }
 
         $tokens = $this->tokenize($trimmed);
@@ -74,7 +96,24 @@ class CardSearchService
             $this->applyNode($builder, $ast, $warnings);
         }
 
-        return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort];
+        // Default "hidden" categories the user didn't ask for. Skipped
+        // entirely when the user bang-exact-matched a card name — if they
+        // typed `!"Blessed Hippogriff"` they get the exact card they asked
+        // for, regardless of type or set. Also skipped when the caller
+        // explicitly asks (retry path when the first pass found nothing).
+        $defaultsApplied = false;
+        if (! ($options['disable_defaults'] ?? false)) {
+            $analysis = $this->analyzeQuery($ast);
+            if (! $analysis['hasExactMatch']) {
+                $this->applyDefaultHiddenTypeFilter($builder, $analysis['requestedHiddenTypes']);
+                if (! $analysis['isPlaytestRequested']) {
+                    $this->applyDefaultPlaytestFilter($builder);
+                }
+                $defaultsApplied = true;
+            }
+        }
+
+        return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort, 'defaults_applied' => $defaultsApplied];
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -490,6 +529,101 @@ class CardSearchService
         }
 
         $node['_strip'] = true;
+    }
+
+    /**
+     * Walks the AST once to detect query-level intent that drives the
+     * default-hidden filters. Returns:
+     *   - hasExactMatch         — any bang-exact leaf (`!"..."`) anywhere.
+     *                             Turns off ALL default-hidden filters so
+     *                             the user's literal name query wins.
+     *   - requestedHiddenTypes  — subset of DEFAULT_HIDDEN_TYPES that the
+     *                             user asked for via `t:` / `type:`. These
+     *                             types don't get hidden.
+     *   - isPlaytestRequested   — true when the user typed `is:playtest`.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array{hasExactMatch: bool, requestedHiddenTypes: array<int, string>, isPlaytestRequested: bool}
+     */
+    private function analyzeQuery(array $node): array
+    {
+        $state = [
+            'hasExactMatch'        => false,
+            'requestedHiddenTypes' => [],
+            'isPlaytestRequested'  => false,
+        ];
+        $this->walkForAnalysis($node, $state);
+        $state['requestedHiddenTypes'] = array_values(array_unique($state['requestedHiddenTypes']));
+        return $state;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @param  array<string, mixed>  $state
+     */
+    private function walkForAnalysis(array $node, array &$state): void
+    {
+        if (($node['kind'] ?? null) === 'group') {
+            foreach ($node['children'] as $child) {
+                $this->walkForAnalysis($child, $state);
+            }
+            return;
+        }
+        $atom = $node['atom'] ?? null;
+        if ($atom === null) return;
+
+        if (! empty($atom['exact'])) {
+            $state['hasExactMatch'] = true;
+        }
+
+        $op = $atom['op'] ?? null;
+        if ($op === null) return;
+        $op = $this->resolveAlias($op);
+        $value = (string) ($atom['value'] ?? '');
+
+        if ($op === 'type') {
+            $titled = $this->titleCase($value);
+            if (in_array($titled, self::DEFAULT_HIDDEN_TYPES, true)) {
+                $state['requestedHiddenTypes'][] = $titled;
+            }
+        }
+        if ($op === 'is' && in_array(strtolower($value), ['playtest', 'play-test'], true)) {
+            $state['isPlaytestRequested'] = true;
+        }
+    }
+
+    /**
+     * Hide cards whose `types` JSON array overlaps any hidden type the
+     * user didn't explicitly ask for. Skips the filter entirely if every
+     * hidden type was requested, or if the list is already empty.
+     *
+     * @param  array<int, string>  $requestedHiddenTypes
+     */
+    private function applyDefaultHiddenTypeFilter(Builder $b, array $requestedHiddenTypes): void
+    {
+        $toHide = array_values(array_diff(self::DEFAULT_HIDDEN_TYPES, $requestedHiddenTypes));
+        if (empty($toHide)) return;
+
+        $b->where(function (Builder $q) use ($toHide) {
+            $q->whereNull('types')
+              ->orWhereRaw('NOT JSON_OVERLAPS(types, ?)', [json_encode($toHide)]);
+        });
+    }
+
+    /**
+     * Hide playtest cards unless is:playtest was requested. Uses the
+     * `is_playtest` column populated at bulk sync from Scryfall's
+     * `promo_types` array — the canonical signal that catches both CMB
+     * playtest sets AND the MB2 #501-#602 playtest subset (the latter
+     * lives in a regular-looking `set_type='masters'` set, so neither a
+     * set_type nor set_code heuristic can distinguish it).
+     */
+    private function applyDefaultPlaytestFilter(Builder $b): void
+    {
+        $b->where(function (Builder $q) {
+            $q->where('scryfall_cards.is_playtest', false)
+              ->orWhereNull('scryfall_cards.is_playtest');
+        });
     }
 
     /**
@@ -946,6 +1080,9 @@ class CardSearchService
      */
     private function applyIsClause(Builder $b, string $value, array &$warnings): void
     {
+        // `is:play-test` is accepted as a hyphen-alias of `is:playtest`.
+        if ($value === 'play-test') $value = 'playtest';
+
         if (! in_array($value, self::IS_VALUES, true)) {
             $warnings[] = "is:{$value} is not supported";
             return;
@@ -1023,6 +1160,13 @@ class CardSearchService
             case 'companion':
                 $b->whereRaw('JSON_OVERLAPS(keywords, ?)', [json_encode(['Companion'])]);
                 return;
+
+            case 'playtest':
+                // Backed by the is_playtest column which BulkSyncService
+                // populates from Scryfall's promo_types array at sync
+                // time (plus the CMB set-code fallback).
+                $b->where('scryfall_cards.is_playtest', true);
+                return;
         }
     }
 
@@ -1041,6 +1185,18 @@ class CardSearchService
     // ─────────────────────────────────────────────────────────────────────
 
     /**
+     * Sort-key SQL for card name, with the leading `A-` prefix stripped.
+     * Alchemy-rebalanced cards (e.g. `A-Blessed Hippogriff`) would otherwise
+     * clump at the top of name-ordered results; stripping the prefix at
+     * sort time puts them adjacent to their non-rebalanced counterparts.
+     * Display name is unchanged — this only affects ORDER BY.
+     */
+    private function sortableName(): string
+    {
+        return "IF(name LIKE 'A-%', SUBSTRING(name, 3), name)";
+    }
+
+    /**
      * Emit the ORDER BY fragment for the outer window-wrapped query. Called
      * by the controller after it wraps the inner WHERE. Returns a raw SQL
      * fragment (no leading `ORDER BY`).
@@ -1051,33 +1207,34 @@ class CardSearchService
     {
         $dir = strtoupper($sort['direction']) === 'DESC' ? 'DESC' : 'ASC';
         $col = $sort['column'];
+        $nameAsc = $this->sortableName() . ' ASC';
 
         switch ($col) {
             case 'cmc':
-                return "cmc {$dir}, name ASC";
+                return "cmc {$dir}, {$nameAsc}";
 
             case 'rarity':
                 $rankList = "'" . implode("','", self::RARITIES) . "'";
-                return "FIELD(rarity, {$rankList}) {$dir}, name ASC";
+                return "FIELD(rarity, {$rankList}) {$dir}, {$nameAsc}";
 
             case 'power':
-                return "power IS NULL ASC, CAST(CASE WHEN power IN ('*','X') THEN '0' ELSE power END AS SIGNED) {$dir}, name ASC";
+                return "power IS NULL ASC, CAST(CASE WHEN power IN ('*','X') THEN '0' ELSE power END AS SIGNED) {$dir}, {$nameAsc}";
 
             case 'toughness':
-                return "toughness IS NULL ASC, CAST(CASE WHEN toughness IN ('*','X') THEN '0' ELSE toughness END AS SIGNED) {$dir}, name ASC";
+                return "toughness IS NULL ASC, CAST(CASE WHEN toughness IN ('*','X') THEN '0' ELSE toughness END AS SIGNED) {$dir}, {$nameAsc}";
 
             case 'set':
-                return "set_code {$dir}, name ASC";
+                return "set_code {$dir}, {$nameAsc}";
 
             case 'released':
-                return "oracle_max_released {$dir}, name ASC";
+                return "oracle_max_released {$dir}, {$nameAsc}";
 
             case 'edhrec':
-                return "edhrec_rank IS NULL ASC, edhrec_rank {$dir}, name ASC";
+                return "edhrec_rank IS NULL ASC, edhrec_rank {$dir}, {$nameAsc}";
 
             case 'name':
             default:
-                return "name {$dir}";
+                return $this->sortableName() . " {$dir}";
         }
     }
 }

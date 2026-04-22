@@ -72,14 +72,31 @@ class BulkSyncService
     /**
      * Set types that are hard-excluded from the catalog entirely.
      * art_series is Wizards' gallery-style reprint sets (alternate-art
-     * Commanders with no gameplay function). vanguard/planechase/archenemy
-     * are special-format supplements with no paper-deck utility.
+     * Commanders with no gameplay function). Un-sets live under `funny`.
+     *
+     * Formerly included `vanguard`, `planechase`, `archenemy` — those
+     * are now soft-hidden at the card-type level (DEFAULT_HIDDEN_TYPES
+     * on CardSearchService) so queries like `t:scheme` / `t:plane` /
+     * `t:vanguard` can surface them. Hard-excluding by set_type blocked
+     * those type-based searches entirely.
+     *
      * Public so the catalog controller applies the same exclusion list.
      */
     public const INELIGIBLE_SET_TYPES = [
         'memorabilia', 'funny', 'token', 'minigame',
-        'art_series', 'vanguard', 'planechase', 'archenemy',
+        'art_series',
     ];
+
+    /**
+     * Set codes exempted from the hard set_type exclusion above. Mystery
+     * Booster Playtest sets (cmb1, cmb2) are filed under set_type='funny'
+     * in our current sets sync — same bucket as Unhinged/Unstable — but
+     * their contents are legitimate cards a user might want to search
+     * via `is:playtest`. Scryfall's taxonomy has since introduced a
+     * dedicated `playtest` set_type; this carve-out can be reduced to
+     * an empty list once a fresh sets sync propagates that value.
+     */
+    public const PLAYTEST_SET_CODES = ['cmb1', 'cmb2'];
 
     /**
      * Set types that disqualify a printing from being the DEFAULT
@@ -561,6 +578,11 @@ class BulkSyncService
             'set_type'         => $setType,
             'oversized'        => $oversized,
             'is_default_eligible' => $this->deriveDefaultEligible($c),
+            'is_playtest'         =>
+                in_array('playtest', (array) ($c['promo_types'] ?? []), true)
+                // Fallback for Mystery Booster Playtest sets, which mark
+                // cards via set membership rather than promo_types.
+                || in_array($c['set'] ?? '', self::PLAYTEST_SET_CODES, true),
             'edhrec_rank'      => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
             'reserved'         => (bool) ($c['reserved'] ?? false),
             'commander_game_changer' => (bool) ($c['game_changer'] ?? false),
@@ -718,7 +740,7 @@ class BulkSyncService
                 'printed_text', 'printed_text_back',
                 'supertypes', 'types', 'subtypes',
                 'released_at', 'promo', 'variation', 'set_type',
-                'oversized', 'is_default_eligible',
+                'oversized', 'is_default_eligible', 'is_playtest',
                 'edhrec_rank', 'reserved',
                 'commander_game_changer', 'partner_scope',
                 'last_synced_at', 'updated_at',
