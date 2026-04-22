@@ -1,8 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { colorSkeletonStyle } from '../composables/useColorSkeleton'
 import CornerCountBadge from './CornerCountBadge.vue'
+import DfcPopover from './DfcPopover.vue'
 import SetSymbol from './SetSymbol.vue'
 import ManaCost from './ManaCost.vue'
 
@@ -29,18 +30,34 @@ const isLoaded = computed(() => hasImage.value && imageLoaded.value)
 const isModeB = computed(() => settings.displayMode === 'B')
 const isPeek = computed(() => props.hoverMode === 'peek')
 
+// DFC backside popover — expand-mode only. In peek mode the parent's
+// CardPeek renders both faces side-by-side, so we suppress the floating
+// popover to avoid stacking two previews on the same hover.
+const rootRef = ref(null)
+const hovered = ref(false)
+let hoverTimer = null
+
 function onMouseEnter(event) {
-  if (!isPeek.value) return
-  emit('peek-show', {
-    entry: props.entry,
-    rect: event.currentTarget.getBoundingClientRect(),
-  })
+  if (isPeek.value) {
+    emit('peek-show', {
+      entry: props.entry,
+      rect: event.currentTarget.getBoundingClientRect(),
+    })
+    return
+  }
+  if (!card.value.is_dfc) return
+  hoverTimer = setTimeout(() => { hovered.value = true }, 300)
 }
 
 function onMouseLeave() {
-  if (!isPeek.value) return
-  emit('peek-hide')
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
+  hovered.value = false
+  if (isPeek.value) emit('peek-hide')
 }
+
+onBeforeUnmount(() => {
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
+})
 
 // Color identity skeleton — shown until the real card image loads (or as
 // the permanent placeholder for cards Scryfall doesn't return).
@@ -51,6 +68,7 @@ const skeletonStyle = computed(() => colorSkeletonStyle(card.value.colors))
 
 <template>
   <div
+    ref="rootRef"
     class="strip"
     :class="{ active, loaded: isLoaded, 'mode-b': isModeB, selected, last, 'peek-mode': isPeek }"
     @click="emit('select', entry.id)"
@@ -95,6 +113,12 @@ const skeletonStyle = computed(() => colorSkeletonStyle(card.value.colors))
         <ManaCost class="cost" :cost="card.mana_cost || ''" />
       </div>
     </div>
+
+    <DfcPopover
+      v-if="!isPeek && card.is_dfc && hovered && card.image_normal_back"
+      :back-image="card.image_normal_back"
+      :anchor="rootRef"
+    />
   </div>
 </template>
 
