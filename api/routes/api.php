@@ -5,6 +5,7 @@ use App\Http\Controllers\CardController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\DeckController;
 use App\Http\Controllers\DeckEntryController;
+use App\Http\Controllers\DeckImportController;
 use App\Http\Controllers\DeckLegalityController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
@@ -44,6 +45,7 @@ Route::middleware('auth:api')->group(function () {
 
     Route::get   ('decks',                                 [DeckController::class, 'index']);
     Route::post  ('decks',                                 [DeckController::class, 'store']);
+    Route::post  ('decks/import',                          [DeckImportController::class, 'store']);
     Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);
     Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
     Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
@@ -69,6 +71,7 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 
     Route::get('collection',               [CollectionController::class, 'index']);
+    Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);
     Route::post('collection/batch-move',   [CollectionController::class, 'batchMove']);
     Route::get('collection/{entry}',       [CollectionController::class, 'show']);
     Route::patch('collection/{entry}',     [CollectionController::class, 'update']);

@@ -19,6 +19,7 @@ class Deck extends Model
         'is_archived',
         'commander_1_scryfall_id',
         'commander_2_scryfall_id',
+        'companion_scryfall_id',
         'color_identity',
         'group_id',
         'sort_order',
@@ -52,6 +53,11 @@ class Deck extends Model
     public function commander2(): BelongsTo
     {
         return $this->belongsTo(ScryfallCard::class, 'commander_2_scryfall_id', 'scryfall_id');
+    }
+
+    public function companion(): BelongsTo
+    {
+        return $this->belongsTo(ScryfallCard::class, 'companion_scryfall_id', 'scryfall_id');
     }
 
     public function group(): BelongsTo

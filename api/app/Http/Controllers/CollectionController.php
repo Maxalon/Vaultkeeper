@@ -172,6 +172,39 @@ class CollectionController extends Controller
         return response()->json(['moved' => $count]);
     }
 
+    /**
+     * GET /api/collection/copies?scryfall_id={uuid}
+     *
+     * Returns the authed user's collection_entries for a single card, joined
+     * with location name + type. Used by the deckbuilder's physical-copy
+     * dropdown to bind a deck entry to a specific owned copy.
+     */
+    public function copiesForCard(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'scryfall_id' => 'required|uuid',
+        ]);
+
+        $rows = CollectionEntry::query()
+            ->where('user_id', auth()->id())
+            ->where('scryfall_id', $data['scryfall_id'])
+            ->with('location:id,name,type')
+            ->get();
+
+        return response()->json(
+            $rows->map(fn (CollectionEntry $e) => [
+                'id'            => $e->id,
+                'quantity'      => $e->quantity,
+                'condition'     => $e->condition,
+                'foil'          => (bool) $e->foil,
+                'notes'         => $e->notes,
+                'location_id'   => $e->location_id,
+                'location_name' => $e->location?->name,
+                'location_type' => $e->location?->type,
+            ])->values()
+        );
+    }
+
     public function destroy(CollectionEntry $entry): Response
     {
         abort_if($entry->user_id !== auth()->id(), 403);

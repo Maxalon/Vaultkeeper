@@ -15,5 +15,11 @@ export default defineConfig({
     },
     // Allow the nginx container hostname (and any host) when proxied
     allowedHosts: true,
+    // Fedora + SELinux-labeled bind mount (`:z`) drops inotify events into
+    // the container; poll the filesystem so HMR sees host-side edits.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
   },
 })

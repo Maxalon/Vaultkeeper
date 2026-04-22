@@ -1,10 +1,12 @@
 <script setup>
-import { ref, nextTick } from 'vue'
+import { computed, ref, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import draggable from 'vuedraggable'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
+import ImportDeckModal from './ImportDeckModal.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
 import IconBinder from '../assets/icons/binder.svg'
@@ -18,7 +20,24 @@ defineProps({
 
 const collection = useCollectionStore()
 const settings = useSettingsStore()
+const route = useRoute()
+const router = useRouter()
+
+const mergedItems = computed(() => collection.sidebarItemsMerged)
+
+function activeDeckId() {
+  return route.name === 'deck' ? Number(route.params.id) : null
+}
+
+function openDeck(deck) {
+  router.push({ name: 'deck', params: { id: deck.id } })
+}
+
+function formatShort(f) {
+  return ({ commander: 'CMDR', oathbreaker: 'OATH', pauper: 'PAU', standard: 'STD', modern: 'MOD' })[f] || (f || '').toUpperCase()
+}
 const importOpen = ref(false)
+const deckImportOpen = ref(false)
 const modalOpen = ref(false)
 const editingLocation = ref(null)
 
@@ -30,9 +49,17 @@ const editingGroupId = ref(null)
 const editingGroupName = ref('')
 const groupRenameInputRef = ref(null)
 
-function isActive(loc) { return loc.id === collection.activeLocationId }
-function activate(loc) { collection.setActiveLocation(loc.id) }
-function showAll() { collection.setActiveLocation(null) }
+function isActive(loc) {
+  return route.name === 'collection' && loc.id === collection.activeLocationId
+}
+function activate(loc) {
+  collection.setActiveLocation(loc.id)
+  if (route.name !== 'collection') router.push({ name: 'collection' })
+}
+function showAll() {
+  collection.setActiveLocation(null)
+  if (route.name !== 'collection') router.push({ name: 'collection' })
+}
 
 function openCreate() {
   editingLocation.value = null
@@ -135,7 +162,7 @@ function onGroupAdd(evt, group) {
       <button
         type="button"
         class="all-cards-row sidebar-item top"
-        :class="{ active: collection.activeLocationId === null }"
+        :class="{ active: route.name === 'collection' && collection.activeLocationId === null }"
         @click="showAll"
       >
         <span class="set-sym all-cards-icon" aria-hidden="true">
@@ -146,7 +173,7 @@ function onGroupAdd(evt, group) {
       </button>
 
       <draggable
-        :list="collection.sidebarItems"
+        :list="mergedItems"
         :item-key="itemKey"
         :group="{ name: 'sidebar', pull: true, put: true }"
         handle=".drag-handle"
@@ -206,6 +233,21 @@ function onGroupAdd(evt, group) {
               </template>
               <template #item="{ element: loc }">
                 <button
+                  v-if="loc.kind === 'deck'"
+                  v-show="!isCollapsed(item.id)"
+                  type="button"
+                  class="loc-row sidebar-item nested sidebar-deck"
+                  :class="{ active: activeDeckId() === loc.id }"
+                  @click="openDeck(loc)"
+                >
+                  <span class="drag drag-handle" @click.stop>⠿</span>
+                  <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
+                  <span class="label">{{ loc.name }}</span>
+                  <span class="format-badge">{{ formatShort(loc.format) }}</span>
+                  <span class="num">{{ loc.entry_count }}</span>
+                </button>
+                <button
+                  v-else
                   v-show="!isCollapsed(item.id)"
                   type="button"
                   class="loc-row sidebar-item nested"
@@ -229,6 +271,20 @@ function onGroupAdd(evt, group) {
               </template>
             </draggable>
           </div>
+
+          <button
+            v-else-if="item.kind === 'deck'"
+            type="button"
+            class="loc-row sidebar-item sidebar-deck"
+            :class="{ active: activeDeckId() === item.id }"
+            @click="openDeck(item)"
+          >
+            <span class="drag drag-handle" @click.stop>⠿</span>
+            <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
+            <span class="label">{{ item.name }}</span>
+            <span class="format-badge">{{ formatShort(item.format) }}</span>
+            <span class="num">{{ item.entry_count }}</span>
+          </button>
 
           <button
             v-else
@@ -278,9 +334,16 @@ function onGroupAdd(evt, group) {
         </svg>
         Import CSV
       </button>
+      <button type="button" class="import-btn" @click="deckImportOpen = true">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Import Deck
+      </button>
     </footer>
 
     <ImportModal v-if="importOpen" @close="importOpen = false" />
+    <ImportDeckModal v-if="deckImportOpen" @close="deckImportOpen = false" />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
   </aside>
 </template>
@@ -422,6 +485,16 @@ function onGroupAdd(evt, group) {
 .sidebar-item.top {
   font-weight: 500;
   margin-bottom: 4px;
+}
+
+.sidebar-deck .format-badge {
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  color: var(--vk-ink-3);
+  background: var(--vk-bg-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
 }
 
 /* Hover-revealed drag handle + edit (shared between top-level + nested rows) */

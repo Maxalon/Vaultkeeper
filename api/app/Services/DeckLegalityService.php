@@ -49,7 +49,7 @@ class DeckLegalityService
      */
     public function check(Deck $deck): array
     {
-        $deck->loadMissing(['entries.card', 'commander1', 'commander2']);
+        $deck->loadMissing(['entries.card', 'commander1', 'commander2', 'companion']);
 
         $illegalities = [];
 
@@ -59,6 +59,7 @@ class DeckLegalityService
         $this->checkColorIdentity($deck, $illegalities);
         $this->checkCommanderValidity($deck, $illegalities);
         $this->checkOathbreakerValidity($deck, $illegalities);
+        $this->checkCompanionValidity($deck, $illegalities);
 
         return $illegalities;
     }
@@ -372,6 +373,47 @@ class DeckLegalityService
                     cardName: $ob->card?->name,
                 );
             }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Companion validity — the companion card must also be a deck_entries
+    // row in main or side zone, and must have the Companion keyword.
+    // ─────────────────────────────────────────────────────────────────────
+
+    private function checkCompanionValidity(Deck $deck, array &$out): void
+    {
+        if ($deck->companion_scryfall_id === null) {
+            return;
+        }
+        $companion = $deck->companion;
+        if ($companion === null) {
+            return;
+        }
+
+        if (! in_array('Companion', (array) $companion->keywords, true)) {
+            $out[] = $this->illegality(
+                'invalid_companion',
+                scryfallId1: $companion->scryfall_id,
+                message: "{$companion->name} does not have the Companion keyword.",
+                cardName: $companion->name,
+            );
+            return;
+        }
+
+        $matching = $deck->entries->first(fn (DeckEntry $e) =>
+            $e->scryfall_id === $deck->companion_scryfall_id
+            && in_array($e->zone, ['main', 'side'], true)
+            && $e->quantity >= 1
+        );
+
+        if ($matching === null) {
+            $out[] = $this->illegality(
+                'invalid_companion',
+                scryfallId1: $companion->scryfall_id,
+                message: "{$companion->name} is set as companion but is not present in the deck (main or side).",
+                cardName: $companion->name,
+            );
         }
     }
 

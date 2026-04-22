@@ -40,13 +40,12 @@ const routes = [
     component: () => import('../views/SettingsView.vue'),
     meta: { requiresAuth: true },
   },
-  // TODO(DB-3): remove once the deckbuilder tab system lands and embeds
-  // CatalogPanel directly. Standalone route only exists for DB-2 testing.
   {
-    path: '/catalog',
-    name: 'catalog',
-    component: () => import('../views/CatalogView.vue'),
+    path: '/collection/decks/:id(\\d+)',
+    name: 'deck',
+    component: () => import('../views/DeckView.vue'),
     meta: { requiresAuth: true },
+    props: true,
   },
   {
     path: '/',
