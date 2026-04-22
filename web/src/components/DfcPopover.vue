@@ -16,13 +16,23 @@ const props = defineProps({
 
 const rect = ref({ top: 0, left: 0 })
 
+// Popover width tracks --card-width so the backside matches the adjacent
+// front tile / strip at every density setting. Height derives from the
+// Scryfall 63:88 aspect ratio.
+function readCardWidth() {
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue('--card-width').trim()
+  const n = parseFloat(v)
+  return Number.isFinite(n) && n > 0 ? n : 240
+}
+
 function recompute() {
   const a = props.anchor
   if (!a || typeof a.getBoundingClientRect !== 'function') return
   const r = a.getBoundingClientRect()
   // Preferred placement: to the right of the tile, roughly same vertical.
-  const POP_W = 240
-  const POP_H = 336
+  const POP_W = readCardWidth()
+  const POP_H = Math.round(POP_W * 88 / 63)
   const GAP = 8
   let left = r.right + GAP
   let top = r.top
@@ -62,7 +72,7 @@ const style = computed(() => ({
 <style scoped>
 .dfc-popover {
   position: fixed;
-  width: 240px;
+  width: var(--card-width);
   aspect-ratio: 63 / 88;
   border-radius: 10px;
   overflow: hidden;

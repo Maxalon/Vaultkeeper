@@ -9,6 +9,9 @@ const props = defineProps({
 })
 
 const card = computed(() => props.entry?.card || null)
+const isDfc = computed(() =>
+  !!(card.value && card.value.is_dfc && card.value.image_normal_back)
+)
 </script>
 
 <template>
@@ -16,11 +19,17 @@ const card = computed(() => props.entry?.card || null)
     <div
       v-if="card"
       class="vk-peek"
-      :class="{ visible }"
+      :class="{ visible, 'is-dfc': isDfc }"
       :style="{ left: x + 'px', top: y + 'px' }"
     >
-      <img v-if="card.image_normal" :src="card.image_normal" :alt="card.name" />
-      <div v-else class="placeholder">{{ card.name }}</div>
+      <template v-if="isDfc">
+        <img class="face" :src="card.image_normal" :alt="card.name" />
+        <img class="face" :src="card.image_normal_back" :alt="card.name + ' (back)'" />
+      </template>
+      <template v-else>
+        <img v-if="card.image_normal" :src="card.image_normal" :alt="card.name" />
+        <div v-else class="placeholder">{{ card.name }}</div>
+      </template>
     </div>
   </Teleport>
 </template>
@@ -43,6 +52,20 @@ const card = computed(() => props.entry?.card || null)
   overflow: hidden;
   background: var(--vk-bg-2);
 }
+/* DFC peek shows both faces side-by-side; width doubles and the inner
+   aspect-ratio rule is dropped so the container naturally grows wide.
+   Each face keeps its own 63:88 aspect. An 8px gap matches DfcPopover.vue's
+   GAP so the catalog and collection visuals stay in sync. */
+.vk-peek.is-dfc {
+  width: calc(var(--card-width) * 2 + 8px);
+  aspect-ratio: auto;
+  display: flex;
+  gap: 8px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
 .vk-peek.visible {
   opacity: 1;
   transform: translateY(0) scale(1);
@@ -52,6 +75,17 @@ img {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.vk-peek.is-dfc .face {
+  width: var(--card-width);
+  aspect-ratio: 63 / 88;
+  height: auto;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(240, 195, 92, 0.3),
+    0 24px 48px rgba(0, 0, 0, 0.6),
+    0 12px 24px rgba(0, 0, 0, 0.4);
+  background: var(--vk-bg-2);
 }
 .placeholder {
   width: 100%;

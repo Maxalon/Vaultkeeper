@@ -84,8 +84,12 @@ function onPeekShow({ entry, rect }) {
   // Peek width tracks --card-width so the popover always matches the
   // strip size the user picked via Density. Height derives from the
   // Scryfall card aspect ratio (63×88) — same ratio CardPeek.vue uses.
-  const peekW = readCardWidth()
-  const peekH = Math.round(peekW * 88 / 63)
+  // DFCs render both faces side-by-side so the popover is twice as wide
+  // plus an 8px gap (matches CardPeek.vue's .is-dfc layout).
+  const isDfc = !!(entry?.card?.is_dfc && entry?.card?.image_normal_back)
+  const cardW = readCardWidth()
+  const peekW = isDfc ? cardW * 2 + 8 : cardW
+  const peekH = Math.round(cardW * 88 / 63)
   const gap = 10
 
   // Position peek to the right of the hovered strip, flip to left if it
