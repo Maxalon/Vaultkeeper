@@ -215,13 +215,24 @@ export const useCatalogStore = defineStore('catalog', {
     },
 
     /** Set the deckId context (from parent view); stores the deck's format +
-     *  identity so filter pills have labels. */
+     *  identity so filter pills have labels. Called both on mount and
+     *  whenever the deck's commanders / format change (commander swap
+     *  recomputes the color identity on the backend, which flows back in).
+     *
+     *  Preserves the user's toggle state (formatActive, colorIdentityActive)
+     *  across same-deck re-syncs — swapping a commander shouldn't re-enable
+     *  a filter the user just turned off. Only resets when the deck itself
+     *  changes (different deckId or going from null → a deck). */
     setDeckContext({ deckId, format, colorIdentity }) {
-      this.deckId = deckId || null
+      const nextId = deckId || null
+      const deckChanged = this.deckId !== nextId
+      this.deckId = nextId
       this.deckFilters.format = format || null
-      this.deckFilters.colorIdentity = colorIdentity || null
-      this.deckFilters.formatActive = true
-      this.deckFilters.colorIdentityActive = true
+      this.deckFilters.colorIdentity = colorIdentity ?? null
+      if (deckChanged) {
+        this.deckFilters.formatActive = true
+        this.deckFilters.colorIdentityActive = true
+      }
     },
   },
 })

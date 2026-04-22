@@ -37,6 +37,9 @@ export const useDeckStore = defineStore('deck', {
     /** Undock flags for side/maybe sections. */
     sideUndocked: false,
     maybeUndocked: false,
+    /** Id of the deck entry currently being dragged (null when nothing is).
+     *  Drives the floating "drop to remove" bin in DeckTabContent. */
+    dragEntryId: null,
   }),
 
   getters: {
@@ -224,6 +227,10 @@ export const useDeckStore = defineStore('deck', {
 
     setActiveEntry(entryId) {
       this.activeEntryId = this.activeEntryId === entryId ? null : entryId
+    },
+
+    setDragEntry(entryId) {
+      this.dragEntryId = entryId
     },
 
     setUndocked(section, value) {

@@ -7,6 +7,7 @@ import AppTopBar from '../components/AppTopBar.vue'
 import LocationSidebar from '../components/LocationSidebar.vue'
 import TabSystem from '../components/tabs/TabSystem.vue'
 import DeckDetailSidebar from '../components/deck/DeckDetailSidebar.vue'
+import DeckRemoveDropZone from '../components/deck/DeckRemoveDropZone.vue'
 
 const collection = useCollectionStore()
 const deck = useDeckStore()
@@ -68,6 +69,7 @@ onBeforeUnmount(() => {
         <DeckDetailSidebar v-if="deck.activeEntryId !== null" />
       </template>
     </main>
+    <DeckRemoveDropZone />
   </div>
 </template>
 

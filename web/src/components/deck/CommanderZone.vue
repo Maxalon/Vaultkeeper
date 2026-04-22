@@ -148,7 +148,9 @@ function onCommanderClick(card) {
 }
 .commander-tile {
   aspect-ratio: 63 / 88;
-  border-radius: 6px;
+  /* Percentage-based radius matches the Scryfall card's own corner
+     curve so the dark tile doesn't peek through as a square corner. */
+  border-radius: 4.5% / 3.2%;
   overflow: hidden;
   cursor: pointer;
   background: #1a1a22;

@@ -139,7 +139,10 @@ function onDragStart(e) {
   width: var(--card-width);
   height: var(--strip-height);
   margin-bottom: 4px;
-  border-radius: 4.5%/3.2%;
+  /* See DeckCardStrip — percent vertical radius collapses to ~1px at
+     strip height; key both radii to card-width to keep the Scryfall
+     card curve visible on the top corners. */
+  border-radius: calc(var(--card-width) * 0.045);
   cursor: pointer;
   background: var(--bg-2);
   /* Plain dark border — matches real MTG card framing. Focus/hover
