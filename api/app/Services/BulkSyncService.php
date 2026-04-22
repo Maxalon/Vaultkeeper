@@ -1135,7 +1135,13 @@ class BulkSyncService
                                sc.promo ASC,
                                COALESCE(sc.released_at, ms.released_at) DESC,
                                sc.set_code ASC,
-                               CAST(sc.collector_number AS UNSIGNED) ASC,
+                               -- collector_number can be '14p', '★123',
+                               -- 'prerelease'… extract leading/embedded
+                               -- digits via REGEXP_SUBSTR so strict-mode
+                               -- INSERT doesn't trip on the cast. NULLs
+                               -- sort last under ASC when paired with a
+                               -- string fallback.
+                               CAST(REGEXP_SUBSTR(sc.collector_number, '[0-9]+') AS UNSIGNED) ASC,
                                sc.collector_number ASC
                        ) AS rn
                 FROM scryfall_cards sc

@@ -213,6 +213,29 @@ class BulkSyncOracleTableTest extends TestCase
         );
     }
 
+    public function test_non_numeric_collector_numbers_dont_break_cast(): void
+    {
+        // Scryfall has collector numbers like '14p', '★123', 'prerelease'
+        // that CAST(... AS UNSIGNED) trips on under strict mode. The
+        // representative picker uses REGEXP_SUBSTR to extract digits so
+        // the INSERT doesn't fail. Exercise each shape against one oracle.
+        $oid = '00000000-0000-0000-0000-000000000080';
+        foreach (['14p', '★123', 'prerelease', '50'] as $i => $cn) {
+            ScryfallCard::factory()->create([
+                'oracle_id'        => $oid,
+                'name'             => 'Oddly Numbered',
+                'set_code'         => 'odd' . $i,
+                'collector_number' => $cn,
+                'released_at'      => '2020-01-0' . ($i + 1),
+            ]);
+        }
+
+        $this->rebuild();
+
+        $this->assertSame(1, ScryfallOracle::where('oracle_id', $oid)->count());
+        $this->assertSame(4, ScryfallOracle::find($oid)->printing_count);
+    }
+
     public function test_layout_flags_derived_from_layout_column(): void
     {
         $flip     = '00000000-0000-0000-0000-000000000070';
