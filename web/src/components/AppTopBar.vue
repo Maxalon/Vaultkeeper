@@ -178,6 +178,7 @@ function openSettings() {
         @change="setSort"
       />
       <button
+        v-if="mode === 'collection'"
         class="vk-btn vk-btn-primary"
         :class="{ active: collection.selecting }"
         @click="collection.toggleSelecting()"
@@ -201,7 +202,7 @@ function openSettings() {
 <style scoped>
 .vk-topbar {
   display: grid;
-  grid-template-columns: 240px 1fr auto;
+  grid-template-columns: 240px minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--vk-line);
   background: var(--vk-bg-1);
@@ -243,7 +244,7 @@ function openSettings() {
 
 .vk-topbar-center {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
   padding: 0 16px;
   height: 100%;
