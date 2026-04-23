@@ -13,6 +13,12 @@ async function logout() {
   router.push('/login')
 }
 
+function goBack() {
+  const target = window.history.state?.returnTo
+  if (target && typeof target === 'string') router.push(target)
+  else router.push('/collection')
+}
+
 const displayOptions = [
   { k: 'A', n: 'Typed names' },
   { k: 'B', n: 'Corner badge' },
@@ -34,7 +40,7 @@ const densityOptions = [
   <main class="settings-page">
     <header class="settings-header">
       <VaultMark />
-      <button class="back" @click="router.push('/collection')">← Collection</button>
+      <button class="back" @click="goBack">← Back</button>
     </header>
 
     <section class="settings-content">

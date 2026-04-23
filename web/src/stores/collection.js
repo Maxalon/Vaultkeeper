@@ -1,59 +1,43 @@
 import { defineStore } from 'pinia'
 import api from '../lib/api'
+import {
+  parseSearch as parseSearchGeneric,
+  serializeQuery as serializeQueryGeneric,
+} from '../lib/searchQuery'
 
-/**
- * Parse a search string into client-side filter tokens (c:/r:/t:/s:),
- * a sort directive (sort:), and a residual name query that goes to the
- * backend's `search` parameter. Quoting and full Scryfall syntax
- * (compound expressions, comparators) are deliberately out of scope until
- * a later session — this just makes the dropdown-generated tokens
- * functional alongside the chip topbar.
- */
-export function parseSearch(search) {
-  if (!search) return { tokens: [], nameQuery: '', sort: '', chips: { c: '', t: '', r: '', s: '' } }
-  const tokens = []
-  const nameParts = []
-  const chips = { c: '', t: '', r: '', s: '' }
-  let sort = ''
-  for (const part of search.trim().split(/\s+/)) {
-    if (!part) continue
-    const m = part.match(/^([crts]|set|sort|order):(.+)$/i)
-    if (m) {
-      const key = m[1].toLowerCase()
-      const val = m[2].toLowerCase()
-      if (key === 'sort' || key === 'order') {
-        sort = val
-        continue
-      }
-      // 'set' is a chip-side alias for 's' (the parser's filter key).
-      const filterKey = key === 'set' ? 's' : key
-      tokens.push({ type: filterKey, value: val })
-      chips[filterKey] = val
-    } else {
-      nameParts.push(part)
-    }
-  }
-  return { tokens, nameQuery: nameParts.join(' '), sort, chips }
+export const COLLECTION_SCHEMA = {
+  chipKeys: ['c', 't', 'r', 's'],
+  directiveKeys: ['sort', 'order'],
+  aliases: { set: 's' },
 }
 
+const COLLECTION_DEFAULTS = { sort: 'name' }
+
 /**
- * Round-trip the parsed-state object back into a normalized query string.
- * Stable order: free text, color, type, rarity, set, sort. Empty values
- * and the default sort ('name') are dropped so the search field stays
- * tidy as the user toggles chips.
+ * Collection-schema-bound parser. The existing callers (AppTopBar,
+ * filteredEntries getter, fetchEntries) expect the pre-refactor shape:
+ *   { tokens, nameQuery, sort, chips }
+ * We adapt the generic parser output to that shape for backwards compat.
  */
-export function serializeQuery(state) {
-  const parts = []
-  if (state.free) {
-    if (Array.isArray(state.free)) parts.push(...state.free)
-    else if (typeof state.free === 'string' && state.free.trim()) parts.push(state.free.trim())
+export function parseSearch(search) {
+  const parsed = parseSearchGeneric(search, COLLECTION_SCHEMA)
+  return {
+    tokens: parsed.tokens,
+    nameQuery: parsed.nameQuery,
+    sort: parsed.directives.sort || parsed.directives.order || '',
+    chips: parsed.chips,
   }
-  if (state.chips?.c) parts.push(`c:${state.chips.c}`)
-  if (state.chips?.t) parts.push(`t:${state.chips.t}`)
-  if (state.chips?.r) parts.push(`r:${state.chips.r}`)
-  if (state.chips?.s) parts.push(`set:${state.chips.s}`)
-  if (state.sort && state.sort !== 'name') parts.push(`sort:${state.sort}`)
-  return parts.join(' ')
+}
+
+export function serializeQuery(state) {
+  // Legacy state shape: { free, chips, sort }. Translate to the generic
+  // directive bag before delegating.
+  const adapted = {
+    free: state.free,
+    chips: state.chips,
+    directives: { sort: state.sort || '' },
+  }
+  return serializeQueryGeneric(adapted, COLLECTION_SCHEMA, COLLECTION_DEFAULTS)
 }
 
 /**
