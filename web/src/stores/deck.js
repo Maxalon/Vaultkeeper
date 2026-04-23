@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import api from '../lib/api'
 import { useToast } from '../composables/useToast'
+import {
+  parseSearch as parseSearchGeneric,
+  serializeQuery as serializeQueryGeneric,
+} from '../lib/searchQuery'
 
 /**
  * Illegality classification — card-level illegalities glow on the card;
@@ -12,6 +16,26 @@ const DECK_LEVEL_ILLEGALITY_TYPES = new Set([
   'invalid_commander',
   'invalid_partner',
 ])
+
+export const DECK_SCHEMA = {
+  chipKeys: ['c', 't', 'r'],
+  directiveKeys: [],
+  aliases: {},
+}
+
+/** Defaults for the display-control row — applied when a chip is cleared. */
+const DECK_DIRECTIVE_DEFAULTS = {
+  group: 'categories',
+  sort: 'name',
+  display: 'strips',
+}
+
+/** Directive key → canonical view field. */
+const DIRECTIVE_TO_VIEW = {
+  group: 'groupBy',
+  sort: 'sort',
+  display: 'displayMode',
+}
 
 export const useDeckStore = defineStore('deck', {
   state: () => ({
@@ -37,6 +61,9 @@ export const useDeckStore = defineStore('deck', {
     /** Undock flags for side/maybe sections. */
     sideUndocked: false,
     maybeUndocked: false,
+    /** Id of the deck entry currently being dragged (null when nothing is).
+     *  Drives the floating "drop to remove" bin in DeckTabContent. */
+    dragEntryId: null,
   }),
 
   getters: {
@@ -91,6 +118,10 @@ export const useDeckStore = defineStore('deck', {
 
     hasDeckLevelIllegality() {
       return this.deckLevelIllegalities.length > 0
+    },
+
+    parsedView(state) {
+      return parseSearchGeneric(state.view.search || '', DECK_SCHEMA)
     },
   },
 
@@ -226,9 +257,34 @@ export const useDeckStore = defineStore('deck', {
       this.activeEntryId = this.activeEntryId === entryId ? null : entryId
     },
 
+    setDragEntry(entryId) {
+      this.dragEntryId = entryId
+    },
+
     setUndocked(section, value) {
       if (section === 'side')  this.sideUndocked  = !!value
       if (section === 'maybe') this.maybeUndocked = !!value
+    },
+
+    /**
+     * Update a filter chip (c / t / r) by re-serializing view.search. Display
+     * controls (group / sort / display) live in view.{groupBy,sort,displayMode}
+     * and go through setDeckDirective instead — they're no longer search syntax.
+     */
+    setDeckChip(key, value) {
+      if (!DECK_SCHEMA.chipKeys.includes(key)) return
+      const parsed = this.parsedView
+      const nextChips = { ...parsed.chips, [key]: value || '' }
+      this.view.search = serializeQueryGeneric(
+        { free: parsed.nameQuery, chips: nextChips },
+        DECK_SCHEMA,
+      )
+    },
+
+    setDeckDirective(key, value) {
+      const viewField = DIRECTIVE_TO_VIEW[key]
+      if (!viewField) return
+      this.view[viewField] = value || DECK_DIRECTIVE_DEFAULTS[key]
     },
 
     reset() {

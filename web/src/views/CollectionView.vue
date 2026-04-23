@@ -25,6 +25,7 @@ onMounted(async () => {
     :data-sidebar="sidebarCollapsed ? 'collapsed' : 'expanded'"
   >
     <AppTopBar
+      mode="collection"
       :sidebar-collapsed="sidebarCollapsed"
       @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />

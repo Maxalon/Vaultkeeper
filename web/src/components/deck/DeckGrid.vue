@@ -1,7 +1,9 @@
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDeckStore } from '../../stores/deck'
+import DeckCardTile from './DeckCardTile.vue'
+import DeckCardStrip from './DeckCardStrip.vue'
 
 const props = defineProps({
   zone: { type: String, required: true },
@@ -11,6 +13,39 @@ const deck = useDeckStore()
 const route = useRoute()
 
 const collapsed = reactive(loadCollapseState())
+
+const gridRef = ref(null)
+const containerWidth = ref(0)
+let resizeObserver = null
+
+const COLUMN_GAP_PX = 20 // matches .deck-grid `gap: 1rem 1.25rem`
+
+function readCssPx(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  const n = parseFloat(v)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
+/** Columns that fit side-by-side in the current container width. */
+const fullColumnCount = computed(() => {
+  if (!containerWidth.value) return 1
+  const cardW = readCssPx('--card-width', 250)
+  const slot  = cardW + COLUMN_GAP_PX
+  return Math.max(1, Math.floor((containerWidth.value + COLUMN_GAP_PX) / slot))
+})
+
+onMounted(() => {
+  if (!gridRef.value) return
+  containerWidth.value = gridRef.value.clientWidth
+  resizeObserver = new ResizeObserver((entries) => {
+    for (const e of entries) containerWidth.value = e.contentRect.width
+  })
+  resizeObserver.observe(gridRef.value)
+})
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
 
 function storageKey() {
   return `vaultkeeper_deck_group_collapse::${route.params.id}`
@@ -50,14 +85,37 @@ function typeOf(card) {
 }
 
 const filtered = computed(() => {
-  const q = (deck.view.search || '').trim().toLowerCase()
+  const parsed = deck.parsedView
+  const nameQ = (parsed.nameQuery || '').trim().toLowerCase()
+  const tokens = parsed.tokens
   const zoneEntries = deck.entriesByZone(props.zone).filter(
     (e) => !e.is_commander && !e.is_signature_spell,
   )
-  if (!q) return zoneEntries
-  return zoneEntries.filter((e) =>
-    (e.scryfall_card?.name || '').toLowerCase().includes(q),
-  )
+  if (!nameQ && tokens.length === 0) return zoneEntries
+  return zoneEntries.filter((e) => {
+    const card = e.scryfall_card || {}
+    if (nameQ && !(card.name || '').toLowerCase().includes(nameQ)) return false
+    for (const tok of tokens) {
+      switch (tok.type) {
+        case 'c': {
+          const cardColors = (card.colors || []).map((c) => c.toLowerCase())
+          if (tok.value === 'c') {
+            if (cardColors.length !== 0) return false
+          } else {
+            if (!cardColors.includes(tok.value)) return false
+          }
+          break
+        }
+        case 't':
+          if (!(card.type_line || '').toLowerCase().includes(tok.value)) return false
+          break
+        case 'r':
+          if ((card.rarity || '').toLowerCase() !== tok.value) return false
+          break
+      }
+    }
+    return true
+  })
 })
 
 const sorted = computed(() => {
@@ -79,7 +137,26 @@ const sorted = computed(() => {
 
 const groups = computed(() => {
   const mode = deck.view.groupBy
-  if (mode === 'full') return [{ key: 'all', label: '', rows: sorted.value }]
+  if (mode === 'full') {
+    // Split the deck into N independent columns by chunking the sorted
+    // list, N from fullColumnCount. Each chunk renders as its own
+    // flex-column group, so hovering a strip (which expands that card's
+    // height) only grows its own column — neighbouring columns do not
+    // reflow. Adding/removing/filtering/sorting or resizing the viewport
+    // still redistributes across columns, because those change either
+    // the list or the column count.
+    const list = sorted.value
+    const cols = fullColumnCount.value
+    if (list.length === 0) return []
+    const perCol = Math.ceil(list.length / cols)
+    const out = []
+    for (let i = 0; i < cols; i++) {
+      const rows = list.slice(i * perCol, (i + 1) * perCol)
+      if (!rows.length) continue
+      out.push({ key: `col-${i}`, label: '', rows })
+    }
+    return out
+  }
 
   const map = new Map()
   for (const row of sorted.value) {
@@ -102,45 +179,124 @@ const groups = computed(() => {
 
 const cardIllegalityMap = computed(() => deck.cardLevelIllegalitiesByScryfallId)
 
-function onDropGroup(e, groupKey) {
-  e.preventDefault()
-  const raw = e.dataTransfer?.getData('application/json')
-  if (!raw) return
-  let payload
-  try { payload = JSON.parse(raw) } catch { return }
+const gridDragActive = ref(false)
+const dropTargetGroup = ref(null)
 
+// HTML5 DnD fires dragleave on a parent whenever the cursor crosses into a
+// child element (before the child's dragenter bubbles back up). A plain
+// enter/leave toggle would flicker every time the cursor moves between
+// strips. We debounce the "hide" side so the intervening dragenter event
+// can cancel it.
+let hideTimer = null
+function scheduleHide() {
+  if (hideTimer) clearTimeout(hideTimer)
+  hideTimer = setTimeout(() => {
+    gridDragActive.value = false
+    dropTargetGroup.value = null
+    hideTimer = null
+  }, 60)
+}
+function cancelHide() {
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+}
+
+function acceptsDrop(e) {
+  return (e.dataTransfer?.types || []).includes('application/json')
+}
+
+function onGridDragEnter(e) {
+  if (!acceptsDrop(e)) return
+  cancelHide()
+  gridDragActive.value = true
+}
+function onGridDragLeave() {
+  scheduleHide()
+}
+function onGridDragOver(e) {
+  if (!acceptsDrop(e)) return
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  // Also catches child→parent transitions where dragenter didn't bubble:
+  // as long as dragover keeps firing we're still over the grid.
+  cancelHide()
+  gridDragActive.value = true
+}
+
+function onGroupDragEnter(e, groupKey) {
+  if (!acceptsDrop(e)) return
+  cancelHide()
+  dropTargetGroup.value = groupKey
+}
+function onGroupDragOver(e, groupKey) {
+  if (!acceptsDrop(e)) return
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  cancelHide()
+  dropTargetGroup.value = groupKey
+}
+function onGroupDragLeave() {
+  // Leaving a group only clears the column highlight; the grid's own
+  // scheduleHide covers the overall fade-out when truly leaving the area.
+  // We don't null the target here so moving between a group's cards
+  // doesn't wipe the column hint.
+}
+
+function applyDrop(payload, groupKey) {
   if (payload.source === 'catalog') {
     deck.addEntry(deck.deck.id, {
       scryfall_id: payload.scryfall_id,
       zone: props.zone,
-      category: deck.view.groupBy === 'categories' && groupKey !== 'Uncategorized'
+      category: deck.view.groupBy === 'categories' && groupKey && groupKey !== 'Uncategorized'
         ? groupKey
         : undefined,
     })
     return
   }
-  if (payload.source === 'deck' && payload.deckEntryId && deck.view.groupBy === 'categories') {
-    deck.updateEntry(deck.deck.id, payload.deckEntryId, {
-      category: groupKey === 'Uncategorized' ? null : groupKey,
-    })
+  if (payload.source === 'deck' && payload.deckEntryId) {
+    const patch = {}
+    if (props.zone && payload.zone !== props.zone) {
+      patch.zone = props.zone
+    }
+    if (deck.view.groupBy === 'categories' && groupKey) {
+      patch.category = groupKey === 'Uncategorized' ? null : groupKey
+    }
+    if (Object.keys(patch).length > 0) {
+      deck.updateEntry(deck.deck.id, payload.deckEntryId, patch)
+    }
   }
 }
 
-function onDragOver(e) {
-  const types = e.dataTransfer?.types || []
-  if (types.includes('application/json')) {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-  }
+function parsePayload(e) {
+  const raw = e.dataTransfer?.getData('application/json')
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
 }
 
-function entryDragStart(e, entry) {
-  e.dataTransfer.effectAllowed = 'move'
-  e.dataTransfer.setData('application/json', JSON.stringify({
-    source: 'deck',
-    deckEntryId: entry.id,
-    scryfall_id: entry.scryfall_id,
-  }))
+function resetDragState() {
+  cancelHide()
+  gridDragActive.value = false
+  dropTargetGroup.value = null
+}
+
+function onGridDrop(e) {
+  if (!acceptsDrop(e)) return
+  e.preventDefault()
+  resetDragState()
+  const payload = parsePayload(e)
+  if (!payload) return
+  applyDrop(payload, null)
+}
+
+function onGroupDrop(e, groupKey) {
+  if (!acceptsDrop(e)) return
+  e.preventDefault()
+  // Stop the grid-level handler from firing too — the group has the
+  // category context we need, the grid fallback doesn't.
+  e.stopPropagation()
+  resetDragState()
+  const payload = parsePayload(e)
+  if (!payload) return
+  applyDrop(payload, groupKey)
 }
 
 function onEntryClick(entry) {
@@ -152,16 +308,34 @@ function isIllegal(entry) {
 }
 
 const gcFormat = computed(() => deck.deck?.format === 'commander')
+
+// "No grouping" (full) keeps its JS-chunked flex-row layout; every other mode
+// switches to CSS multi-column so short categories don't leave a dead zone
+// under themselves — the next category packs into the reclaimed space.
+const gridModeClass = computed(() =>
+  deck.view.groupBy === 'full' ? 'mode-full' : 'mode-grouped',
+)
 </script>
 
 <template>
-  <div class="deck-grid">
+  <div
+    ref="gridRef"
+    class="deck-grid"
+    :class="[{ 'drag-active': gridDragActive }, gridModeClass]"
+    @dragenter="onGridDragEnter"
+    @dragleave="onGridDragLeave"
+    @dragover="onGridDragOver"
+    @drop="onGridDrop"
+  >
     <div
       v-for="group in groups"
       :key="group.key"
       class="deck-group"
-      @dragover="onDragOver"
-      @drop="onDropGroup($event, group.key)"
+      :class="{ 'drop-target': dropTargetGroup === group.key }"
+      @dragenter="onGroupDragEnter($event, group.key)"
+      @dragover="onGroupDragOver($event, group.key)"
+      @dragleave="onGroupDragLeave"
+      @drop="onGroupDrop($event, group.key)"
     >
       <header v-if="group.label" class="group-header" @click="toggle(group.key)">
         <span class="chevron" :class="{ collapsed: collapsed[group.key] }">▾</span>
@@ -169,24 +343,22 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
         <span class="count">({{ group.rows.reduce((s, r) => s + r.quantity, 0) }})</span>
       </header>
       <div v-if="!collapsed[group.key]" class="group-body" :class="deck.view.displayMode">
-        <div
-          v-for="entry in group.rows"
-          :key="entry.id"
-          class="deck-card"
-          :class="{ 'illegal-glow': isIllegal(entry) }"
-          draggable="true"
-          @click="onEntryClick(entry)"
-          @dragstart="entryDragStart($event, entry)"
-        >
-          <img
-            v-if="entry.scryfall_card?.image_small"
-            :src="entry.scryfall_card.image_small"
-            :alt="entry.scryfall_card.name"
+        <template v-for="entry in group.rows" :key="entry.id">
+          <DeckCardTile
+            v-if="deck.view.displayMode === 'tiles'"
+            :entry="entry"
+            :illegal="isIllegal(entry)"
+            :show-game-changer="gcFormat"
+            @click="onEntryClick(entry)"
           />
-          <div v-else class="card-name-fallback">{{ entry.scryfall_card?.name }}</div>
-          <span v-if="entry.quantity > 1" class="qty-badge">{{ entry.quantity }}</span>
-          <span v-if="gcFormat && entry.scryfall_card?.commander_game_changer" class="gc-badge">GC</span>
-        </div>
+          <DeckCardStrip
+            v-else
+            :entry="entry"
+            :illegal="isIllegal(entry)"
+            :show-game-changer="gcFormat"
+            @click="onEntryClick(entry)"
+          />
+        </template>
       </div>
     </div>
     <div v-if="!groups.length" class="empty-state">
@@ -196,13 +368,61 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
 </template>
 
 <style scoped>
+/* Two layouts share the .deck-grid container:
+   - .mode-full ("No grouping"): flex row-wrap over JS-chunked balanced
+     columns. Hovering a strip only grows its own column.
+   - .mode-grouped (categories / type / color / cmc / rarity / zone): CSS
+     multi-column. Groups stay atomic (break-inside: avoid) and the browser
+     packs them top-to-bottom so a short category no longer leaves a dead
+     zone under itself — the next category bleeds up into the space. */
 .deck-grid {
   padding: 0.5rem 1.25rem 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  position: relative;
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
-.deck-group { min-height: 40px; }
+.deck-grid.mode-full {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 1.25rem;
+}
+.deck-grid.mode-grouped {
+  column-width: var(--card-width);
+  column-gap: 1.25rem;
+}
+/* Whole-zone hint while a valid drag hovers anywhere in the grid. The
+   empty-state pane also picks this up so side/maybe boards with no
+   cards still show they're a valid target. */
+.deck-grid.drag-active {
+  background: rgba(201, 157, 61, 0.06);
+  box-shadow: inset 0 0 0 2px rgba(201, 157, 61, 0.35);
+}
+.deck-group {
+  min-height: 40px;
+  border-radius: 6px;
+  transition: background 120ms ease, outline-color 120ms ease;
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+}
+.mode-full .deck-group {
+  flex: 0 0 auto;
+  width: var(--card-width);
+}
+.mode-grouped .deck-group {
+  width: auto;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  /* Replaces the flex row-gap for vertical separation between stacked groups. */
+  margin-bottom: 1rem;
+}
+/* Precise column highlight so the user sees exactly which category/column
+   the card will land in. */
+.deck-group.drop-target {
+  background: rgba(201, 157, 61, 0.12);
+  outline-color: var(--vk-gold, #c9a552);
+}
 .group-header {
   display: flex;
   align-items: center;
@@ -221,47 +441,15 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
 .count { color: var(--vk-fg-dim, #a8a396); }
 .group-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
   padding: 0.4rem 0;
 }
-.group-body.tiles .deck-card { width: 90px; aspect-ratio: 63/88; }
-.group-body.strips .deck-card {
-  width: 110px;
-  height: 24px;
-  overflow: hidden;
-}
-.deck-card {
-  position: relative;
-  border-radius: 4px;
-  overflow: hidden;
-  cursor: pointer;
-  background: #1a1a22;
-  border: 1px solid #0a0a0a;
-}
-.deck-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.group-body.strips .deck-card img { object-position: top; }
-.card-name-fallback {
-  padding: 4px;
-  font-size: 10px;
-  color: var(--vk-fg-dim, #a8a396);
-}
-.qty-badge, .gc-badge {
-  position: absolute;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 999px;
-}
-.qty-badge {
-  top: 2px; right: 2px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fff;
-}
-.gc-badge {
-  bottom: 2px; left: 2px;
+.group-body.strips {
+  gap: 0;
 }
 .empty-state {
+  flex: 1 1 100%;
   padding: 2rem;
   text-align: center;
   color: var(--vk-fg-dim, #a8a396);

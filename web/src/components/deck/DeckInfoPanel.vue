@@ -3,11 +3,12 @@ import { computed } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import { useTabsStore } from '../../stores/tabs'
 import ManaSymbol from '../ManaSymbol.vue'
+import ExportMenu from './ExportMenu.vue'
 
 const deck = useDeckStore()
 const tabs = useTabsStore()
 
-const emit = defineEmits(['edit'])
+const emit = defineEmits(['edit', 'export'])
 
 const mainCount = computed(() =>
   deck.entriesByZone('main').reduce((sum, e) => sum + (e.quantity || 0), 0),
@@ -34,6 +35,10 @@ function onDeckNameClick() {
         @click="onDeckNameClick"
       >{{ deck.deck.name }}</h2>
       <span class="format-badge">{{ deck.deck.format }}</span>
+      <div class="header-actions">
+        <button type="button" class="action-btn" @click="emit('edit')">Edit</button>
+        <ExportMenu @select="(payload) => emit('export', payload)" />
+      </div>
     </header>
 
     <div class="deck-meta">
@@ -46,7 +51,6 @@ function onDeckNameClick() {
         <span v-if="!identityLetters.length" class="pips-empty">colorless</span>
       </span>
       <span class="count">{{ mainCount }} cards</span>
-      <button type="button" class="edit-btn" @click="emit('edit')">Edit</button>
     </div>
 
     <p v-if="deck.deck.description" class="deck-desc">{{ deck.deck.description }}</p>
@@ -75,6 +79,19 @@ function onDeckNameClick() {
   cursor: default;
   padding: 2px 4px;
   border-radius: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+  align-self: center;
 }
 .deck-name.illegal-glow { cursor: pointer; }
 .format-badge {
@@ -95,8 +112,7 @@ function onDeckNameClick() {
 }
 .pips { display: inline-flex; align-items: center; gap: 2px; }
 .pips-empty { font-style: italic; }
-.edit-btn {
-  margin-left: auto;
+.action-btn {
   background: transparent;
   border: 1px solid var(--vk-border, #33312c);
   color: inherit;
@@ -105,7 +121,7 @@ function onDeckNameClick() {
   cursor: pointer;
   border-radius: 4px;
 }
-.edit-btn:hover { background: var(--vk-surface-raised, #26241f); }
+.action-btn:hover { background: var(--vk-surface-raised, #26241f); }
 .deck-desc {
   margin: 0;
   color: var(--vk-fg-dim, #a8a396);

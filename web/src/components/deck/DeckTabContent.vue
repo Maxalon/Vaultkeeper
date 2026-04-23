@@ -7,12 +7,15 @@ import DeckFilterBar from './DeckFilterBar.vue'
 import DeckGrid from './DeckGrid.vue'
 import ZoneDivider from './ZoneDivider.vue'
 import LocationModal from '../LocationModal.vue'
+import { copyDeckToClipboard, downloadDeck } from '../../utils/deckExport'
+import { useToast } from '../../composables/useToast'
 
 defineProps({
   zone: { type: String, default: null },  // when set (side|maybe), render only that zone
 })
 
 const deck = useDeckStore()
+const toast = useToast()
 
 const editOpen = ref(false)
 const editLocation = computed(() =>
@@ -21,6 +24,19 @@ const editLocation = computed(() =>
 
 function onEdit() {
   if (deck.deck) editOpen.value = true
+}
+async function onExport({ action, format }) {
+  if (!deck.deck) return
+  if (action === 'copy') {
+    try {
+      await copyDeckToClipboard(format, deck.deck, deck.entries)
+      toast.success('Decklist copied to clipboard')
+    } catch {
+      toast.error('Failed to copy to clipboard')
+    }
+  } else {
+    downloadDeck(format, deck.deck, deck.entries)
+  }
 }
 async function onEditClosed() {
   editOpen.value = false
@@ -45,7 +61,7 @@ async function onEditClosed() {
     <!-- Full deck layout -->
     <template v-else>
       <div class="deck-top-row">
-        <DeckInfoPanel class="info-panel" @edit="onEdit" />
+        <DeckInfoPanel class="info-panel" @edit="onEdit" @export="onExport" />
         <CommanderZone class="commander-zone" />
       </div>
 

@@ -1,18 +1,21 @@
 <script setup>
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useCollectionStore, parseSearch, serializeQuery } from '../stores/collection'
 import VaultMark from './VaultMark.vue'
 import FilterChip from './FilterChip.vue'
 import SyntaxSearch from './SyntaxSearch.vue'
+import TopbarTabBar from './tabs/TopbarTabBar.vue'
 
 const props = defineProps({
   sidebarCollapsed: { type: Boolean, default: false },
+  mode: { type: String, default: 'collection' }, // 'collection' | 'deck'
 })
 const emit = defineEmits(['toggle-sidebar'])
 
 const collection = useCollectionStore()
 const router = useRouter()
+const route = useRoute()
 
 // ── Chip option lists ────────────────────────────────────────────────────
 const COLOR_OPTS = [
@@ -95,7 +98,7 @@ function onSearchInput(v) {
 }
 
 function openSettings() {
-  router.push('/settings')
+  router.push({ path: '/settings', state: { returnTo: route.fullPath } })
 }
 </script>
 
@@ -120,46 +123,52 @@ function openSettings() {
     </div>
 
     <div class="vk-topbar-center">
-      <FilterChip
-        label="Color"
-        :value="parsed.chips.c"
-        :options="COLOR_OPTS"
-        token-class="tok-c"
-        hint-prefix="c:"
-        @change="(v) => setChip('c', v)"
-      />
-      <FilterChip
-        label="Type"
-        :value="parsed.chips.t"
-        :options="TYPE_OPTS"
-        token-class="tok-t"
-        hint-prefix="t:"
-        @change="(v) => setChip('t', v)"
-      />
-      <FilterChip
-        label="Rarity"
-        :value="parsed.chips.r"
-        :options="RARITY_OPTS"
-        token-class="tok-r"
-        hint-prefix="r:"
-        @change="(v) => setChip('r', v)"
-      />
-      <FilterChip
-        label="Set"
-        :value="parsed.chips.s"
-        :options="SET_OPTS"
-        token-class="tok-set"
-        hint-prefix="set:"
-        @change="(v) => setChip('s', v)"
-      />
-      <SyntaxSearch
-        :model-value="collection.filters.search"
-        @update:model-value="onSearchInput"
-      />
+      <template v-if="mode === 'collection'">
+        <FilterChip
+          label="Color"
+          :value="parsed.chips.c"
+          :options="COLOR_OPTS"
+          token-class="tok-c"
+          hint-prefix="c:"
+          @change="(v) => setChip('c', v)"
+        />
+        <FilterChip
+          label="Type"
+          :value="parsed.chips.t"
+          :options="TYPE_OPTS"
+          token-class="tok-t"
+          hint-prefix="t:"
+          @change="(v) => setChip('t', v)"
+        />
+        <FilterChip
+          label="Rarity"
+          :value="parsed.chips.r"
+          :options="RARITY_OPTS"
+          token-class="tok-r"
+          hint-prefix="r:"
+          @change="(v) => setChip('r', v)"
+        />
+        <FilterChip
+          label="Set"
+          :value="parsed.chips.s"
+          :options="SET_OPTS"
+          token-class="tok-set"
+          hint-prefix="set:"
+          @change="(v) => setChip('s', v)"
+        />
+        <SyntaxSearch
+          :model-value="collection.filters.search"
+          @update:model-value="onSearchInput"
+        />
+      </template>
+      <template v-else>
+        <TopbarTabBar />
+      </template>
     </div>
 
     <div class="vk-topbar-right">
       <FilterChip
+        v-if="mode === 'collection'"
         label="Sort"
         :value="collection.filters.sort"
         :options="SORT_OPTS"
@@ -169,22 +178,23 @@ function openSettings() {
         @change="setSort"
       />
       <button
-        class="vk-chip"
-        style="width: 32px; padding: 0; justify-content: center;"
-        title="Display options"
-        @click="openSettings"
-      >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-          <circle cx="6" cy="2.5" r="1" />
-          <circle cx="6" cy="6" r="1" />
-          <circle cx="6" cy="9.5" r="1" />
-        </svg>
-      </button>
-      <button
+        v-if="mode === 'collection'"
         class="vk-btn vk-btn-primary"
         :class="{ active: collection.selecting }"
         @click="collection.toggleSelecting()"
       >Select</button>
+      <button
+        class="vk-icon-btn"
+        title="Settings"
+        aria-label="Settings"
+        @click="openSettings"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
     </div>
   </header>
 </template>
@@ -192,7 +202,7 @@ function openSettings() {
 <style scoped>
 .vk-topbar {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr auto;
+  grid-template-columns: 240px minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--vk-line);
   background: var(--vk-bg-1);
@@ -234,10 +244,11 @@ function openSettings() {
 
 .vk-topbar-center {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
   padding: 0 16px;
   height: 100%;
+  min-width: 0; /* lets the tabs-bar child actually clip + scroll */
 }
 
 .vk-topbar-right {
@@ -246,5 +257,26 @@ function openSettings() {
   gap: 10px;
   padding: 0 16px;
   height: 100%;
+}
+
+.vk-icon-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--vk-line);
+  border-radius: 6px;
+  color: var(--vk-ink-2, var(--vk-gold));
+  cursor: pointer;
+  padding: 0;
+  transition: all 120ms ease;
+}
+.vk-icon-btn:hover {
+  color: #1a1408;
+  background: var(--vk-gold);
+  border-color: var(--vk-gold);
 }
 </style>

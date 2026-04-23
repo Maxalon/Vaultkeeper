@@ -295,6 +295,8 @@ class DeckController extends Controller
             'physical_copy_id'       => $entry->physical_copy_id,
             'needs_review'           => (bool) $entry->needs_review,
             'card'                   => $card ? [
+                'scryfall_id'     => $card->scryfall_id,
+                'oracle_id'       => $card->oracle_id,
                 'name'            => $card->name,
                 'set_code'        => $card->set_code,
                 'rarity'          => $card->rarity,
@@ -302,8 +304,11 @@ class DeckController extends Controller
                 'mana_cost'       => $card->mana_cost,
                 'colors'          => $card->colors,
                 'color_identity'  => $card->color_identity,
+                'is_dfc'          => (bool) $card->is_dfc,
                 'image_small'     => $card->image_small,
                 'image_normal'    => $card->image_normal,
+                'image_small_back'  => $card->image_small_back,
+                'image_normal_back' => $card->image_normal_back,
             ] : null,
         ];
     }
