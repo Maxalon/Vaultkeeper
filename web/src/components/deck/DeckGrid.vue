@@ -98,8 +98,12 @@ const filtered = computed(() => {
     for (const tok of tokens) {
       switch (tok.type) {
         case 'c': {
-          const colors = (card.colors || []).map((c) => c.toLowerCase())
-          if (!colors.includes(tok.value)) return false
+          const cardColors = (card.colors || []).map((c) => c.toLowerCase())
+          if (tok.value === 'c') {
+            if (cardColors.length !== 0) return false
+          } else {
+            if (!cardColors.includes(tok.value)) return false
+          }
           break
         }
         case 't':

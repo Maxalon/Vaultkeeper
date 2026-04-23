@@ -84,7 +84,8 @@ export function producerCardsByColor(entries) {
       const tags = card.oracle_tags || []
       const rampy = tags.includes('ramp') || tags.includes('mana-rock') || tags.includes('mana-dork')
       if (isLand(card) || rampy) {
-        colors = card.color_identity || []
+        const ci = card.color_identity || []
+        colors = ci.length === 0 ? ['C'] : ci
       } else {
         continue
       }
