@@ -308,13 +308,20 @@ function isIllegal(entry) {
 }
 
 const gcFormat = computed(() => deck.deck?.format === 'commander')
+
+// "No grouping" (full) keeps its JS-chunked flex-row layout; every other mode
+// switches to CSS multi-column so short categories don't leave a dead zone
+// under themselves — the next category packs into the reclaimed space.
+const gridModeClass = computed(() =>
+  deck.view.groupBy === 'full' ? 'mode-full' : 'mode-grouped',
+)
 </script>
 
 <template>
   <div
     ref="gridRef"
     class="deck-grid"
-    :class="{ 'drag-active': gridDragActive }"
+    :class="[{ 'drag-active': gridDragActive }, gridModeClass]"
     @dragenter="onGridDragEnter"
     @dragleave="onGridDragLeave"
     @dragover="onGridDragOver"
@@ -361,18 +368,28 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
 </template>
 
 <style scoped>
-/* Category columns — each group is a one-card-wide column; columns flow
-   left-to-right and wrap to the next row when the viewport runs out of
-   horizontal space. Mirrors Moxfield/Archidekt's column layout. */
+/* Two layouts share the .deck-grid container:
+   - .mode-full ("No grouping"): flex row-wrap over JS-chunked balanced
+     columns. Hovering a strip only grows its own column.
+   - .mode-grouped (categories / type / color / cmc / rarity / zone): CSS
+     multi-column. Groups stay atomic (break-inside: avoid) and the browser
+     packs them top-to-bottom so a short category no longer leaves a dead
+     zone under itself — the next category bleeds up into the space. */
 .deck-grid {
   padding: 0.5rem 1.25rem 1.5rem;
+  position: relative;
+  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.deck-grid.mode-full {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 1rem 1.25rem;
-  position: relative;
-  transition: background 120ms ease, box-shadow 120ms ease;
+}
+.deck-grid.mode-grouped {
+  column-width: var(--card-width);
+  column-gap: 1.25rem;
 }
 /* Whole-zone hint while a valid drag hovers anywhere in the grid. The
    empty-state pane also picks this up so side/maybe boards with no
@@ -382,13 +399,23 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
   box-shadow: inset 0 0 0 2px rgba(201, 157, 61, 0.35);
 }
 .deck-group {
-  flex: 0 0 auto;
-  width: var(--card-width);
   min-height: 40px;
   border-radius: 6px;
   transition: background 120ms ease, outline-color 120ms ease;
   outline: 2px dashed transparent;
   outline-offset: -2px;
+}
+.mode-full .deck-group {
+  flex: 0 0 auto;
+  width: var(--card-width);
+}
+.mode-grouped .deck-group {
+  width: auto;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  /* Replaces the flex row-gap for vertical separation between stacked groups. */
+  margin-bottom: 1rem;
 }
 /* Precise column highlight so the user sees exactly which category/column
    the card will land in. */
