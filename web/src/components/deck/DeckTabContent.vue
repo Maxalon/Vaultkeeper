@@ -7,6 +7,7 @@ import DeckFilterBar from './DeckFilterBar.vue'
 import DeckGrid from './DeckGrid.vue'
 import ZoneDivider from './ZoneDivider.vue'
 import LocationModal from '../LocationModal.vue'
+import { downloadDeck } from '../../utils/deckExport'
 
 defineProps({
   zone: { type: String, default: null },  // when set (side|maybe), render only that zone
@@ -21,6 +22,9 @@ const editLocation = computed(() =>
 
 function onEdit() {
   if (deck.deck) editOpen.value = true
+}
+function onExport(format) {
+  if (deck.deck) downloadDeck(format, deck.deck, deck.entries)
 }
 async function onEditClosed() {
   editOpen.value = false
@@ -45,7 +49,7 @@ async function onEditClosed() {
     <!-- Full deck layout -->
     <template v-else>
       <div class="deck-top-row">
-        <DeckInfoPanel class="info-panel" @edit="onEdit" />
+        <DeckInfoPanel class="info-panel" @edit="onEdit" @export="onExport" />
         <CommanderZone class="commander-zone" />
       </div>
 
