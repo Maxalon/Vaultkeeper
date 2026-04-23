@@ -33,7 +33,7 @@ function onOpenCatalog(panelId) {
   background: transparent;
   padding: 0;
   height: 100%;
-  align-items: center;
+  align-items: flex-end;
   flex: 1 1 auto;
   min-width: 0; /* lets overflow-x: auto actually clip */
 }
