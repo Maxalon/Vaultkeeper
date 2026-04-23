@@ -1,16 +1,17 @@
 <script setup>
-import { computed, ref } from 'vue'
-import DfcPopover from '../DfcPopover.vue'
-import ManaCost from '../ManaCost.vue'
-import SetSymbol from '../SetSymbol.vue'
+import { computed } from 'vue'
+import { useSettingsStore } from '../../stores/settings'
 import { useDeckStore } from '../../stores/deck'
-
-const deckStore = useDeckStore()
+import BaseCardStrip from '../strip/BaseCardStrip.vue'
 
 /**
- * Strip-layout counterpart to DeckCardTile. Compact --strip-height row
- * that expands on hover to --strip-expanded, revealing the full card
- * image. Same drag-to-remove + DFC popover semantics as the tile.
+ * Deck-view strip. Thin wrapper over BaseCardStrip that adds the
+ * drag-to-remove payload, the top-right quantity pill (Mode A only —
+ * Mode B uses the base's gold corner badge), the Game Changer flag,
+ * and the illegal-glow border.
+ *
+ * Same A/B visual split as the collection strip. Reads
+ * settings.displayMode so the Location sidebar toggle applies here too.
  */
 const props = defineProps({
   entry: { type: Object, required: true },
@@ -19,30 +20,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['click'])
 
-const rootRef = ref(null)
-const hovered = ref(false)
-const imageLoaded = ref(false)
-const imgFailed = ref(false)
-let hoverTimer = null
+const settings = useSettingsStore()
+const deckStore = useDeckStore()
 
 const card = computed(() => props.entry?.scryfall_card || {})
 const qty = computed(() => props.entry?.quantity || 0)
-
-const hasImage = computed(() => !!card.value.image_normal && !imgFailed.value)
-const isLoaded = computed(() => hasImage.value && imageLoaded.value)
-
-function onClick() {
-  emit('click', props.entry)
-}
-
-function onMouseEnter() {
-  if (!card.value.is_dfc) return
-  hoverTimer = setTimeout(() => { hovered.value = true }, 300)
-}
-function onMouseLeave() {
-  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
-  hovered.value = false
-}
+const isModeA = computed(() => settings.displayMode === 'A')
 
 function onDragStart(e) {
   e.dataTransfer.effectAllowed = 'move'
@@ -60,134 +43,40 @@ function onDragEnd() {
 </script>
 
 <template>
-  <div
-    ref="rootRef"
-    class="deck-card-strip"
-    :class="{ 'illegal-glow': illegal, loaded: isLoaded }"
+  <BaseCardStrip
+    :card="card"
+    :quantity="qty"
+    :show-qty-in-bar="false"
+    :show-skeleton="false"
+    :mode-b="settings.displayMode === 'B'"
     :draggable="true"
-    @click="onClick"
+    :loading-lazy="true"
+    :class="{ 'illegal-glow': illegal }"
+    @click="emit('click', entry)"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
-    @mouseenter="onMouseEnter"
-    @mouseleave="onMouseLeave"
   >
-    <div class="strip-clip">
-      <img
-        v-if="hasImage"
-        class="card-img"
-        :src="card.image_normal"
-        :alt="card.name"
-        loading="lazy"
-        decoding="async"
-        @load="imageLoaded = true"
-        @error="imgFailed = true"
-      />
-
-      <div class="overlay">
-        <SetSymbol :set="card.set_code" :rarity="card.rarity || 'common'" :size="16" />
-        <span class="name">{{ card.name || '—' }}</span>
-        <ManaCost v-if="card.mana_cost" class="cost" :cost="card.mana_cost" />
-      </div>
-
-      <span v-if="qty > 1" class="qty-badge">{{ qty }}</span>
-      <span v-if="showGameChanger && card.commander_game_changer" class="gc-badge">GC</span>
-    </div>
-
-    <DfcPopover
-      v-if="card.is_dfc && hovered && card.image_normal_back"
-      :back-image="card.image_normal_back"
-      :anchor="rootRef"
-    />
-  </div>
+    <template #badges>
+      <!-- Mode A keeps the square pill in the top-right. Mode B replaces
+           it with the base's animated corner badge, so hide this one to
+           avoid stacking two quantity markers. -->
+      <span v-if="qty > 1 && isModeA" class="qty-badge">{{ qty }}</span>
+      <span
+        v-if="showGameChanger && card.commander_game_changer"
+        class="gc-badge"
+      >GC</span>
+    </template>
+  </BaseCardStrip>
 </template>
 
 <style scoped>
-.deck-card-strip {
-  position: relative;
-  width: var(--card-width);
-  height: var(--strip-height);
-  margin-bottom: 4px;
-  /* Radius keyed to --card-width (not strip height). 4.5% of card-width
-     matches the Scryfall image's baked-in corner curve; at a 38–54px
-     collapsed strip height a %-based vertical radius would round to
-     ~1px — effectively square — so we pin both radii to the same
-     horizontal value. */
-  border-radius: calc(var(--card-width) * 0.045);
-  cursor: pointer;
-  background: var(--bg-2);
+/* Dark dividing border — matches real MTG card framing for the
+   deck-grid layout. Base leaves border unset so this is additive. */
+.strip {
   border: 1px solid #0a0a0a;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
-  transition: height 160ms ease-out, margin-bottom 160ms ease-out,
-              box-shadow 160ms ease, transform 160ms ease-out;
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--card-width) auto var(--strip-height);
-}
-.deck-card-strip:hover {
-  height: var(--strip-expanded);
-  margin-bottom: calc(4px + var(--strip-gap));
-  z-index: 2;
-  transform: translateY(-1px);
 }
 
-.strip-clip {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  border-radius: inherit;
-}
-
-.card-img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: auto;
-  display: block;
-  z-index: 1;
-  pointer-events: none;
-  user-select: none;
-}
-
-.overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--strip-height);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  z-index: 2;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(13, 15, 20, 0) 0%,
-    rgba(13, 15, 20, 0.65) 35%,
-    rgba(13, 15, 20, 0.92) 100%
-  );
-  color: var(--text);
-  transition: top 200ms ease-out;
-}
-.deck-card-strip.loaded .overlay {
-  top: calc(100% - var(--strip-height));
-}
-
-.name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
-}
-.cost {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
+/* Badges sit inside the base's .strip-clip via the #badges slot. */
 .qty-badge, .gc-badge {
   position: absolute;
   min-width: 22px;
@@ -216,4 +105,7 @@ function onDragEnd() {
   background: var(--vk-gold, #c9a552);
   color: #1a1408;
 }
+
+/* .illegal-glow itself is a global rule in style.css (shared pulse
+   with DeckCardTile / CommanderZone); nothing strip-specific to add. */
 </style>
