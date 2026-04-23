@@ -128,7 +128,10 @@ const skeletonStyle = computed(() => colorSkeletonStyle(card.value.colors))
   width: var(--card-width);
   height: var(--strip-height);
   margin-bottom: 4px;
-  border-radius: 4.5%/3.2%;
+  /* See DeckCardStrip — percent vertical radius collapses to ~1px at
+     strip height; key both radii to card-width to keep the Scryfall
+     card curve visible on the top corners. */
+  border-radius: calc(var(--card-width) * 0.045);
   /* overflow: visible — clipping moved to .strip-clip so the ::after
      hover bridge can extend below the expanded card without being cut off. */
   cursor: pointer;

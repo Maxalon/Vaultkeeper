@@ -1,9 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useCatalogStore } from '../stores/catalog'
+import { useDeckStore } from '../stores/deck'
 import SyntaxSearch from './SyntaxSearch.vue'
 import CardTile from './CardTile.vue'
 import CatalogStrip from './CatalogStrip.vue'
+import ManaSymbol from './ManaSymbol.vue'
 
 /**
  * Self-contained catalog panel. No collection-store coupling. Consumes
@@ -16,6 +18,33 @@ const props = defineProps({
 const emit = defineEmits(['add-to-deck'])
 
 const catalog = useCatalogStore()
+const deckStore = useDeckStore()
+
+/** Formats whose legality is tied to the commander's color identity; the
+ *  color-identity filter only makes sense for these. For non-restricting
+ *  formats we pass colorIdentity=null so the pill stays hidden. */
+const COLOR_RESTRICTING_FORMATS = new Set(['commander', 'oathbreaker'])
+
+function syncDeckContext() {
+  if (!props.deckId || !deckStore.deck) {
+    catalog.setDeckContext({ deckId: null })
+    return
+  }
+  const d = deckStore.deck
+  const colorIdentity = COLOR_RESTRICTING_FORMATS.has(d.format)
+    ? (d.color_identity || '')   // '' = colorless (still a valid filter)
+    : null
+  catalog.setDeckContext({
+    deckId: props.deckId,
+    format: d.format || null,
+    colorIdentity,
+  })
+  // Refresh results if a real query is active so the pills have an
+  // immediate effect (without waiting for the user to type again).
+  if ((catalog.query || '').trim().length >= 2) {
+    catalog.search(catalog.query)
+  }
+}
 const scrollRef = ref(null)
 const stripStack = ref(null)
 let debounceTimer = null
@@ -55,6 +84,8 @@ const stripColumns = computed(() => {
 })
 
 onMounted(() => {
+  syncDeckContext()
+
   // Do NOT fire on mount with an empty query — the window-wrapped query is
   // a full-table scan of scryfall_cards (~113k rows) when there's no
   // WHERE filter, which saturates PHP-FPM workers. User has to type
@@ -67,6 +98,21 @@ onMounted(() => {
     resizeObserver.observe(stripStack.value)
   }
 })
+
+// Re-sync when the deck context changes: format edits, commander swaps
+// (commander_*_scryfall_id and the computed color_identity both flow in
+// after the backend's recomputeColorIdentity runs), or even the deckId
+// prop pointing at a different deck.
+watch(
+  () => [
+    props.deckId,
+    deckStore.deck?.format,
+    deckStore.deck?.color_identity,
+    deckStore.deck?.commander_1_scryfall_id,
+    deckStore.deck?.commander_2_scryfall_id,
+  ],
+  () => syncDeckContext(),
+)
 
 onBeforeUnmount(() => {
   if (resizeObserver) resizeObserver.disconnect()
@@ -111,6 +157,17 @@ function onScroll() {
 
 const showWarnings = computed(() => catalog.warnings.length > 0 && !catalog.warningsDismissed)
 
+const formatLabel = computed(() => {
+  const f = catalog.deckFilters.format
+  return f ? f.charAt(0).toUpperCase() + f.slice(1) : ''
+})
+
+const colorIdentityLetters = computed(() => {
+  const src = catalog.deckFilters.colorIdentity
+  if (!src) return []  // '' = colorless; null = filter not applicable
+  return typeof src === 'string' ? src.split('') : Array.isArray(src) ? src : []
+})
+
 const gridStyle = computed(() => {
   const min = catalog.cardSize === 'small' ? 140
     : catalog.cardSize === 'large' ? 280
@@ -142,6 +199,35 @@ function onAddToDeck(payload) {
           @click="catalog.toggleOwnedOnly()"
         >{{ catalog.ownedOnly ? '★ Owned Only' : '☆ All Cards' }}</button>
 
+        <button
+          v-if="deckId && catalog.deckFilters.format"
+          class="chip-btn"
+          :class="{ active: catalog.deckFilters.formatActive }"
+          type="button"
+          :title="`Only show cards legal in ${formatLabel}`"
+          @click="catalog.toggleDeckFilter('format')"
+        >{{ formatLabel }} legal</button>
+
+        <button
+          v-if="deckId && catalog.deckFilters.colorIdentity !== null"
+          class="chip-btn chip-colors"
+          :class="{ active: catalog.deckFilters.colorIdentityActive }"
+          type="button"
+          :title="`Only show cards whose color identity fits the commander (${catalog.deckFilters.colorIdentity || 'colorless'})`"
+          @click="catalog.toggleDeckFilter('identity')"
+        >
+          <span class="chip-colors-label">In-color</span>
+          <span v-if="colorIdentityLetters.length" class="chip-pips">
+            <ManaSymbol
+              v-for="letter in colorIdentityLetters"
+              :key="letter"
+              :symbol="`{${letter}}`"
+              class="chip-pip"
+            />
+          </span>
+          <span v-else class="chip-colors-label-sub">colorless</span>
+        </button>
+
         <div class="spacer" />
 
         <div class="mode-group">
@@ -168,27 +254,6 @@ function onAddToDeck(payload) {
           <button class="size-btn" :class="{ active: catalog.cardSize === 'medium' }" @click="catalog.setCardSize('medium')">M</button>
           <button class="size-btn" :class="{ active: catalog.cardSize === 'large' }" @click="catalog.setCardSize('large')">L</button>
         </div>
-      </div>
-
-      <div v-if="deckId" class="deck-pills">
-        <button
-          v-if="catalog.deckFilters.format"
-          class="pill"
-          :class="{ on: catalog.deckFilters.formatActive }"
-          @click="catalog.toggleDeckFilter('format')"
-        >
-          <span>{{ catalog.deckFilters.formatActive ? '✓' : '✕' }}</span>
-          {{ catalog.deckFilters.format }}-legal
-        </button>
-        <button
-          v-if="catalog.deckFilters.colorIdentity !== null"
-          class="pill"
-          :class="{ on: catalog.deckFilters.colorIdentityActive }"
-          @click="catalog.toggleDeckFilter('identity')"
-        >
-          <span>{{ catalog.deckFilters.colorIdentityActive ? '✓' : '✕' }}</span>
-          ⊆ {{ catalog.deckFilters.colorIdentity || 'colorless' }}
-        </button>
       </div>
 
       <div v-if="showWarnings" class="warnings-banner">
@@ -297,6 +362,45 @@ function onAddToDeck(payload) {
 .chip-btn.active { background: var(--vk-gold-dim); color: #1a1408; border-color: var(--vk-gold); }
 .chip-btn.token { font-family: var(--font-mono), monospace; font-size: 10px; }
 
+/* Color-identity chip uses inline mana pips in place of letters so
+   players can read the filter visually. Pips are muted when the filter
+   is off (chip not .active) and go full-saturation once it's on. */
+.chip-btn.chip-colors {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;           /* distance between the label and the pip cluster */
+  padding: 3px 10px;
+}
+.chip-pips {
+  display: inline-flex;
+  align-items: center;
+  /* Small breathing room between the black rings of adjacent pips so
+     neighbouring borders don't merge into one visual blob. */
+  gap: 3px;
+}
+/* ManaSymbol has a built-in 1px left/right margin for prose use — zero it
+   out here so only our flex gap controls spacing. The box-shadow is a
+   crisp 1px ring that reads as a border without changing the element's
+   box (keeping the pips flush against each other). */
+.chip-btn.chip-colors :deep(.chip-pip) {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  vertical-align: middle;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #0a0a0a;
+}
+.chip-btn.chip-colors:not(.active) :deep(.chip-pip) { opacity: 0.55; }
+.chip-colors-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.chip-colors-label-sub {
+  font-style: italic;
+  opacity: 0.8;
+  font-size: 11px;
+}
+
 .spacer { flex: 1; }
 
 .mode-group, .size-group { display: flex; gap: 0; }
@@ -308,22 +412,6 @@ function onAddToDeck(payload) {
 .mode-btn.active, .size-btn.active { background: var(--vk-gold); color: #1a1408; border-color: var(--vk-gold); }
 
 .mode-group + .size-group { margin-left: 8px; }
-
-.deck-pills { display: flex; gap: 6px; }
-.pill {
-  background: var(--vk-bg-1);
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-3);
-  font-size: 11px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  cursor: pointer;
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-.pill.on { color: var(--vk-ink-1); border-color: var(--vk-gold-dim); }
-.pill span { font-family: var(--font-mono), monospace; font-size: 10px; }
 
 .warnings-banner {
   display: flex;
