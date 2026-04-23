@@ -204,8 +204,8 @@ function openSettings() {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr) auto;
   align-items: center;
-  border-bottom: 1px solid var(--vk-line);
-  background: var(--vk-bg-1);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-1);
   height: 56px;
   flex-shrink: 0;
 }
@@ -217,7 +217,7 @@ function openSettings() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-right: 1px solid var(--vk-line);
+  border-right: 1px solid var(--hairline);
   overflow: hidden;
 }
 
@@ -229,17 +229,17 @@ function openSettings() {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid color-mix(in oklab, var(--vk-gold) 35%, var(--vk-line));
+  border: 1px solid color-mix(in oklab, var(--amber) 35%, var(--hairline));
   border-radius: 6px;
-  color: var(--vk-gold);
+  color: var(--amber);
   cursor: pointer;
   transition: all 120ms ease;
   padding: 0;
 }
 .vk-sidebar-collapse:hover {
   color: #1a1408;
-  background: var(--vk-gold);
-  border-color: var(--vk-gold);
+  background: var(--amber);
+  border-color: var(--amber);
 }
 
 .vk-topbar-center {
@@ -267,16 +267,16 @@ function openSettings() {
   align-items: center;
   justify-content: center;
   background: transparent;
-  border: 1px solid var(--vk-line);
+  border: 1px solid var(--hairline);
   border-radius: 6px;
-  color: var(--vk-ink-2, var(--vk-gold));
+  color: var(--ink-70, var(--amber));
   cursor: pointer;
   padding: 0;
   transition: all 120ms ease;
 }
 .vk-icon-btn:hover {
   color: #1a1408;
-  background: var(--vk-gold);
-  border-color: var(--vk-gold);
+  background: var(--amber);
+  border-color: var(--amber);
 }
 </style>

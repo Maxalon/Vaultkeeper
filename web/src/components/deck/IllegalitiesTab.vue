@@ -106,8 +106,8 @@ function jumpToCard(row) {
 }
 .banner {
   padding: 0.75rem 1rem;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -121,15 +121,15 @@ function jumpToCard(row) {
   display: flex;
   gap: 0.75rem;
   padding: 0.6rem 0.8rem;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 5px;
   align-items: flex-start;
 }
 .illegality-row.ignored {
   opacity: 0.55;
   text-decoration: line-through;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 .row-body { flex: 1; display: flex; flex-direction: column; gap: 0.2rem; }
 .row-head { display: flex; align-items: center; gap: 0.75rem; font-size: 0.88rem; }
@@ -137,11 +137,11 @@ function jumpToCard(row) {
 .row-card {
   background: transparent;
   border: none;
-  color: var(--vk-accent, #c99d3d);
+  color: var(--amber, #c99d3d);
   padding: 0;
   cursor: pointer;
   font-size: 0.85rem;
   text-decoration: underline dotted;
 }
-.row-desc { font-size: 0.8rem; color: var(--vk-fg-dim, #a8a396); }
+.row-desc { font-size: 0.8rem; color: var(--ink-70, #a8a396); }
 </style>

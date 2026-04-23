@@ -421,14 +421,14 @@ const gridModeClass = computed(() =>
    the card will land in. */
 .deck-group.drop-target {
   background: rgba(201, 157, 61, 0.12);
-  outline-color: var(--vk-gold, #c9a552);
+  outline-color: var(--amber, #c9a552);
 }
 .group-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.25rem;
-  border-bottom: 1px solid var(--vk-border, #33312c);
+  border-bottom: 1px solid var(--hairline, #33312c);
   font-size: 0.85rem;
   cursor: pointer;
   user-select: none;
@@ -438,7 +438,7 @@ const gridModeClass = computed(() =>
   transition: transform 120ms ease;
 }
 .chevron.collapsed { transform: rotate(-90deg); }
-.count { color: var(--vk-fg-dim, #a8a396); }
+.count { color: var(--ink-70, #a8a396); }
 .group-body {
   display: flex;
   flex-direction: column;
@@ -452,8 +452,8 @@ const gridModeClass = computed(() =>
   flex: 1 1 100%;
   padding: 2rem;
   text-align: center;
-  color: var(--vk-fg-dim, #a8a396);
-  border: 1px dashed var(--vk-border, #33312c);
+  color: var(--ink-70, #a8a396);
+  border: 1px dashed var(--hairline, #33312c);
   border-radius: 6px;
 }
 </style>

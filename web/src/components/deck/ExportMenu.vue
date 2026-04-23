@@ -101,14 +101,14 @@ onBeforeUnmount(() => {
 }
 .action-btn {
   background: transparent;
-  border: 1px solid var(--vk-border, #33312c);
+  border: 1px solid var(--hairline, #33312c);
   color: inherit;
   padding: 0.25rem 0.6rem;
   font-size: 0.8rem;
   cursor: pointer;
   border-radius: 4px;
 }
-.action-btn:hover { background: var(--vk-surface-raised, #26241f); }
+.action-btn:hover { background: var(--bg-2, #26241f); }
 .caret {
   font-size: 0.7em;
   opacity: 0.75;
@@ -119,8 +119,8 @@ onBeforeUnmount(() => {
   top: calc(100% + 4px);
   right: 0;
   min-width: 240px;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   padding: 4px;
@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
 }
 .menu-item:hover,
 .menu-item:focus-visible {
-  background: var(--vk-surface-sunken, #1c1a16);
+  background: var(--bg-2-sunken, #1c1a16);
   outline: none;
 }
 .menu-label {
@@ -156,12 +156,12 @@ onBeforeUnmount(() => {
 }
 .menu-hint {
   font-size: 0.72rem;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 .copy-btn {
   background: transparent;
   border: 0;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   padding: 0 0.55rem;
   border-radius: 4px;
   cursor: pointer;
@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
 }
 .copy-btn:hover,
 .copy-btn:focus-visible {
-  background: var(--vk-surface-sunken, #1c1a16);
+  background: var(--bg-2-sunken, #1c1a16);
   color: inherit;
   outline: none;
 }

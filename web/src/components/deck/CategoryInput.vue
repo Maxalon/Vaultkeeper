@@ -49,8 +49,8 @@ function pick(s) {
 .category-input { position: relative; }
 input {
   width: 100%;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   color: inherit;
   padding: 0.4rem 0.6rem;
   border-radius: 4px;
@@ -65,8 +65,8 @@ input {
   list-style: none;
   margin: 2px 0 0;
   padding: 0;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 4px;
   max-height: 180px;
   overflow-y: auto;
@@ -76,5 +76,5 @@ input {
   cursor: pointer;
   font-size: 0.82rem;
 }
-.suggestions li:hover { background: var(--vk-surface, #1d1c1a); }
+.suggestions li:hover { background: var(--bg-2, #1d1c1a); }
 </style>

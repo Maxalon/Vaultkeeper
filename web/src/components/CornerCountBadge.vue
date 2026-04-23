@@ -64,7 +64,7 @@ defineProps({
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--vk-gold);
+  color: var(--amber);
   /* 1px outline via 4-direction text-shadow. text-stroke would be
      cleaner but webkit-only. */
   text-shadow:

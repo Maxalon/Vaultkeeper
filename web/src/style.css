@@ -1,21 +1,32 @@
 :root {
-  /* Vaultkeeper redesign tokens (Editorial aesthetic — single variant). */
-  --vk-bg-0: #0f0e0b;
-  --vk-bg-1: #17150f;
-  --vk-bg-2: #1f1c15;
-  --vk-bg-3: #28241a;
-  --vk-line: #2f2a1e;
-  --vk-line-soft: #221e15;
+  /* Surfaces — warm deep-brown stack */
+  --bg-0: #0b0806;
+  --bg-1: #120d09;
+  --bg-2: #1a120c;
+  --bg-3: #221810;
+  --bg-4: #2b1e14;
+  --surface-raised: #1e160f;
 
-  --vk-ink-1: #ede8dc;
-  --vk-ink-2: #a8a294;
-  --vk-ink-3: #6d6d78;
-  --vk-ink-4: #47474f;
+  /* Hairlines */
+  --hairline: rgba(255, 220, 170, 0.06);
+  --hairline-strong: rgba(255, 220, 170, 0.10);
 
-  --vk-gold: #f0c35c;
-  --vk-gold-dim: #c99d3d;
-  --vk-gold-deep: #7a5e20;
+  /* Ink — text */
+  --ink-100: #f3e7d3;
+  --ink-90:  #e6d4b6;
+  --ink-70:  #b8a684;
+  --ink-50:  #86775c;
+  --ink-30:  #5a4e3a;
 
+  /* Amber accent */
+  --amber:      #e0b060;
+  --amber-hi:   #f1c87a;
+  --amber-lo:   #b88a3a;
+  --amber-dim:  rgba(224, 176, 96, 0.15);
+  --amber-glow: rgba(224, 176, 96, 0.25);
+  --cat-accent: rgba(224, 176, 96, 0.55);
+
+  /* Mana pips (unchanged) */
   --mtg-w: #f9f6e6;
   --mtg-u: #5a8ac9;
   --mtg-b: #3a3238;
@@ -23,38 +34,31 @@
   --mtg-g: #5a9364;
   --mtg-c: #a8a8b2;
 
+  /* Rarity */
   --r-common: #c8c8d0;
   --r-uncommon: #9ab5c4;
   --r-rare: #c9a24a;
   --r-mythic: #d97742;
 
-  --font-sans: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --font-display: 'Newsreader', Georgia, serif;
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-
-  /* Legacy aliases — keep all existing scoped component styles working. */
-  --bg-0: var(--vk-bg-0);
-  --bg-1: var(--vk-bg-1);
-  --bg-2: var(--vk-bg-2);
-  --border: var(--vk-line);
-  --border-soft: var(--vk-line-soft);
-  --text: var(--vk-ink-1);
-  --text-dim: var(--vk-ink-2);
-  --text-faint: var(--vk-ink-3);
-  --gold: var(--vk-gold);
-  --gold-bright: var(--vk-gold);
-  --gold-dim: var(--vk-gold-dim);
+  /* Card condition */
   --cond-nm: #4ade80;
   --cond-lp: #a3e635;
   --cond-mp: #facc15;
   --cond-hp: #fb923c;
   --cond-dmg: #ef4444;
+
+  /* Typography */
+  --font-sans: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: 'Newsreader', Georgia, serif;
   --font-body: var(--font-sans);
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius:    6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
   /* Card list dimensions. --card-image-h and --strip-expanded are
      derived from --card-width per the Scryfall normal aspect (488×680). */
@@ -64,10 +68,10 @@
   --strip-expanded: calc(var(--card-image-h) + var(--strip-height));
 
   font-family: var(--font-sans), sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--vk-ink-1);
-  background: var(--vk-bg-0);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-90);
+  background: var(--bg-0);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -96,71 +100,75 @@ html, body, #app {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background: var(--vk-bg-0);
-  color: var(--vk-ink-1);
+  color: var(--ink-90);
 }
 
-body { font-family: var(--font-sans), sans-serif; }
+body {
+  font-family: var(--font-sans), sans-serif;
+  background:
+    radial-gradient(1200px 700px at 70% -10%, rgba(224, 176, 96, 0.035), transparent 60%),
+    var(--bg-0);
+}
 
 h1, h2, h3, .display {
   font-family: var(--font-display), serif;
   font-weight: 500;
   letter-spacing: -0.01em;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
   margin: 0;
 }
 
-a { color: var(--vk-gold); text-decoration: none; }
-a:hover { color: color-mix(in oklab, var(--vk-gold) 80%, white); }
+a { color: var(--amber); text-decoration: none; }
+a:hover { color: var(--amber-hi); }
 
 button {
   font-family: inherit;
   font-size: inherit;
   cursor: pointer;
-  border: 1px solid var(--vk-line);
-  background: var(--vk-bg-2);
-  color: var(--vk-ink-1);
+  border: 1px solid var(--hairline);
+  background: var(--bg-2);
+  color: var(--ink-100);
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   transition: background 120ms ease, border-color 120ms ease;
 }
-button:hover { background: var(--vk-bg-1); border-color: var(--vk-gold-dim); }
-button:focus-visible { outline: 2px solid var(--vk-gold); outline-offset: 2px; }
+button:hover { background: var(--bg-1); border-color: var(--amber-lo); }
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 button.primary {
-  background: var(--vk-gold);
-  border-color: var(--vk-gold);
+  background: var(--amber);
+  border-color: var(--amber);
   color: #1a1408;
   font-weight: 600;
 }
-button.primary:hover { background: color-mix(in oklab, var(--vk-gold) 80%, white); }
+button.primary:hover { background: var(--amber-hi); }
 
 input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   font-family: inherit;
   font-size: inherit;
-  background: var(--vk-bg-0);
-  color: var(--vk-ink-1);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-0);
+  color: var(--ink-100);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   width: 100%;
 }
 input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
   outline: none;
-  border-color: var(--vk-gold-dim);
+  border-color: var(--amber-lo);
 }
 
-::placeholder { color: var(--vk-ink-3); }
-::selection { background: var(--vk-gold); color: #1a1408; }
+::placeholder { color: var(--ink-50); }
+::selection { background: var(--amber); color: #1a1408; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--vk-line);
+  background: var(--hairline-strong);
   border-radius: 5px;
-  border: 2px solid var(--vk-bg-1);
+  border: 2px solid var(--bg-1);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--vk-ink-4); }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-30); }
 
 /* ============================================================
    Wordmark — gold rotated diamond + serif name
@@ -179,14 +187,14 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
      text box — the icon ends up sitting BELOW the visual text midline. */
   line-height: 1;
   letter-spacing: -0.01em;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
 }
 .vk-mark-icon {
   width: 18px;
   height: 18px;
   display: inline-block;
   flex-shrink: 0;
-  color: var(--vk-gold);
+  color: var(--amber);
   overflow: visible; /* let the rotated outer outline's corners breathe past 18×18 */
   /* Newsreader's visual baseline sits above the em-box center even after
      line-height: 1. Nudge the icon up 2px to meet the rendered text. */
@@ -213,23 +221,23 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 .vk-chip {
   padding: 0 12px;
   gap: 6px;
-  background: var(--vk-bg-2);
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-2);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-70);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
-.vk-chip:hover { border-color: var(--vk-ink-3); color: var(--vk-ink-1); }
+.vk-chip:hover { border-color: var(--ink-50); color: var(--ink-100); }
 .vk-chip.active {
-  background: color-mix(in oklab, var(--vk-gold) 15%, var(--vk-bg-2));
-  border-color: color-mix(in oklab, var(--vk-gold) 40%, var(--vk-line));
-  color: var(--vk-gold);
+  background: color-mix(in oklab, var(--amber) 15%, var(--bg-2));
+  border-color: color-mix(in oklab, var(--amber) 40%, var(--hairline));
+  color: var(--amber);
 }
 .vk-chip.open {
-  border-color: var(--vk-ink-3);
-  color: var(--vk-ink-1);
-  background: var(--vk-bg-1);
+  border-color: var(--ink-50);
+  color: var(--ink-100);
+  background: var(--bg-1);
 }
 .vk-chip .caret { opacity: 0.5; font-size: 9px; }
 .vk-chip .tok-dot {
@@ -246,14 +254,72 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 .vk-chip .tok-dot.tok-set { background: #8fab7a; }
 .vk-chip .tok-dot.tok-sort { background: #a89bc2; }
 
+/* Deck-view pill variants — override the base .vk-chip shape. Left group
+   (filters) uses --ghost: transparent with a hairline border. Right group
+   (groupings) uses --solid: filled pill with a small amber dot. */
+.vk-chip.vk-chip--ghost,
+.vk-chip.vk-chip--solid {
+  height: auto;
+  padding: 5px 10px;
+  gap: 6px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.vk-chip.vk-chip--ghost {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--ink-90);
+}
+.vk-chip.vk-chip--ghost:hover {
+  background: var(--bg-2);
+  border-color: var(--hairline);
+  color: var(--ink-100);
+}
+.vk-chip.vk-chip--ghost.active {
+  background: var(--bg-2);
+  border-color: color-mix(in oklab, var(--amber) 40%, var(--hairline));
+  color: var(--ink-100);
+}
+.vk-chip.vk-chip--ghost.open {
+  background: var(--bg-2);
+  border-color: var(--hairline-strong);
+  color: var(--ink-100);
+}
+.vk-chip.vk-chip--solid {
+  background: var(--bg-3);
+  border: 1px solid transparent;
+  color: var(--ink-90);
+}
+.vk-chip.vk-chip--solid:hover,
+.vk-chip.vk-chip--solid.active,
+.vk-chip.vk-chip--solid.open {
+  background: var(--bg-4);
+  border-color: transparent;
+  color: var(--ink-100);
+}
+.vk-chip.vk-chip--solid .dot-accent {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.vk-chip.vk-chip--ghost .caret,
+.vk-chip.vk-chip--solid .caret {
+  color: var(--ink-50);
+}
+
 .vk-chip-wrap { position: relative; display: inline-flex; }
 .vk-chip-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   min-width: 180px;
-  background: var(--vk-bg-1);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   padding: 4px;
@@ -269,25 +335,25 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   gap: 12px;
   width: 100%;
   padding: 6px 10px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   font-size: 12px;
   border-radius: 3px;
   text-align: left;
   background: transparent;
   border: 0;
 }
-.vk-chip-menu-item:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
+.vk-chip-menu-item:hover { background: var(--bg-2); color: var(--ink-100); }
 .vk-chip-menu-item.active {
-  background: color-mix(in oklab, var(--vk-gold) 15%, var(--vk-bg-2));
-  color: var(--vk-gold);
+  background: color-mix(in oklab, var(--amber) 15%, var(--bg-2));
+  color: var(--amber);
 }
 .vk-chip-menu-item .tok-hint {
   font-family: var(--font-mono), monospace;
   font-size: 10px;
-  color: var(--vk-ink-4);
+  color: var(--ink-30);
   letter-spacing: 0;
 }
-.vk-chip-menu-item.active .tok-hint { color: var(--vk-gold); opacity: 0.7; }
+.vk-chip-menu-item.active .tok-hint { color: var(--amber); opacity: 0.7; }
 
 /* ============================================================
    Syntax search — colored token overlay over a transparent input
@@ -301,14 +367,14 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   align-items: center;
   gap: 8px;
   padding: 0 10px 0 12px;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-line);
-  border-radius: var(--radius-sm);
-  transition: border-color 0.12s ease, background 0.12s ease;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 .vk-syntax-search.focused {
-  border-color: var(--vk-gold-dim);
-  background: color-mix(in oklab, var(--vk-bg-0) 94%, var(--vk-gold) 6%);
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-dim);
 }
 .vk-syntax-field {
   flex: 1;
@@ -331,7 +397,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   white-space: pre;
   letter-spacing: 0;
 }
-.vk-syntax-tokens { pointer-events: none; color: var(--vk-ink-1); }
+.vk-syntax-tokens { pointer-events: none; color: var(--ink-90); }
 .vk-syntax-tokens .sp { white-space: pre; }
 .vk-syntax-tokens .tok {
   display: inline-flex;
@@ -339,10 +405,10 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   border-radius: 3px;
   padding: 2px 0;
 }
-.vk-syntax-tokens .tok-text { color: var(--vk-ink-1); }
-.vk-syntax-tokens .tok-key { color: var(--vk-ink-1); font-weight: 600; }
-.vk-syntax-tokens .tok-op { color: var(--vk-ink-3); }
-.vk-syntax-tokens .tok-val { color: var(--vk-ink-1); }
+.vk-syntax-tokens .tok-text { color: var(--ink-90); }
+.vk-syntax-tokens .tok-key { color: var(--ink-90); font-weight: 600; }
+.vk-syntax-tokens .tok-op { color: var(--ink-50); }
+.vk-syntax-tokens .tok-val { color: var(--ink-90); }
 .vk-syntax-tokens .tok-neg { color: #d46a6a; font-weight: 600; margin-right: 1px; }
 
 .vk-syntax-tokens .tok-c .tok-key,
@@ -379,29 +445,29 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   border: 0;
   outline: 0;
   color: transparent;
-  caret-color: var(--vk-ink-1);
+  caret-color: var(--ink-100);
   padding: 0;
   margin: 0;
   width: 100%;
 }
 .vk-syntax-input::placeholder {
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-family: var(--font-sans), sans-serif;
   font-size: 13px;
   letter-spacing: 0;
 }
 .vk-syntax-input::selection {
-  background: color-mix(in oklab, var(--vk-gold) 40%, transparent);
-  color: var(--vk-ink-1);
+  background: color-mix(in oklab, var(--amber) 40%, transparent);
+  color: var(--ink-100);
 }
 
 .vk-syntax-help {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 1px solid var(--vk-line);
+  border: 1px solid var(--hairline);
   background: transparent;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -409,13 +475,14 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   flex-shrink: 0;
   padding: 0;
 }
-.vk-syntax-help:hover { color: var(--vk-ink-1); border-color: var(--vk-ink-4); }
+.vk-syntax-help:hover { color: var(--ink-100); border-color: var(--ink-30); }
 .vk-syntax-search .kbd {
   font-family: var(--font-mono), monospace;
   font-size: 10px;
-  color: var(--vk-ink-3);
+  color: var(--ink-70);
   padding: 2px 6px;
-  border: 1px solid var(--vk-line);
+  background: var(--bg-3);
+  border: 1px solid var(--hairline);
   border-radius: 3px;
   flex-shrink: 0;
 }
@@ -434,16 +501,16 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   text-transform: uppercase;
 }
 .vk-btn-primary {
-  background: var(--vk-gold);
+  background: var(--amber);
   color: #1a1408;
 }
-.vk-btn-primary:hover { background: color-mix(in oklab, var(--vk-gold) 80%, white); }
+.vk-btn-primary:hover { background: var(--amber-hi); }
 .vk-btn-ghost {
   background: transparent;
-  color: var(--vk-ink-2);
-  border: 1px solid var(--vk-line);
+  color: var(--ink-70);
+  border: 1px solid var(--hairline);
 }
-.vk-btn-ghost:hover { color: var(--vk-ink-1); border-color: var(--vk-ink-4); }
+.vk-btn-ghost:hover { color: var(--ink-100); border-color: var(--ink-30); }
 
 /* ============================================================
    Auth screens (login + register share this shell)
@@ -454,7 +521,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   inset: 0;
   display: grid;
   grid-template-columns: 1fr 1.2fr;
-  background: var(--vk-bg-0);
+  background: var(--bg-0);
 }
 .vk-login-form-side {
   padding: 56px 64px;
@@ -463,7 +530,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   justify-content: space-between;
   position: relative;
   z-index: 2;
-  border-right: 1px solid var(--vk-line);
+  border-right: 1px solid var(--hairline);
   overflow-y: auto;
 }
 .vk-login-form {
@@ -477,7 +544,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   font-size: 10px;
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--vk-gold);
+  color: var(--amber);
   font-weight: 600;
   margin-bottom: 16px;
   display: flex;
@@ -488,7 +555,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   content: '';
   width: 18px;
   height: 1px;
-  background: var(--vk-gold);
+  background: var(--amber);
 }
 .vk-login-title {
   font-family: var(--font-display), serif;
@@ -496,17 +563,17 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   font-weight: 400;
   line-height: 1.05;
   letter-spacing: -0.02em;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
   margin: 0 0 12px;
 }
 .vk-login-title em {
   font-style: italic;
-  color: var(--vk-gold);
+  color: var(--amber);
 }
 .vk-login-sub {
   font-size: 14px;
   line-height: 1.5;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   margin: 0 0 32px;
   max-width: 320px;
 }
@@ -520,7 +587,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin-bottom: 6px;
 }
 /* Only declare what differs from the base input rule (width, border, radius,
@@ -528,7 +595,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 .vk-login-input input {
   height: 44px;
   padding: 0 14px;
-  background: var(--vk-bg-1);
+  background: var(--bg-1);
   font-size: 14px;
   transition: border-color 0.12s ease;
 }
@@ -540,7 +607,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   font-size: 11px;
   letter-spacing: 0;
   text-transform: none;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin-top: 6px;
   font-weight: 400;
 }
@@ -548,21 +615,21 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   color: #d46a6a;
 }
 .vk-login-input .field-hint.suggestion {
-  color: var(--vk-gold-dim);
+  color: var(--amber-lo);
 }
 .vk-login-input .field-hint.suggestion a {
-  color: var(--vk-gold);
-  border-bottom: 1px dotted var(--vk-gold-dim);
+  color: var(--amber);
+  border-bottom: 1px dotted var(--amber-lo);
   cursor: pointer;
 }
 .vk-login-input .field-hint.suggestion a:hover {
-  color: color-mix(in oklab, var(--vk-gold) 80%, white);
-  border-bottom-color: var(--vk-gold);
+  color: var(--amber-hi);
+  border-bottom-color: var(--amber);
 }
 .vk-login-btn {
   width: 100%;
   height: 48px;
-  background: var(--vk-gold);
+  background: var(--amber);
   color: #1a1408;
   border: 0;
   font-size: 12px;
@@ -575,9 +642,9 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   transition: all 0.12s ease;
 }
 .vk-login-btn:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--vk-gold) 82%, white);
+  background: var(--amber-hi);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(240, 195, 92, 0.25);
+  box-shadow: 0 6px 18px var(--amber-glow);
 }
 .vk-login-btn:disabled {
   opacity: 0.6;
@@ -593,13 +660,13 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   gap: 16px;
 }
 .vk-login-meta a {
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   text-decoration: none;
-  border-bottom: 1px dotted var(--vk-ink-4);
+  border-bottom: 1px dotted var(--ink-30);
   cursor: pointer;
   background: transparent;
   border-top: 0;
@@ -610,13 +677,13 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   font-size: inherit;
 }
 .vk-login-meta a:hover {
-  color: var(--vk-gold);
-  border-color: var(--vk-gold);
+  color: var(--amber);
+  border-color: var(--amber);
 }
 .vk-login-foot {
   font-family: var(--font-mono), monospace;
   font-size: 10px;
-  color: var(--vk-ink-4);
+  color: var(--ink-30);
   letter-spacing: 0.08em;
   display: flex;
   justify-content: space-between;
@@ -625,9 +692,9 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 .vk-login-hero-side {
   position: relative;
   overflow: hidden;
-  background: var(--vk-bg-1);
+  background: var(--bg-1);
   background-image:
-    radial-gradient(ellipse at 70% 30%, rgba(240, 195, 92, 0.12), transparent 50%),
+    radial-gradient(ellipse at 70% 30%, var(--amber-glow), transparent 50%),
     radial-gradient(ellipse at 30% 80%, rgba(93, 58, 110, 0.15), transparent 50%);
 }
 .vk-hero-bottom {
@@ -639,7 +706,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   font-size: 10px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
 }
 @media (max-width: 900px) {
   .vk-login {
@@ -674,8 +741,8 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 }
 
 .gc-badge {
-  background: linear-gradient(135deg, #f0c35c, #c99d3d);
-  color: #0f0e0b;
+  background: linear-gradient(135deg, var(--amber), var(--amber-lo));
+  color: #1a1408;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 6px;

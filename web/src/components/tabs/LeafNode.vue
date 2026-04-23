@@ -179,13 +179,13 @@ syncUndocked()
   display: grid;
   place-items: center;
   height: 100%;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   font-size: 0.9rem;
 }
 .drop-indicator {
   position: absolute;
   background: rgba(201, 157, 61, 0.25);
-  border: 1px dashed var(--vk-accent, #c99d3d);
+  border: 1px dashed var(--amber, #c99d3d);
   pointer-events: none;
 }
 .drop-center { inset: 8px; }

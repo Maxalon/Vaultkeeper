@@ -50,6 +50,6 @@ defineProps({
   background: rgba(0, 0, 0, 0.6);
   padding: 1px 6px;
   border-radius: 3px;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 </style>

@@ -36,9 +36,9 @@ const state = useConfirmState()
   z-index: 9998;
 }
 .confirm-modal {
-  background: var(--vk-surface, #1d1c1a);
-  color: var(--vk-fg, #e9e4d6);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #1d1c1a);
+  color: var(--ink-90, #e9e4d6);
+  border: 1px solid var(--hairline, #33312c);
   padding: 1.25rem 1.5rem;
   border-radius: 6px;
   min-width: 320px;
@@ -46,18 +46,18 @@ const state = useConfirmState()
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 .confirm-title { margin: 0 0 0.5rem; font-size: 1.05rem; }
-.confirm-message { margin: 0 0 1.25rem; color: var(--vk-fg-dim, #a8a396); }
+.confirm-message { margin: 0 0 1.25rem; color: var(--ink-70, #a8a396); }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 .confirm-btn {
   padding: 0.45rem 0.9rem;
-  border: 1px solid var(--vk-border, #33312c);
+  border: 1px solid var(--hairline, #33312c);
   background: transparent;
   color: inherit;
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.85rem;
 }
-.confirm-btn:hover { background: var(--vk-surface-raised, #26241f); }
+.confirm-btn:hover { background: var(--bg-2, #26241f); }
 .confirm-btn--danger {
   background: #8e3c31;
   border-color: #a14739;

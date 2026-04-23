@@ -73,7 +73,7 @@ function onSearch(v) {
     <div class="deck-filter-row search-row">
       <SyntaxSearch
         :model-value="deck.view.search"
-        placeholder="Search: c:red t:creature r:mythic…"
+        placeholder="Search:   c:red t:creature r:mythic…"
         @update:model-value="onSearch"
       />
     </div>
@@ -81,6 +81,7 @@ function onSearch(v) {
       <div class="filter-group">
         <FilterChip
           label="Color"
+          variant="ghost"
           :value="parsed.chips.c"
           :options="COLOR_OPTS"
           token-class="tok-c"
@@ -89,6 +90,7 @@ function onSearch(v) {
         />
         <FilterChip
           label="Type"
+          variant="ghost"
           :value="parsed.chips.t"
           :options="TYPE_OPTS"
           token-class="tok-t"
@@ -97,6 +99,7 @@ function onSearch(v) {
         />
         <FilterChip
           label="Rarity"
+          variant="ghost"
           :value="parsed.chips.r"
           :options="RARITY_OPTS"
           token-class="tok-r"
@@ -107,6 +110,7 @@ function onSearch(v) {
       <div class="display-group">
         <FilterChip
           label="Group"
+          variant="solid"
           :value="deck.view.groupBy"
           :options="GROUP_OPTS"
           token-class="tok-group"
@@ -114,6 +118,7 @@ function onSearch(v) {
         />
         <FilterChip
           label="Sort"
+          variant="solid"
           :value="deck.view.sort"
           :options="SORT_OPTS"
           token-class="tok-sort"
@@ -121,6 +126,7 @@ function onSearch(v) {
         />
         <FilterChip
           label="View"
+          variant="solid"
           :value="deck.view.displayMode"
           :options="DISPLAY_OPTS"
           token-class="tok-display"
@@ -136,20 +142,22 @@ function onSearch(v) {
 .deck-filter-bar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid var(--vk-line, #33312c);
-  background: var(--vk-bg-1, #1d1c1a);
+  gap: 10px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-1);
+  flex: 0 0 auto;
 }
 
 .deck-filter-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 .controls-row {
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .filter-group,
@@ -158,11 +166,5 @@ function onSearch(v) {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.display-group {
-  margin-left: auto;
-  padding-left: 12px;
-  border-left: 1px solid var(--vk-line, #33312c);
 }
 </style>

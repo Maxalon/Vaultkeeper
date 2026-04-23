@@ -8,6 +8,7 @@ const props = defineProps({
   tokenClass: { type: String, default: '' },
   align: { type: String, default: 'left' }, // 'left' | 'right'
   hintPrefix: { type: String, default: '' }, // shown next to each option as a tiny mono hint
+  variant: { type: String, default: 'default' }, // 'default' | 'ghost' | 'solid'
 })
 
 const emit = defineEmits(['change'])
@@ -49,8 +50,16 @@ function isActive() {
 
 <template>
   <div ref="wrap" class="vk-chip-wrap">
-    <button class="vk-chip" :class="{ active: isActive(), open }" @click="toggle">
-      <span v-if="isActive()" class="tok-dot" :class="tokenClass" />
+    <button
+      class="vk-chip"
+      :class="[
+        { active: isActive(), open },
+        variant !== 'default' ? `vk-chip--${variant}` : '',
+      ]"
+      @click="toggle"
+    >
+      <span v-if="variant === 'solid'" class="dot-accent" />
+      <span v-else-if="isActive()" class="tok-dot" :class="tokenClass" />
       {{ displayLabel() }} <span class="caret">▼</span>
     </button>
     <div v-if="open" class="vk-chip-menu" :class="{ right: align === 'right' }">
