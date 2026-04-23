@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest'
-import { buildPlainText, buildMoxfieldText, buildJson } from '../deckExport.js'
+import { describe, it, expect, vi } from 'vitest'
+import {
+  buildPlainText,
+  buildMoxfieldText,
+  buildDeckText,
+  copyDeckToClipboard,
+} from '../deckExport.js'
 
 function entry(name, { quantity = 1, zone = 'main', is_commander = false, scryfall_id = `id-${name}` } = {}) {
   return {
@@ -96,23 +101,49 @@ describe('buildMoxfieldText', () => {
   })
 })
 
-describe('buildJson', () => {
-  it('includes deck metadata and per-entry names, stripping DB ids', () => {
-    const entries = [entry('Sol Ring', { quantity: 1 })]
-    const parsed = JSON.parse(buildJson(baseDeck, entries))
-    expect(parsed.deck.name).toBe('Atraxa Superfriends')
-    expect(parsed.deck.format).toBe('commander')
-    expect(parsed.entries).toHaveLength(1)
-    expect(parsed.entries[0]).toMatchObject({
-      quantity: 1,
-      zone: 'main',
-      is_commander: false,
-      name: 'Sol Ring',
-      scryfall_id: 'id-Sol Ring',
+describe('buildDeckText', () => {
+  it('dispatches to the Vaultkeeper format for "text"', () => {
+    const entries = [entry('Sol Ring')]
+    expect(buildDeckText('text', baseDeck, entries)).toBe(
+      buildPlainText(baseDeck, entries),
+    )
+  })
+
+  it('dispatches to the Moxfield format for "moxfield"', () => {
+    const entries = [entry('Sol Ring')]
+    expect(buildDeckText('moxfield', baseDeck, entries)).toBe(
+      buildMoxfieldText(baseDeck, entries),
+    )
+  })
+
+  it('falls back to the Vaultkeeper format for unknown formats', () => {
+    const entries = [entry('Sol Ring')]
+    expect(buildDeckText('bogus', baseDeck, entries)).toBe(
+      buildPlainText(baseDeck, entries),
+    )
+  })
+})
+
+describe('copyDeckToClipboard', () => {
+  it('writes the serialized deck to navigator.clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const original = globalThis.navigator
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: { writeText } },
+      configurable: true,
     })
-    // Should not leak internal ids
-    expect(parsed.entries[0]).not.toHaveProperty('id')
-    expect(parsed.entries[0]).not.toHaveProperty('physical_copy_id')
-    expect(parsed.deck).not.toHaveProperty('user_id')
+
+    try {
+      const entries = [entry('Sol Ring')]
+      await copyDeckToClipboard('moxfield', baseDeck, entries)
+      expect(writeText).toHaveBeenCalledWith(
+        buildMoxfieldText(baseDeck, entries),
+      )
+    } finally {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: original,
+        configurable: true,
+      })
+    }
   })
 })

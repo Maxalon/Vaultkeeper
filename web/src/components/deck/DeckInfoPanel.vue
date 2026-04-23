@@ -37,7 +37,7 @@ function onDeckNameClick() {
       <span class="format-badge">{{ deck.deck.format }}</span>
       <div class="header-actions">
         <button type="button" class="action-btn" @click="emit('edit')">Edit</button>
-        <ExportMenu @select="(format) => emit('export', format)" />
+        <ExportMenu @select="(payload) => emit('export', payload)" />
       </div>
     </header>
 

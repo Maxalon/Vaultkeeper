@@ -83,35 +83,6 @@ export function buildMoxfieldText(_deck, entries) {
     .join('\n\n')
 }
 
-/**
- * Structured JSON dump — deck metadata + entries with names. Strips DB-only
- * ids (user_id, per-entry id, physical_copy_id) that are meaningless outside
- * this instance.
- */
-export function buildJson(deck, entries) {
-  const payload = {
-    deck: {
-      name: deck?.name ?? '',
-      format: deck?.format ?? '',
-      description: deck?.description ?? '',
-      color_identity: deck?.color_identity ?? '',
-      commander_1_scryfall_id: deck?.commander_1_scryfall_id ?? null,
-      commander_2_scryfall_id: deck?.commander_2_scryfall_id ?? null,
-      companion_scryfall_id: deck?.companion_scryfall_id ?? null,
-    },
-    entries: entries.map((e) => ({
-      quantity: e.quantity,
-      zone: e.zone,
-      is_commander: !!e.is_commander,
-      is_signature_spell: !!e.is_signature_spell,
-      category: e.category ?? null,
-      scryfall_id: e.scryfall_id,
-      name: cardName(e),
-    })),
-  }
-  return JSON.stringify(payload, null, 2)
-}
-
 function slugify(name) {
   return (name || '')
     .toLowerCase()
@@ -136,19 +107,22 @@ const FORMATS = {
     mime: 'text/plain;charset=utf-8',
     suffix: '-moxfield',
   },
-  json: {
-    build: buildJson,
-    ext: 'json',
-    mime: 'application/json;charset=utf-8',
-  },
+}
+
+function specFor(format) {
+  return FORMATS[format] || FORMATS.text
+}
+
+export function buildDeckText(format, deck, entries) {
+  return specFor(format).build(deck, entries)
 }
 
 /**
  * Build the export string, wrap it in a Blob, and trigger a browser download.
- * `format` is 'text' | 'moxfield' | 'json'; unknown falls back to 'text'.
+ * `format` is 'text' | 'moxfield'; unknown falls back to 'text'.
  */
 export function downloadDeck(format, deck, entries) {
-  const spec = FORMATS[format] || FORMATS.text
+  const spec = specFor(format)
   const body = spec.build(deck, entries)
   const blob = new Blob([body], { type: spec.mime })
   const url = URL.createObjectURL(blob)
@@ -161,4 +135,13 @@ export function downloadDeck(format, deck, entries) {
   a.remove()
 
   URL.revokeObjectURL(url)
+}
+
+/**
+ * Copy the serialized deck to the clipboard. Requires a secure context
+ * (https or localhost). Caller handles success / error feedback.
+ */
+export async function copyDeckToClipboard(format, deck, entries) {
+  const body = buildDeckText(format, deck, entries)
+  await navigator.clipboard.writeText(body)
 }
