@@ -1,10 +1,11 @@
 <script setup>
-import { nextTick, onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useTabsStore } from '../../stores/tabs'
 import { useDeckStore } from '../../stores/deck'
 
 const props = defineProps({
   node: { type: Object, required: true },
+  variant: { type: String, default: 'panel' }, // 'panel' | 'topbar'
 })
 const emit = defineEmits(['open-catalog'])
 
@@ -13,6 +14,7 @@ const deck = useDeckStore()
 
 const menuOpen = ref(false)
 const addBtnRef = ref(null)
+const barRef = ref(null)
 const menuStyle = ref({ top: '0px', left: '0px' })
 
 async function toggleMenu() {
@@ -41,8 +43,31 @@ function onDocMouseDown(e) {
   document.removeEventListener('mousedown', onDocMouseDown, true)
 }
 
+// Convert vertical wheel deltas into horizontal scroll when the bar is
+// actually overflowing. Skips when the bar fits (so it doesn't eat page
+// scroll) and when the user is already scrolling horizontally (trackpad).
+function onWheel(e) {
+  const el = barRef.value
+  if (!el) return
+  if (el.scrollWidth <= el.clientWidth) return
+  if (e.deltaX !== 0) return
+  if (e.deltaY === 0) return
+  e.preventDefault()
+  el.scrollLeft += e.deltaY
+}
+
+onMounted(() => {
+  // Non-passive so preventDefault() can stop the page from scrolling.
+  if (barRef.value) {
+    barRef.value.addEventListener('wheel', onWheel, { passive: false })
+  }
+})
+
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocMouseDown, true)
+  if (barRef.value) {
+    barRef.value.removeEventListener('wheel', onWheel, { passive: false })
+  }
 })
 
 function onTabClick(i) {
@@ -81,7 +106,7 @@ function addTab(type) {
 </script>
 
 <template>
-  <div class="tab-bar">
+  <div ref="barRef" class="tab-bar" :class="`variant-${variant}`">
     <div
       v-for="(tab, i) in node.tabs"
       :key="tab.id"
@@ -129,6 +154,10 @@ function addTab(type) {
   background: var(--vk-surface, #1d1c1a);
   border-bottom: 1px solid var(--vk-border, #33312c);
   overflow-x: auto;
+  overflow-y: hidden; /* pin the vertical axis so `overflow-x: auto` doesn't
+                          silently promote `overflow-y: visible` to auto
+                          (per css-overflow-3 §3) and render a phantom
+                          vertical scrollbar. */
   flex: 0 0 auto;
 }
 .tab-chip {
@@ -144,6 +173,7 @@ function addTab(type) {
   cursor: pointer;
   font-size: 0.85rem;
   user-select: none;
+  flex: 0 0 auto;
 }
 .tab-chip.tab-active {
   background: var(--vk-surface, #1d1c1a);
@@ -163,6 +193,7 @@ function addTab(type) {
 .tab-close:hover, .tab-redock:hover { color: var(--vk-accent, #c99d3d); }
 .tab-add {
   position: relative;
+  flex: 0 0 auto;
 }
 .tab-add-btn {
   padding: 0.3rem 0.5rem;

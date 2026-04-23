@@ -85,14 +85,33 @@ function typeOf(card) {
 }
 
 const filtered = computed(() => {
-  const q = (deck.view.search || '').trim().toLowerCase()
+  const parsed = deck.parsedView
+  const nameQ = (parsed.nameQuery || '').trim().toLowerCase()
+  const tokens = parsed.tokens
   const zoneEntries = deck.entriesByZone(props.zone).filter(
     (e) => !e.is_commander && !e.is_signature_spell,
   )
-  if (!q) return zoneEntries
-  return zoneEntries.filter((e) =>
-    (e.scryfall_card?.name || '').toLowerCase().includes(q),
-  )
+  if (!nameQ && tokens.length === 0) return zoneEntries
+  return zoneEntries.filter((e) => {
+    const card = e.scryfall_card || {}
+    if (nameQ && !(card.name || '').toLowerCase().includes(nameQ)) return false
+    for (const tok of tokens) {
+      switch (tok.type) {
+        case 'c': {
+          const colors = (card.colors || []).map((c) => c.toLowerCase())
+          if (!colors.includes(tok.value)) return false
+          break
+        }
+        case 't':
+          if (!(card.type_line || '').toLowerCase().includes(tok.value)) return false
+          break
+        case 'r':
+          if ((card.rarity || '').toLowerCase() !== tok.value) return false
+          break
+      }
+    }
+    return true
+  })
 })
 
 const sorted = computed(() => {

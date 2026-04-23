@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import api from '../lib/api'
 import { useToast } from '../composables/useToast'
+import {
+  parseSearch as parseSearchGeneric,
+  serializeQuery as serializeQueryGeneric,
+} from '../lib/searchQuery'
 
 /**
  * Illegality classification — card-level illegalities glow on the card;
@@ -12,6 +16,26 @@ const DECK_LEVEL_ILLEGALITY_TYPES = new Set([
   'invalid_commander',
   'invalid_partner',
 ])
+
+export const DECK_SCHEMA = {
+  chipKeys: ['c', 't', 'r'],
+  directiveKeys: ['group', 'sort', 'display'],
+  aliases: {},
+}
+
+/** Directives implied by DeckFilterBar defaults; dropped during serialize. */
+const DECK_DIRECTIVE_DEFAULTS = {
+  group: 'categories',
+  sort: 'name',
+  display: 'strips',
+}
+
+/** Which directive keys mirror into which canonical view fields. */
+const DIRECTIVE_TO_VIEW = {
+  group: 'groupBy',
+  sort: 'sort',
+  display: 'displayMode',
+}
 
 export const useDeckStore = defineStore('deck', {
   state: () => ({
@@ -94,6 +118,21 @@ export const useDeckStore = defineStore('deck', {
 
     hasDeckLevelIllegality() {
       return this.deckLevelIllegalities.length > 0
+    },
+
+    /**
+     * Parse the deck's search string and fold in the persisted view-state
+     * fields as directive fallbacks. Tokens in the search string always
+     * win; unspecified directives fall back to view.groupBy / view.sort /
+     * view.displayMode so chip UI stays in sync when the user edits state
+     * via either surface.
+     */
+    parsedView(state) {
+      const parsed = parseSearchGeneric(state.view.search || '', DECK_SCHEMA)
+      parsed.directives.sort    = parsed.directives.sort    || state.view.sort
+      parsed.directives.group   = parsed.directives.group   || state.view.groupBy
+      parsed.directives.display = parsed.directives.display || state.view.displayMode
+      return parsed
     },
   },
 
@@ -236,6 +275,38 @@ export const useDeckStore = defineStore('deck', {
     setUndocked(section, value) {
       if (section === 'side')  this.sideUndocked  = !!value
       if (section === 'maybe') this.maybeUndocked = !!value
+    },
+
+    /**
+     * Update a chip or directive in the deck view. Re-serializes view.search
+     * and mirrors directive values into the canonical view.{groupBy,sort,
+     * displayMode} fields so downstream consumers (DeckGrid's sorted/groups
+     * computeds, display-mode renderers) don't need to know about parsing.
+     */
+    setDeckChip(key, value) {
+      const parsed = this.parsedView
+      const isChip = DECK_SCHEMA.chipKeys.includes(key)
+      const isDirective = DECK_SCHEMA.directiveKeys.includes(key)
+      if (!isChip && !isDirective) return
+
+      const nextChips = { ...parsed.chips }
+      const nextDirectives = { ...parsed.directives }
+      if (isChip) nextChips[key] = value || ''
+      if (isDirective) nextDirectives[key] = value || ''
+
+      this.view.search = serializeQueryGeneric(
+        { free: parsed.nameQuery, chips: nextChips, directives: nextDirectives },
+        DECK_SCHEMA,
+        DECK_DIRECTIVE_DEFAULTS,
+      )
+
+      if (isDirective) {
+        const viewField = DIRECTIVE_TO_VIEW[key]
+        if (viewField) {
+          // Empty directive → revert to the default so DeckGrid keeps working.
+          this.view[viewField] = value || DECK_DIRECTIVE_DEFAULTS[key]
+        }
+      }
     },
 
     reset() {

@@ -58,6 +58,7 @@ onBeforeUnmount(() => {
     :data-sidebar="sidebarCollapsed ? 'collapsed' : 'expanded'"
   >
     <AppTopBar
+      mode="deck"
       :sidebar-collapsed="sidebarCollapsed"
       @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />

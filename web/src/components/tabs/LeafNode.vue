@@ -14,6 +14,14 @@ const deck = useDeckStore()
 
 const activeTab = computed(() => props.node.tabs[props.node.activeIndex] ?? null)
 
+// When the tab tree's root IS this leaf (no splits yet), the TopbarTabBar
+// renders the bar in the AppTopBar and this inline bar is skipped. Once
+// the user splits, tabs.root.type flips to 'split' and every leaf renders
+// its own inline bar automatically.
+const isRootLeaf = computed(
+  () => tabs.root?.type === 'leaf' && tabs.root.id === props.node.id,
+)
+
 const activeEntry = computed(() => {
   const t = activeTab.value
   if (!t) return null
@@ -129,7 +137,7 @@ syncUndocked()
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <TabBar :node="node" @open-catalog="onOpenCatalog" />
+    <TabBar v-if="!isRootLeaf" :node="node" @open-catalog="onOpenCatalog" />
 
     <div class="leaf-body">
       <component
