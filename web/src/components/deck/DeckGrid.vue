@@ -279,6 +279,7 @@ function resetDragState() {
 }
 
 function onGridDrop(e) {
+  if (!acceptsDrop(e)) return
   e.preventDefault()
   resetDragState()
   const payload = parsePayload(e)
@@ -287,6 +288,7 @@ function onGridDrop(e) {
 }
 
 function onGroupDrop(e, groupKey) {
+  if (!acceptsDrop(e)) return
   e.preventDefault()
   // Stop the grid-level handler from firing too — the group has the
   // category context we need, the grid fallback doesn't.
