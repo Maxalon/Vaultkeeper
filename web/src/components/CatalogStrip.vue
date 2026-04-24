@@ -100,7 +100,18 @@ function emitAdd(zone) {
 }
 
 /* Ownership shine — backlit halo in the ownership colour. Same
-   treatment as CardTile, tuned a hair tighter for the smaller strip. */
+   treatment as CardTile, tuned a hair tighter for the smaller strip.
+   The base .strip rule transitions box-shadow for the dark elevation
+   shadow on hover; that transition re-rasterises the blurred shine
+   every frame for 60+ catalog strips at once. Override it here to kill
+   the box-shadow entry from the transition list — the shine still
+   swaps on hover, just snap-changes instead of animating. */
+.strip.shine-green,
+.strip.shine-blue,
+.strip.shine-red {
+  transition: height 160ms ease-out, margin-bottom 160ms ease-out,
+              outline-color 120ms ease, transform 160ms ease-out;
+}
 .strip.shine-green {
   box-shadow:
     0 0 5px 1px rgba(124, 185, 142, 0.85),

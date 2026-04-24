@@ -152,7 +152,11 @@ function onDragStart(e) {
   /* Native virtualization: skip layout/paint for off-screen tiles. */
   content-visibility: auto;
   contain-intrinsic-size: auto 340px;
-  transition: transform 100ms ease, box-shadow 150ms ease;
+  /* box-shadow is deliberately NOT transitioned. A blurred shadow has
+     to be re-rasterised every frame of a transition, which tanks paint
+     budget when 60+ shining tiles are visible. Snapping on hover keeps
+     the visual and removes the per-frame paint. */
+  transition: transform 100ms ease;
 }
 .card-tile:hover {
   transform: translateY(-2px);
