@@ -38,11 +38,11 @@ const { toasts, dismiss } = useToast()
   max-width: 420px;
   padding: 0.6rem 0.9rem;
   border-radius: 6px;
-  background: var(--vk-surface-raised, #1d1c1a);
-  color: var(--vk-fg, #e9e4d6);
+  background: var(--bg-2, #1d1c1a);
+  color: var(--ink-90, #e9e4d6);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
   font-size: 0.9rem;
-  border-left: 3px solid var(--vk-accent, #c99d3d);
+  border-left: 3px solid var(--amber, #c99d3d);
   cursor: pointer;
   pointer-events: auto;
 }

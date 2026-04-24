@@ -315,13 +315,13 @@ function onAddToDeck(payload) {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  background: var(--vk-bg-0);
+  background: var(--bg-0);
   overflow: hidden;
 }
 
 .catalog-header {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--vk-line);
+  border-bottom: 1px solid var(--hairline);
   padding: 10px 16px 8px;
   display: flex;
   flex-direction: column;
@@ -336,10 +336,10 @@ function onAddToDeck(payload) {
 .total {
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   white-space: nowrap;
 }
-.total.loading { color: var(--vk-gold-dim); }
+.total.loading { color: var(--amber-lo); }
 
 .chip-row {
   display: flex;
@@ -348,9 +348,9 @@ function onAddToDeck(payload) {
   align-items: center;
 }
 .chip-btn, .size-btn, .mode-btn {
-  background: var(--vk-bg-1);
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-2);
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
+  color: var(--ink-70);
   font-family: inherit;
   font-size: 11px;
   padding: 4px 10px;
@@ -358,8 +358,8 @@ function onAddToDeck(payload) {
   cursor: pointer;
   transition: all 0.1s ease;
 }
-.chip-btn:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
-.chip-btn.active { background: var(--vk-gold-dim); color: #1a1408; border-color: var(--vk-gold); }
+.chip-btn:hover { background: var(--bg-2); color: var(--ink-100); }
+.chip-btn.active { background: var(--amber-lo); color: #1a1408; border-color: var(--amber); }
 .chip-btn.token { font-family: var(--font-mono), monospace; font-size: 10px; }
 
 /* Color-identity chip uses inline mana pips in place of letters so
@@ -408,8 +408,8 @@ function onAddToDeck(payload) {
 .mode-btn:first-child, .size-btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .mode-btn:last-child,  .size-btn:last-child  { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .mode-btn + .mode-btn, .size-btn + .size-btn { border-left: 0; }
-.mode-btn:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
-.mode-btn.active, .size-btn.active { background: var(--vk-gold); color: #1a1408; border-color: var(--vk-gold); }
+.mode-btn:hover { background: var(--bg-2); color: var(--ink-100); }
+.mode-btn.active, .size-btn.active { background: var(--amber); color: #1a1408; border-color: var(--amber); }
 
 .mode-group + .size-group { margin-left: 8px; }
 
@@ -422,14 +422,14 @@ function onAddToDeck(payload) {
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
 }
 .warn-icon { color: #f09c40; font-size: 14px; }
 .dismiss {
   margin-left: auto;
   background: transparent;
   border: 0;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
@@ -470,7 +470,7 @@ function onAddToDeck(payload) {
 .empty {
   text-align: center;
   padding: 80px 20px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-style: italic;
 }
 .empty-hint {
@@ -484,7 +484,7 @@ function onAddToDeck(payload) {
 .load-more {
   text-align: center;
   padding: 14px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-style: italic;
 }
 </style>

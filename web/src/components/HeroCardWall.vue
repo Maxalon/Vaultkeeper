@@ -210,7 +210,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   text-align: center;
   font-family: var(--font-display), serif;
 }

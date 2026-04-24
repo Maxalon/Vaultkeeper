@@ -18,7 +18,7 @@ defineEmits(['dec', 'inc'])
   display: inline-flex;
   align-items: center;
   gap: 0;
-  border: 1px solid var(--vk-border, #33312c);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -31,7 +31,7 @@ defineEmits(['dec', 'inc'])
   font-size: 1rem;
   cursor: pointer;
 }
-.step:hover { background: var(--vk-surface-raised, #26241f); }
+.step:hover { background: var(--bg-2, #26241f); }
 .step:disabled { opacity: 0.4; cursor: not-allowed; }
 .value {
   padding: 0 0.6rem;

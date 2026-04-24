@@ -95,7 +95,7 @@ const maxBucket = computed(() =>
   gap: 0.75rem;
 }
 h3 { margin: 0; font-size: 1rem; }
-h4 { margin: 0 0 0.4rem 0; font-size: 0.8rem; color: var(--vk-fg-dim, #a8a396); text-transform: uppercase; letter-spacing: 0.05em; }
+h4 { margin: 0 0 0.4rem 0; font-size: 0.8rem; color: var(--ink-70, #a8a396); text-transform: uppercase; letter-spacing: 0.05em; }
 .analysis-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
 .bar-row {
   display: grid;
@@ -105,27 +105,27 @@ h4 { margin: 0 0 0.4rem 0; font-size: 0.8rem; color: var(--vk-fg-dim, #a8a396); 
   margin-bottom: 4px;
 }
 .bar {
-  background: var(--vk-surface-raised, #26241f);
+  background: var(--bg-2, #26241f);
   border-radius: 3px;
   height: 14px;
   overflow: hidden;
 }
 .bar-fill {
-  background: var(--vk-accent, #c99d3d);
+  background: var(--amber, #c99d3d);
   height: 100%;
   transition: width 150ms ease;
 }
 .bar-count {
   font-size: 0.8rem;
   text-align: right;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 .curve-chart {
   display: flex;
   align-items: flex-end;
   gap: 4px;
   height: 160px;
-  border-bottom: 1px solid var(--vk-border, #33312c);
+  border-bottom: 1px solid var(--hairline, #33312c);
   padding: 0 0 0.5rem 0;
 }
 .curve-col {
@@ -138,12 +138,12 @@ h4 { margin: 0 0 0.4rem 0; font-size: 0.8rem; color: var(--vk-fg-dim, #a8a396); 
 }
 .curve-count {
   font-size: 0.75rem;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   margin-bottom: 2px;
 }
 .curve-bar {
   width: 70%;
-  background: var(--vk-accent, #c99d3d);
+  background: var(--amber, #c99d3d);
   border-radius: 2px 2px 0 0;
   min-height: 2px;
   transition: height 150ms ease;
@@ -151,10 +151,10 @@ h4 { margin: 0 0 0.4rem 0; font-size: 0.8rem; color: var(--vk-fg-dim, #a8a396); 
 .curve-label {
   margin-top: 4px;
   font-size: 0.75rem;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 .avg-caption {
   font-size: 0.85rem;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 </style>

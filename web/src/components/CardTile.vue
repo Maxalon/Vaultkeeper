@@ -171,7 +171,7 @@ function onDragStart(e) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   text-align: center;
   padding: 10px;
   font-family: var(--font-display), serif;
@@ -247,7 +247,7 @@ function onDragStart(e) {
   display: flex;
   gap: 4px;
   background: rgba(0, 0, 0, 0.82);
-  border: 1px solid var(--vk-gold-dim, #8a7436);
+  border: 1px solid var(--amber-lo, #8a7436);
   border-radius: 6px;
   padding: 4px;
   z-index: 5;
@@ -255,7 +255,7 @@ function onDragStart(e) {
 .add-menu button {
   background: transparent;
   border: 0;
-  color: var(--vk-gold, #c9a552);
+  color: var(--amber, #c9a552);
   font-size: 11px;
   font-family: var(--font-mono), monospace;
   cursor: pointer;

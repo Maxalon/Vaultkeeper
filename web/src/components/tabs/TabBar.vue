@@ -151,8 +151,8 @@ function addTab(type) {
   align-items: center;
   gap: 0.25rem;
   padding: 0.3rem 0.4rem 0;
-  background: var(--vk-surface, #1d1c1a);
-  border-bottom: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #1d1c1a);
+  border-bottom: 1px solid var(--hairline, #33312c);
   overflow-x: auto;
   overflow-y: hidden; /* pin the vertical axis so `overflow-x: auto` doesn't
                           silently promote `overflow-y: visible` to auto
@@ -165,20 +165,20 @@ function addTab(type) {
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.7rem;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   border-bottom: none;
   border-radius: 4px 4px 0 0;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   cursor: pointer;
   font-size: 0.85rem;
   user-select: none;
   flex: 0 0 auto;
 }
 .tab-chip.tab-active {
-  background: var(--vk-surface, #1d1c1a);
-  color: var(--vk-fg, #e9e4d6);
-  border-bottom: 1px solid var(--vk-surface, #1d1c1a);
+  background: var(--bg-2, #1d1c1a);
+  color: var(--ink-90, #e9e4d6);
+  border-bottom: 1px solid var(--bg-2, #1d1c1a);
   margin-bottom: -1px;
 }
 .tab-close, .tab-redock, .tab-add-btn {
@@ -190,7 +190,7 @@ function addTab(type) {
   padding: 0 0.2rem;
   line-height: 1;
 }
-.tab-close:hover, .tab-redock:hover { color: var(--vk-accent, #c99d3d); }
+.tab-close:hover, .tab-redock:hover { color: var(--amber, #c99d3d); }
 .tab-add {
   position: relative;
   flex: 0 0 auto;
@@ -198,13 +198,13 @@ function addTab(type) {
 .tab-add-btn {
   padding: 0.3rem 0.5rem;
   border-radius: 4px;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
-.tab-add-btn:hover { background: var(--vk-surface-raised, #26241f); }
+.tab-add-btn:hover { background: var(--bg-2, #26241f); }
 .tab-add-menu {
   position: fixed;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 4px;
   z-index: 1000;
   display: flex;
@@ -221,5 +221,5 @@ function addTab(type) {
   cursor: pointer;
   font-size: 0.85rem;
 }
-.tab-add-menu button:hover { background: var(--vk-surface, #1d1c1a); }
+.tab-add-menu button:hover { background: var(--bg-2, #1d1c1a); }
 </style>

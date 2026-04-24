@@ -36,8 +36,8 @@ function onChange(e) {
 <style scoped>
 .physical-copy-dropdown {
   width: 100%;
-  background: var(--vk-surface-raised, #26241f);
-  border: 1px solid var(--vk-border, #33312c);
+  background: var(--bg-2, #26241f);
+  border: 1px solid var(--hairline, #33312c);
   color: inherit;
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;

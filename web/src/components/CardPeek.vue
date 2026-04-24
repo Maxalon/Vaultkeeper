@@ -50,7 +50,7 @@ const isDfc = computed(() =>
     0 24px 48px rgba(0, 0, 0, 0.6),
     0 12px 24px rgba(0, 0, 0, 0.4);
   overflow: hidden;
-  background: var(--vk-bg-2);
+  background: var(--bg-2);
 }
 /* DFC peek shows both faces side-by-side; width doubles and the inner
    aspect-ratio rule is dropped so the container naturally grows wide.
@@ -85,7 +85,7 @@ img {
     0 0 0 1px rgba(240, 195, 92, 0.3),
     0 24px 48px rgba(0, 0, 0, 0.6),
     0 12px 24px rgba(0, 0, 0, 0.4);
-  background: var(--vk-bg-2);
+  background: var(--bg-2);
 }
 .placeholder {
   width: 100%;
@@ -94,7 +94,7 @@ img {
   align-items: center;
   justify-content: center;
   padding: 18px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   font-family: var(--font-display), serif;
   font-size: 16px;
   text-align: center;

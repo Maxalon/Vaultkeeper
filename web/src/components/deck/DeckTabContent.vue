@@ -2,7 +2,6 @@
 import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import DeckInfoPanel from './DeckInfoPanel.vue'
-import CommanderZone from './CommanderZone.vue'
 import DeckFilterBar from './DeckFilterBar.vue'
 import DeckGrid from './DeckGrid.vue'
 import ZoneDivider from './ZoneDivider.vue'
@@ -60,10 +59,7 @@ async function onEditClosed() {
 
     <!-- Full deck layout -->
     <template v-else>
-      <div class="deck-top-row">
-        <DeckInfoPanel class="info-panel" @edit="onEdit" @export="onExport" />
-        <CommanderZone class="commander-zone" />
-      </div>
+      <DeckInfoPanel @edit="onEdit" @export="onExport" />
 
       <DeckFilterBar />
 
@@ -91,17 +87,5 @@ async function onEditClosed() {
 .deck-tab-content {
   height: 100%;
   overflow-y: auto;
-}
-.deck-top-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-}
-.info-panel {
-  flex: 1 1 auto;
-  border-bottom: none;
-}
-.commander-zone {
-  flex: 0 0 auto;
 }
 </style>

@@ -163,7 +163,7 @@ function emitAdd(zone) {
   display: flex;
   gap: 4px;
   background: rgba(0, 0, 0, 0.82);
-  border: 1px solid var(--vk-gold-dim, #8a7436);
+  border: 1px solid var(--amber-lo, #8a7436);
   border-radius: 6px;
   padding: 4px;
   z-index: 5;
@@ -171,7 +171,7 @@ function emitAdd(zone) {
 .add-menu button {
   background: transparent;
   border: 0;
-  color: var(--vk-gold, #c9a552);
+  color: var(--amber, #c9a552);
   font-size: 11px;
   font-family: var(--font-mono), monospace;
   cursor: pointer;
