@@ -80,6 +80,20 @@ export const useCatalogStore = defineStore('catalog', {
       state.activeCardOracleId
         ? state.results.find((r) => r.oracle_id === state.activeCardOracleId) || null
         : null,
+
+    /** True when the deck-view catalog has enough pre-applied filters to
+     *  show useful results without any user-typed query. Requires the
+     *  format-legality pill plus at least one more discriminating filter
+     *  (color identity for Commander/Oathbreaker, or "owned only"). When
+     *  active, the panel runs an empty-q search sorted by edhrec_rank so
+     *  the user lands on a populated, popularity-ranked list. */
+    isAutoSearchContext: (state) => {
+      if (!state.deckId) return false
+      if (!state.deckFilters.format || !state.deckFilters.formatActive) return false
+      const hasIdentity =
+        state.deckFilters.colorIdentity !== null && state.deckFilters.colorIdentityActive
+      return hasIdentity || state.ownedOnly
+    },
   },
 
   actions: {
@@ -88,7 +102,15 @@ export const useCatalogStore = defineStore('catalog', {
      * stay in sync as filters evolve.
      */
     buildParams(page) {
-      const params = { q: this.query, per_page: this.perPage, page }
+      // When the user hasn't typed anything but the deck-view filters are
+      // discriminating enough to stand on their own (see isAutoSearchContext),
+      // send an `order:edhrec` directive so the unfiltered tail is sorted by
+      // popularity instead of alphabetically. The backend's sort extractor
+      // pulls this out of `q` before applying WHERE clauses, so the empty
+      // query still produces no extra constraints.
+      const trimmed = (this.query || '').trim()
+      const q = trimmed === '' && this.isAutoSearchContext ? 'order:edhrec' : this.query
+      const params = { q, per_page: this.perPage, page }
       if (this.deckId) {
         params.deck_id = this.deckId
         // Only send overrides when the user has actually toggled a pill off.
@@ -192,12 +214,28 @@ export const useCatalogStore = defineStore('catalog', {
     toggleDeckFilter(which) {
       const key = which === 'format' ? 'formatActive' : 'colorIdentityActive'
       this.deckFilters[key] = !this.deckFilters[key]
-      this.search(this.query)
+      this.refreshFromContext()
     },
 
     toggleOwnedOnly() {
       this.ownedOnly = !this.ownedOnly
-      this.search(this.query)
+      this.refreshFromContext()
+    },
+
+    /** Re-fire the search after a context change (filter pill, ownedOnly,
+     *  deck swap). Honors the same gating as the input watcher: a typed
+     *  query (>=2 chars) always re-searches; an empty query re-searches
+     *  only if the deck-view auto-search conditions are met; otherwise
+     *  results are cleared so the UI doesn't keep showing stale rows. */
+    refreshFromContext() {
+      const trimmed = (this.query || '').trim()
+      if (trimmed.length >= 2 || (trimmed.length === 0 && this.isAutoSearchContext)) {
+        this.search(this.query)
+        return
+      }
+      this.results = []
+      this.total = 0
+      this.warnings = []
     },
 
     setDisplayMode(mode) {
