@@ -83,7 +83,9 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    // 'web' brings session/CSRF/cookies; RequireHorizonAuth bounces
+    // unauthenticated visitors to /horizon-setup or /horizon-login.
+    'middleware' => ['web', \App\Http\Middleware\RequireHorizonAuth::class],
 
     /*
     |--------------------------------------------------------------------------
