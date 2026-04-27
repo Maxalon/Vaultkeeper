@@ -59,7 +59,7 @@ async function submit() {
             ref="firstInput"
             v-model="input"
             type="text"
-            placeholder="maxalon  or  https://archidekt.com/u/maxalon"
+            placeholder="your-username  or  https://archidekt.com/u/your-username"
           />
         </label>
 
