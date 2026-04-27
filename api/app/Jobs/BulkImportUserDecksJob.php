@@ -76,6 +76,7 @@ class BulkImportUserDecksJob implements ShouldQueue
             'updated'  => 0,
             'skipped'  => 0,
             'failed'   => 0,
+            'warnings' => [],
             'message'  => "Found {$total} decks. Importing…",
         ]);
 
@@ -95,7 +96,7 @@ class BulkImportUserDecksJob implements ShouldQueue
                 [$src, $sid] = $importer->parseSource($deck['url']);
                 if ($importer->findExistingBySource($user->id, $src, $sid)) {
                     $skipped++;
-                    $this->emitProgress($total, $imported, $updated, $skipped, $failed);
+                    $this->emitProgress($total, $imported, $updated, $skipped, $failed, $warnings);
                     continue;
                 }
             }
@@ -120,8 +121,15 @@ class BulkImportUserDecksJob implements ShouldQueue
                     $isUpdate = (bool) $importer->findExistingBySource($user->id, $src, $sid);
                 }
                 $mode = $isUpdate ? 'update' : 'create';
-                $importer->importFromUrl($user, $deck['url'], $groupId, $mode);
+                $result = $importer->importFromUrl($user, $deck['url'], $groupId, $mode);
                 $isUpdate ? $updated++ : $imported++;
+
+                // Per-deck warnings (e.g. "Card not found: …") bubble up so
+                // the user can see WHY the import wasn't perfect, not just
+                // a count. Tag each one with the deck name for context.
+                foreach ($result['warnings'] ?? [] as $w) {
+                    $warnings[] = "{$deck['name']}: {$w}";
+                }
             } catch (\Throwable $e) {
                 $failed++;
                 $warnings[] = "{$deck['name']}: {$e->getMessage()}";
@@ -135,7 +143,7 @@ class BulkImportUserDecksJob implements ShouldQueue
             // Light throttle to be polite to upstream APIs.
             usleep(750_000);
 
-            $this->emitProgress($total, $imported, $updated, $skipped, $failed);
+            $this->emitProgress($total, $imported, $updated, $skipped, $failed, $warnings);
         }
 
         $message = "Imported {$imported} of {$total} decks";
@@ -150,13 +158,19 @@ class BulkImportUserDecksJob implements ShouldQueue
             'updated'  => $updated,
             'skipped'  => $skipped,
             'failed'   => $failed,
-            'warnings' => array_slice($warnings, 0, 25),
+            'warnings' => array_slice($warnings, 0, 50),
             'message'  => $message.'.',
         ]);
     }
 
-    private function emitProgress(int $total, int $imported, int $updated, int $skipped, int $failed): void
-    {
+    private function emitProgress(
+        int $total,
+        int $imported,
+        int $updated,
+        int $skipped,
+        int $failed,
+        array $warnings,
+    ): void {
         $done = $imported + $updated + $skipped + $failed;
         $this->writeStatus([
             'state'    => 'running',
@@ -165,6 +179,9 @@ class BulkImportUserDecksJob implements ShouldQueue
             'updated'  => $updated,
             'skipped'  => $skipped,
             'failed'   => $failed,
+            // Cap to keep the cache payload small. The frontend shows the
+            // most recent issues first, so a tail slice is fine.
+            'warnings' => array_slice($warnings, -25),
             'message'  => "Processed {$done} of {$total}…",
         ]);
     }

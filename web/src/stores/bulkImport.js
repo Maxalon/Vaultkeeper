@@ -4,6 +4,9 @@ import { useCollectionStore } from './collection'
 
 const POLL_INTERVAL_MS = 2000
 const DISMISS_DELAY_MS = 5000
+// Persist just the job key so a page reload mid-import can resume polling.
+// State (counts, message) is rehydrated from the server's cache entry.
+const STORAGE_KEY = 'vaultkeeper-bulk-import-job'
 
 /**
  * Drives the bulk-import progress popup. A single job runs at a time —
@@ -26,6 +29,7 @@ export const useBulkImportStore = defineStore('bulkImport', {
     skipped: 0,
     failed: 0,
     warnings: [],
+    showWarnings: false,
     _pollHandle: null,
     _dismissHandle: null,
   }),
@@ -45,6 +49,7 @@ export const useBulkImportStore = defineStore('bulkImport', {
       this.skipped = 0
       this.failed = 0
       this.warnings = []
+      this.showWarnings = false
 
       try {
         const { data } = await api.post('/decks/import/bulk', {
@@ -53,6 +58,7 @@ export const useBulkImportStore = defineStore('bulkImport', {
           on_duplicate: onDuplicate,
         })
         this.jobKey = data.job_key
+        this._persistKey(data.job_key)
         this.message = `Queued bulk import for ${data.username}…`
         this._poll()
       } catch (e) {
@@ -62,6 +68,52 @@ export const useBulkImportStore = defineStore('bulkImport', {
           ? Object.values(errs).flat().join('; ')
           : (e.response?.data?.message || 'Failed to start bulk import')
         this._scheduleDismiss()
+      }
+    },
+
+    /**
+     * Called once at app boot. If localStorage holds a job key from a
+     * previous session, fetch its status: if the job is still running we
+     * resume polling; if it's already done/failed we show the final state
+     * once and then auto-dismiss as if the user had been watching all along.
+     */
+    async resumeIfActive() {
+      let key
+      try {
+        key = localStorage.getItem(STORAGE_KEY)
+      } catch {
+        return
+      }
+      if (!key) return
+
+      try {
+        const { data } = await api.get(`/decks/import/bulk/${key}`)
+        this.jobKey = key
+        this.state = data.state || 'running'
+        this.message = data.message || 'Resuming import…'
+        this.total = data.total ?? 0
+        this.imported = data.imported ?? 0
+        this.updated = data.updated ?? 0
+        this.skipped = data.skipped ?? 0
+        this.failed = data.failed ?? 0
+        this.warnings = Array.isArray(data.warnings) ? data.warnings : []
+        this.visible = true
+
+        if (this.state === 'done' || this.state === 'failed') {
+          if (this.state === 'done') {
+            const collection = useCollectionStore()
+            await collection.fetchGroups()
+          }
+          this._scheduleDismissOrPersist()
+        } else {
+          this._poll()
+        }
+      } catch (e) {
+        // 404 = cache expired (job finished long ago) — silently drop the
+        // stale key so we don't keep trying on every reload.
+        if (e.response?.status === 404) {
+          this._clearKey()
+        }
       }
     },
 
@@ -93,7 +145,7 @@ export const useBulkImportStore = defineStore('bulkImport', {
             const collection = useCollectionStore()
             await collection.fetchGroups()
           }
-          this._scheduleDismiss()
+          this._scheduleDismissOrPersist()
         }
       } catch (e) {
         // 404 means the cache entry expired; treat as a soft failure so the
@@ -102,8 +154,22 @@ export const useBulkImportStore = defineStore('bulkImport', {
           this.state = 'failed'
           this.message = 'Lost track of the import job (cache expired).'
           this._clearTimers()
-          this._scheduleDismiss()
+          this._scheduleDismissOrPersist()
         }
+      }
+    },
+
+    /**
+     * After a terminal state, auto-dismiss only when there's nothing the
+     * user might want to read (no warnings). When warnings exist we leave
+     * the popup up; the user dismisses manually after reviewing.
+     */
+    _scheduleDismissOrPersist() {
+      if (this.warnings.length === 0 && this.failed === 0) {
+        this._scheduleDismiss()
+      } else {
+        // Keep the popup up but stop persisting — we're done with the job.
+        this._clearKey()
       }
     },
 
@@ -122,8 +188,13 @@ export const useBulkImportStore = defineStore('bulkImport', {
       }
     },
 
+    toggleWarnings() {
+      this.showWarnings = !this.showWarnings
+    },
+
     dismiss() {
       this._clearTimers()
+      this._clearKey()
       this.visible = false
       this.jobKey = null
       this.state = 'idle'
@@ -134,6 +205,15 @@ export const useBulkImportStore = defineStore('bulkImport', {
       this.skipped = 0
       this.failed = 0
       this.warnings = []
+      this.showWarnings = false
+    },
+
+    _persistKey(key) {
+      try { localStorage.setItem(STORAGE_KEY, key) } catch { /* private mode */ }
+    },
+
+    _clearKey() {
+      try { localStorage.removeItem(STORAGE_KEY) } catch { /* private mode */ }
     },
   },
 })
