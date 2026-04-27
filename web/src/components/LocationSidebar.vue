@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, nextTick } from 'vue'
+import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import draggable from 'vuedraggable'
 import { useCollectionStore } from '../stores/collection'
@@ -7,6 +7,7 @@ import { useSettingsStore } from '../stores/settings'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
 import ImportDeckModal from './ImportDeckModal.vue'
+import BulkImportDeckModal from './BulkImportDeckModal.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
 import IconBinder from '../assets/icons/binder.svg'
@@ -38,8 +39,26 @@ function formatShort(f) {
 }
 const importOpen = ref(false)
 const deckImportOpen = ref(false)
+const bulkDeckImportOpen = ref(false)
+const deckImportMenuOpen = ref(false)
 const modalOpen = ref(false)
 const editingLocation = ref(null)
+
+function openBulkDeckImport() {
+  deckImportMenuOpen.value = false
+  bulkDeckImportOpen.value = true
+}
+function toggleDeckImportMenu() {
+  deckImportMenuOpen.value = !deckImportMenuOpen.value
+}
+// Close the dropdown on any document click outside the split-button cluster.
+function onDocClick(e) {
+  if (!e.target.closest?.('.deck-import-split')) {
+    deckImportMenuOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 const creatingGroup = ref(false)
 const newGroupName = ref('')
@@ -334,16 +353,37 @@ function onGroupAdd(evt, group) {
         </svg>
         Import CSV
       </button>
-      <button type="button" class="import-btn" @click="deckImportOpen = true">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        Import Deck
-      </button>
+      <div class="deck-import-split">
+        <button type="button" class="import-btn split-main" @click="deckImportOpen = true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Import Deck
+        </button>
+        <button
+          type="button"
+          class="import-btn split-chevron"
+          :class="{ open: deckImportMenuOpen }"
+          @click="toggleDeckImportMenu"
+          aria-haspopup="menu"
+          :aria-expanded="deckImportMenuOpen"
+          aria-label="More import options"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 4l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <div v-if="deckImportMenuOpen" class="split-menu" role="menu">
+          <button type="button" class="split-menu-item" role="menuitem" @click="openBulkDeckImport">
+            Bulk import from user…
+          </button>
+        </div>
+      </div>
     </footer>
 
     <ImportModal v-if="importOpen" @close="importOpen = false" />
     <ImportDeckModal v-if="deckImportOpen" @close="deckImportOpen = false" />
+    <BulkImportDeckModal v-if="bulkDeckImportOpen" @close="bulkDeckImportOpen = false" />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
   </aside>
 </template>
@@ -753,9 +793,68 @@ footer::before {
   background: color-mix(in oklab, var(--amber) 85%, white);
 }
 
+/* ── Split-button (Import Deck + dropdown) ──────────────────────── */
+.deck-import-split {
+  position: relative;
+  display: flex;
+  margin-top: 4px;
+  gap: 1px;
+}
+.deck-import-split .import-btn {
+  margin-top: 0;
+}
+.deck-import-split .split-main {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.deck-import-split .split-chevron {
+  flex: 0 0 auto;
+  width: 32px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  gap: 0;
+}
+.deck-import-split .split-chevron svg {
+  transition: transform 0.15s ease;
+}
+.deck-import-split .split-chevron.open svg {
+  transform: rotate(180deg);
+}
+.split-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-1);
+  border: 1px solid var(--hairline, var(--border));
+  border-radius: var(--radius-sm, 4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  z-index: 30;
+}
+.split-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ink-90, var(--ink-100));
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.split-menu-item:hover {
+  background: var(--bg-2);
+  color: var(--ink-100);
+}
+
 /* ── Collapsed state ────────────────────────────────────────────── */
 .location-sidebar.collapsed .brand,
 .location-sidebar.collapsed footer,
+.location-sidebar.collapsed .deck-import-split,
 .location-sidebar.collapsed .group-header,
 .location-sidebar.collapsed .sidebar-item .label,
 .location-sidebar.collapsed .sidebar-item .num,
