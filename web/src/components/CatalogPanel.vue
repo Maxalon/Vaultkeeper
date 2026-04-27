@@ -28,22 +28,21 @@ const COLOR_RESTRICTING_FORMATS = new Set(['commander', 'oathbreaker'])
 function syncDeckContext() {
   if (!props.deckId || !deckStore.deck) {
     catalog.setDeckContext({ deckId: null })
-    return
+  } else {
+    const d = deckStore.deck
+    const colorIdentity = COLOR_RESTRICTING_FORMATS.has(d.format)
+      ? (d.color_identity || '')   // '' = colorless (still a valid filter)
+      : null
+    catalog.setDeckContext({
+      deckId: props.deckId,
+      format: d.format || null,
+      colorIdentity,
+    })
   }
-  const d = deckStore.deck
-  const colorIdentity = COLOR_RESTRICTING_FORMATS.has(d.format)
-    ? (d.color_identity || '')   // '' = colorless (still a valid filter)
-    : null
-  catalog.setDeckContext({
-    deckId: props.deckId,
-    format: d.format || null,
-    colorIdentity,
-  })
-  // Refresh results if a real query is active so the pills have an
-  // immediate effect (without waiting for the user to type again).
-  if ((catalog.query || '').trim().length >= 2) {
-    catalog.search(catalog.query)
-  }
+  // Refresh whenever the pill set changes — a typed query re-runs through
+  // the new filters, and an empty query auto-runs only when the deck has
+  // a meaningful pre-applied filter combination (see isAutoSearchContext).
+  catalog.refreshFromContext()
 }
 const scrollRef = ref(null)
 const stripStack = ref(null)
@@ -84,13 +83,13 @@ const stripColumns = computed(() => {
 })
 
 onMounted(() => {
+  // syncDeckContext → refreshFromContext fires the right search for the
+  // current state: a typed query (>=2 chars) replays through the new
+  // filters; an empty query auto-runs only when the deck supplies enough
+  // pre-applied constraints (format + colors / format + ownedOnly). When
+  // it can't justify a search, results are cleared so a stale prior list
+  // doesn't lie about the new context.
   syncDeckContext()
-
-  // Do NOT fire on mount with an empty query — the window-wrapped query is
-  // a full-table scan of scryfall_cards (~113k rows) when there's no
-  // WHERE filter, which saturates PHP-FPM workers. User has to type
-  // something (or pick a chip) before we run a search.
-  if (queryInput.value.trim() !== '') catalog.search(queryInput.value)
 
   if (stripStack.value) {
     recomputeColumns()
@@ -132,10 +131,17 @@ watch([() => catalog.displayMode, () => catalog.results.length], () => {
 // queue up behind a slow earlier search and saturate the PHP-FPM pool.
 // Longer debounce (400ms) also cuts the number of speculative fires.
 // Single characters skip — "l" would match tens of thousands of cards,
-// which is useless and slow; wait for a discriminating query.
+// which is useless and slow; wait for a discriminating query. An empty
+// query falls back to the deck-view auto-search when its context is
+// active (edhrec-sorted) so clearing the input lands on the same default
+// the panel mounted with.
 watch(queryInput, (v) => {
   if (debounceTimer) clearTimeout(debounceTimer)
   const trimmed = (v || '').trim()
+  if (trimmed.length === 0 && catalog.isAutoSearchContext) {
+    debounceTimer = setTimeout(() => catalog.search(''), 400)
+    return
+  }
   if (trimmed.length < 2) {
     // Clear old results so the UI state doesn't lie about what's shown.
     catalog.results = []
@@ -156,6 +162,17 @@ function onScroll() {
 }
 
 const showWarnings = computed(() => catalog.warnings.length > 0 && !catalog.warningsDismissed)
+
+// Drives the empty-state copy. The "type at least 2 characters" prompt
+// only makes sense when there's no other way to populate the panel:
+// a 1-char query is always mid-typing, and an empty query is only a
+// dead-end when the deck context can't auto-search either.
+const needsMoreInput = computed(() => {
+  const len = (queryInput.value || '').trim().length
+  if (len === 1) return true
+  if (len === 0) return !catalog.isAutoSearchContext
+  return false
+})
 
 const formatLabel = computed(() => {
   const f = catalog.deckFilters.format
@@ -268,7 +285,7 @@ function onAddToDeck(payload) {
         v-if="!catalog.loading && catalog.results.length === 0"
         class="empty"
       >
-        <div v-if="(queryInput || '').trim().length < 2">
+        <div v-if="needsMoreInput">
           Type at least 2 characters to search the catalog.
         </div>
         <div v-else>
@@ -315,13 +332,13 @@ function onAddToDeck(payload) {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  background: var(--vk-bg-0);
+  background: var(--bg-0);
   overflow: hidden;
 }
 
 .catalog-header {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--vk-line);
+  border-bottom: 1px solid var(--hairline);
   padding: 10px 16px 8px;
   display: flex;
   flex-direction: column;
@@ -336,10 +353,10 @@ function onAddToDeck(payload) {
 .total {
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   white-space: nowrap;
 }
-.total.loading { color: var(--vk-gold-dim); }
+.total.loading { color: var(--amber-lo); }
 
 .chip-row {
   display: flex;
@@ -348,9 +365,9 @@ function onAddToDeck(payload) {
   align-items: center;
 }
 .chip-btn, .size-btn, .mode-btn {
-  background: var(--vk-bg-1);
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-2);
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
+  color: var(--ink-70);
   font-family: inherit;
   font-size: 11px;
   padding: 4px 10px;
@@ -358,8 +375,8 @@ function onAddToDeck(payload) {
   cursor: pointer;
   transition: all 0.1s ease;
 }
-.chip-btn:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
-.chip-btn.active { background: var(--vk-gold-dim); color: #1a1408; border-color: var(--vk-gold); }
+.chip-btn:hover { background: var(--bg-2); color: var(--ink-100); }
+.chip-btn.active { background: var(--amber-lo); color: #1a1408; border-color: var(--amber); }
 .chip-btn.token { font-family: var(--font-mono), monospace; font-size: 10px; }
 
 /* Color-identity chip uses inline mana pips in place of letters so
@@ -408,8 +425,8 @@ function onAddToDeck(payload) {
 .mode-btn:first-child, .size-btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .mode-btn:last-child,  .size-btn:last-child  { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .mode-btn + .mode-btn, .size-btn + .size-btn { border-left: 0; }
-.mode-btn:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
-.mode-btn.active, .size-btn.active { background: var(--vk-gold); color: #1a1408; border-color: var(--vk-gold); }
+.mode-btn:hover { background: var(--bg-2); color: var(--ink-100); }
+.mode-btn.active, .size-btn.active { background: var(--amber); color: #1a1408; border-color: var(--amber); }
 
 .mode-group + .size-group { margin-left: 8px; }
 
@@ -422,14 +439,14 @@ function onAddToDeck(payload) {
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
 }
 .warn-icon { color: #f09c40; font-size: 14px; }
 .dismiss {
   margin-left: auto;
   background: transparent;
   border: 0;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   cursor: pointer;
   font-size: 14px;
   padding: 0 4px;
@@ -470,7 +487,7 @@ function onAddToDeck(payload) {
 .empty {
   text-align: center;
   padding: 80px 20px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-style: italic;
 }
 .empty-hint {
@@ -484,7 +501,7 @@ function onAddToDeck(payload) {
 .load-more {
   text-align: center;
   padding: 14px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-style: italic;
 }
 </style>

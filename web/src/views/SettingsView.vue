@@ -104,8 +104,8 @@ const densityOptions = [
 <style scoped>
 .settings-page {
   min-height: 100vh;
-  background: var(--vk-bg-0);
-  color: var(--vk-ink-1);
+  background: var(--bg-0);
+  color: var(--ink-100);
   padding: 32px 48px 64px;
 }
 
@@ -119,8 +119,8 @@ const densityOptions = [
 
 .back {
   background: transparent;
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-70);
   height: 32px;
   padding: 0 14px;
   border-radius: var(--radius-sm);
@@ -130,9 +130,9 @@ const densityOptions = [
   transition: all 0.12s ease;
 }
 .back:hover {
-  color: var(--vk-ink-1);
-  border-color: var(--vk-ink-4);
-  background: var(--vk-bg-1);
+  color: var(--ink-100);
+  border-color: var(--ink-30);
+  background: var(--bg-1);
 }
 
 .settings-content {
@@ -145,14 +145,14 @@ const densityOptions = [
   font-size: 36px;
   font-weight: 400;
   letter-spacing: -0.02em;
-  color: var(--vk-gold);
+  color: var(--amber);
   margin: 0 0 8px;
 }
 
 .lede {
   font-size: 14px;
   line-height: 1.5;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   margin: 0 0 40px;
   max-width: 520px;
 }
@@ -160,7 +160,7 @@ const densityOptions = [
 .setting {
   margin-bottom: 32px;
   padding-bottom: 32px;
-  border-bottom: 1px solid var(--vk-line-soft);
+  border-bottom: 1px solid var(--hairline-strong);
 }
 .setting:last-child {
   border-bottom: 0;
@@ -172,22 +172,22 @@ const densityOptions = [
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin: 0 0 6px;
 }
 
 .hint {
   font-size: 13px;
   line-height: 1.5;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   margin: 0 0 14px;
   max-width: 480px;
 }
 
 .seg {
   display: inline-flex;
-  background: var(--vk-bg-2);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   padding: 3px;
   gap: 0;
@@ -197,7 +197,7 @@ const densityOptions = [
   height: 30px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   background: transparent;
   border: 0;
   border-radius: 3px;
@@ -206,10 +206,10 @@ const densityOptions = [
   transition: all 0.12s ease;
 }
 .seg button:hover {
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
 }
 .seg button.active {
-  background: var(--vk-gold);
+  background: var(--amber);
   color: #1a1408;
   font-weight: 600;
 }
@@ -218,8 +218,8 @@ const densityOptions = [
   height: 36px;
   padding: 0 22px;
   background: transparent;
-  color: var(--vk-ink-1);
-  border: 1px solid color-mix(in oklab, #d46a6a 50%, var(--vk-line));
+  color: var(--ink-100);
+  border: 1px solid color-mix(in oklab, #d46a6a 50%, var(--hairline));
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 700;

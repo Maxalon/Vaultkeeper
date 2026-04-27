@@ -29,24 +29,24 @@ const ZONES = [
 <style scoped>
 .zone-selector {
   display: inline-flex;
-  border: 1px solid var(--vk-border, #33312c);
+  border: 1px solid var(--hairline, #33312c);
   border-radius: 4px;
   overflow: hidden;
 }
 .zone-btn {
   background: transparent;
   border: none;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   padding: 0.35rem 0.8rem;
   cursor: pointer;
   font-size: 0.85rem;
 }
 .zone-btn.active {
-  background: var(--vk-accent, #c99d3d);
+  background: var(--amber, #c99d3d);
   color: #1a1a22;
 }
 .zone-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .zone-btn:not(:last-child) {
-  border-right: 1px solid var(--vk-border, #33312c);
+  border-right: 1px solid var(--hairline, #33312c);
 }
 </style>

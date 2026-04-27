@@ -128,7 +128,7 @@ function onDragEnd() {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   text-align: center;
   padding: 10px;
   font-family: var(--font-display), serif;
@@ -158,7 +158,7 @@ function onDragEnd() {
 .gc-badge {
   bottom: 6px;
   left: 6px;
-  background: var(--vk-gold, #c9a552);
+  background: var(--amber, #c9a552);
   color: #1a1408;
 }
 </style>

@@ -102,8 +102,8 @@ const realLocations = computed(() => collection.locations)
 .vk-detail {
   width: var(--detail-width);
   flex-shrink: 0;
-  border-left: 1px solid var(--vk-line);
-  background: var(--vk-bg-1);
+  border-left: 1px solid var(--hairline);
+  background: var(--bg-1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -120,7 +120,7 @@ const realLocations = computed(() => collection.locations)
 .close {
   background: transparent;
   border: 0;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
@@ -132,10 +132,10 @@ const realLocations = computed(() => collection.locations)
   padding: 0;
   transition: background 0.1s ease, color 0.1s ease;
 }
-.close:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
+.close:hover { background: var(--bg-2); color: var(--ink-100); }
 
 .loading {
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   text-align: center;
   padding: 60px 0;
   font-style: italic;
@@ -153,7 +153,7 @@ const realLocations = computed(() => collection.locations)
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin: 0 0 10px;
   font-family: var(--font-sans), sans-serif;
 }
@@ -164,7 +164,7 @@ const realLocations = computed(() => collection.locations)
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin-bottom: 4px;
   font-weight: 600;
 }
@@ -172,17 +172,17 @@ const realLocations = computed(() => collection.locations)
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
   font-size: 13px;
   font-family: inherit;
   outline: 0;
   appearance: none;
   -webkit-appearance: none;
 }
-.vk-field-input:focus { border-color: var(--vk-gold-dim); }
+.vk-field-input:focus { border-color: var(--amber-lo); }
 select.vk-field-input {
   background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236d6d78' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -201,17 +201,17 @@ select.vk-field-input {
   gap: 8px;
   height: 32px;
   padding: 0 10px;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   font-size: 13px;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
   cursor: pointer;
 }
 .foil-field input[type="checkbox"] {
   width: auto;
   margin: 0;
-  accent-color: var(--vk-gold);
+  accent-color: var(--amber);
 }
 
 .wanted {
@@ -228,13 +228,13 @@ select.vk-field-input {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin-bottom: 4px;
 }
 .wanted ul {
   margin: 0;
   padding-left: 16px;
   font-size: 12px;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
 }
 </style>

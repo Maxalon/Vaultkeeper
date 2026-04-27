@@ -79,10 +79,10 @@ function sizeStyle(node, which) {
   overflow: hidden;
 }
 .split-handle {
-  background: var(--vk-border, #33312c);
+  background: var(--hairline, #33312c);
   flex: 0 0 6px;
 }
 .handle-vertical-bar   { cursor: col-resize; }
 .handle-horizontal-bar { cursor: row-resize; }
-.split-handle:hover { background: var(--vk-accent, #c99d3d); }
+.split-handle:hover { background: var(--amber, #c99d3d); }
 </style>

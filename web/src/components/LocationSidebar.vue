@@ -352,8 +352,8 @@ function onGroupAdd(evt, group) {
 .location-sidebar {
   display: flex;
   flex-direction: column;
-  background: var(--vk-bg-1);
-  border-right: 1px solid var(--vk-line);
+  background: var(--bg-1);
+  border-right: 1px solid var(--hairline);
   overflow: hidden;
   height: 100%;
 }
@@ -372,14 +372,14 @@ function onGroupAdd(evt, group) {
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-family: var(--font-sans), sans-serif;
 }
 
 .mode-toggle {
   display: flex;
-  background: var(--vk-bg-2);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   padding: 3px;
 }
@@ -389,7 +389,7 @@ function onGroupAdd(evt, group) {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   border: 0;
   background: transparent;
   border-radius: 3px;
@@ -397,9 +397,9 @@ function onGroupAdd(evt, group) {
   cursor: pointer;
   transition: all 0.12s ease;
 }
-.mode-btn:hover { color: var(--vk-ink-1); }
+.mode-btn:hover { color: var(--ink-100); }
 .mode-btn.active {
-  background: var(--vk-gold);
+  background: var(--amber);
   color: #1a1408;
 }
 
@@ -422,7 +422,7 @@ function onGroupAdd(evt, group) {
   border-radius: var(--radius-sm);
   background: transparent;
   border: 0;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
@@ -430,12 +430,12 @@ function onGroupAdd(evt, group) {
   font-family: var(--font-sans), sans-serif;
 }
 .sidebar-item:hover {
-  background: var(--vk-bg-2);
-  color: var(--vk-ink-1);
+  background: var(--bg-2);
+  color: var(--ink-100);
 }
 .sidebar-item.active {
-  background: var(--vk-bg-2);
-  color: var(--vk-ink-1);
+  background: var(--bg-2);
+  color: var(--ink-100);
 }
 .sidebar-item.active::before {
   content: '';
@@ -444,7 +444,7 @@ function onGroupAdd(evt, group) {
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: var(--vk-gold);
+  background: var(--amber);
   border-radius: 0 2px 2px 0;
 }
 .sidebar-item .set-sym {
@@ -453,11 +453,11 @@ function onGroupAdd(evt, group) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   flex-shrink: 0;
 }
-.sidebar-item.nested .set-sym { color: var(--vk-ink-4); }
-.sidebar-item.nested.active .set-sym { color: var(--vk-ink-2); }
+.sidebar-item.nested .set-sym { color: var(--ink-30); }
+.sidebar-item.nested.active .set-sym { color: var(--ink-70); }
 .sidebar-item .label {
   flex: 1;
   overflow: hidden;
@@ -467,17 +467,17 @@ function onGroupAdd(evt, group) {
 .sidebar-item .num {
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   letter-spacing: 0.02em;
   padding: 1px 8px;
-  background: var(--vk-bg-2);
+  background: var(--bg-2);
   border-radius: 999px;
   min-width: 26px;
   text-align: center;
   flex-shrink: 0;
 }
 .sidebar-item.active .num {
-  background: var(--vk-gold);
+  background: var(--amber);
   color: #1a1408;
   font-weight: 600;
 }
@@ -490,8 +490,8 @@ function onGroupAdd(evt, group) {
 .sidebar-deck .format-badge {
   font-family: var(--font-mono), monospace;
   font-size: 9px;
-  color: var(--vk-ink-3);
-  background: var(--vk-bg-2);
+  color: var(--ink-50);
+  background: var(--bg-2);
   padding: 1px 5px;
   border-radius: 3px;
   letter-spacing: 0.04em;
@@ -503,7 +503,7 @@ function onGroupAdd(evt, group) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--vk-ink-4);
+  color: var(--ink-30);
   opacity: 0;
   transition: opacity 0.12s ease, width 0.15s ease, margin 0.15s ease, color 0.1s ease;
   flex-shrink: 0;
@@ -539,7 +539,7 @@ function onGroupAdd(evt, group) {
 .sidebar-item .drag:hover,
 .sidebar-item .edit:hover {
   opacity: 1;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
 }
 .sidebar-item .edit-btn {
   background: transparent;
@@ -563,7 +563,7 @@ function onGroupAdd(evt, group) {
   gap: 8px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -572,8 +572,8 @@ function onGroupAdd(evt, group) {
   user-select: none;
 }
 .group-header:hover {
-  color: var(--vk-ink-1);
-  background: var(--vk-bg-2);
+  color: var(--ink-100);
+  background: var(--bg-2);
 }
 .group-header .chev {
   display: inline-flex;
@@ -581,7 +581,7 @@ function onGroupAdd(evt, group) {
   height: 12px;
   align-items: center;
   justify-content: center;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   transition: transform 0.15s ease;
   transform: rotate(-90deg);
 }
@@ -596,17 +596,17 @@ function onGroupAdd(evt, group) {
 .group-header .num {
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-weight: 500;
   padding: 1px 8px;
-  background: var(--vk-bg-2);
+  background: var(--bg-2);
   border-radius: 999px;
 }
 .group-rename-input {
   flex: 1;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-gold-dim);
-  color: var(--vk-ink-1);
+  background: var(--bg-0);
+  border: 1px solid var(--amber-lo);
+  color: var(--ink-100);
   padding: 3px 6px;
   font-size: 12px;
   font-weight: 600;
@@ -623,7 +623,7 @@ function onGroupAdd(evt, group) {
 .group-header:hover .group-actions { display: flex; }
 .group-actions .drag-handle {
   font-size: 14px;
-  color: var(--vk-ink-4);
+  color: var(--ink-30);
   cursor: grab;
   user-select: none;
   width: 10px;
@@ -632,7 +632,7 @@ function onGroupAdd(evt, group) {
 .delete-btn {
   background: transparent;
   border: 0;
-  color: var(--vk-ink-4);
+  color: var(--ink-30);
   padding: 2px;
   border-radius: 3px;
   cursor: pointer;
@@ -641,7 +641,7 @@ function onGroupAdd(evt, group) {
   font-size: 14px;
   line-height: 1;
 }
-.edit-btn:hover { color: var(--vk-ink-1); }
+.edit-btn:hover { color: var(--ink-100); }
 .delete-btn:hover { color: #d46a6a; }
 
 /* Nested-row tree connector lines */
@@ -658,7 +658,7 @@ function onGroupAdd(evt, group) {
   top: 4px;
   bottom: 4px;
   width: 1px;
-  background: repeating-linear-gradient(to bottom, var(--vk-line) 0 3px, transparent 3px 6px);
+  background: repeating-linear-gradient(to bottom, var(--hairline) 0 3px, transparent 3px 6px);
 }
 .sidebar-dropzone {
   min-height: 40px;
@@ -673,7 +673,7 @@ function onGroupAdd(evt, group) {
 }
 /*noinspection CssUnusedSymbol*/
 :deep(.sortable-chosen) {
-  background: var(--vk-bg-2);
+  background: var(--bg-2);
 }
 
 /* ── Footer ─────────────────────────────────────────────────────── */
@@ -682,7 +682,7 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: var(--vk-bg-1);
+  background: var(--bg-1);
   position: relative;
   flex-shrink: 0;
 }
@@ -693,15 +693,15 @@ footer::before {
   right: 0;
   top: -32px;
   height: 32px;
-  background: linear-gradient(to bottom, transparent, var(--vk-bg-1));
+  background: linear-gradient(to bottom, transparent, var(--bg-1));
   pointer-events: none;
 }
 
 .inline-group-input input {
   width: 100%;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-gold-dim);
-  color: var(--vk-ink-1);
+  background: var(--bg-0);
+  border: 1px solid var(--amber-lo);
+  color: var(--ink-100);
   padding: 6px 10px;
   font-size: 12px;
   border-radius: 3px;
@@ -715,8 +715,8 @@ footer::before {
   flex: 1;
   height: 28px;
   font-size: 11px;
-  color: var(--vk-ink-2);
-  border: 1px dashed var(--vk-line);
+  color: var(--ink-70);
+  border: 1px dashed var(--hairline);
   background: transparent;
   border-radius: var(--radius-sm);
   display: inline-flex;
@@ -727,14 +727,14 @@ footer::before {
   transition: all 0.12s ease;
 }
 .mini-btn:hover {
-  color: var(--vk-ink-1);
-  border-color: var(--vk-ink-4);
+  color: var(--ink-100);
+  border-color: var(--ink-30);
   border-style: solid;
 }
 .import-btn {
   margin-top: 4px;
   height: 36px;
-  background: var(--vk-gold);
+  background: var(--amber);
   color: #1a1408;
   border: 0;
   font-size: 11px;
@@ -750,7 +750,7 @@ footer::before {
   transition: background 0.12s ease;
 }
 .import-btn:hover {
-  background: color-mix(in oklab, var(--vk-gold) 85%, white);
+  background: color-mix(in oklab, var(--amber) 85%, white);
 }
 
 /* ── Collapsed state ────────────────────────────────────────────── */

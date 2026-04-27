@@ -3,6 +3,22 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useSettingsStore } from './stores/settings'
+
+// Self-hosted fonts. Inter Tight — UI sans; Newsreader — display serif
+// (includes italics used on the login title). JetBrains Mono — kbd/pip/badge.
+import '@fontsource/inter-tight/400.css'
+import '@fontsource/inter-tight/500.css'
+import '@fontsource/inter-tight/600.css'
+import '@fontsource/inter-tight/700.css'
+import '@fontsource/newsreader/300.css'
+import '@fontsource/newsreader/400.css'
+import '@fontsource/newsreader/500.css'
+import '@fontsource/newsreader/400-italic.css'
+import '@fontsource/newsreader/500-italic.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/500.css'
+import '@fontsource/jetbrains-mono/600.css'
+
 import './style.css'
 
 const app = createApp(App)

@@ -163,20 +163,20 @@ const ptOrLoyalty = computed(() => {
   height: 32px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.7);
-  border: 1px solid var(--vk-gold-dim);
-  color: var(--vk-gold);
+  border: 1px solid var(--amber-lo);
+  color: var(--amber);
   font-size: 16px;
   cursor: pointer;
   padding: 0;
 }
-.flip-btn:hover { background: var(--vk-gold); color: #1a1408; }
+.flip-btn:hover { background: var(--amber); color: #1a1408; }
 
 .vk-detail-title {
   margin-top: 16px;
   font-family: var(--font-display), serif;
   font-size: 20px;
   font-weight: 600;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
   margin-bottom: 8px;
 }
 
@@ -188,28 +188,28 @@ const ptOrLoyalty = computed(() => {
   margin-bottom: 10px;
   font-size: 12px;
 }
-.set-badge { color: var(--vk-ink-3); font-family: var(--font-mono), monospace; }
+.set-badge { color: var(--ink-50); font-family: var(--font-mono), monospace; }
 .rarity { text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; font-size: 10px; }
 .rarity[data-r="mythic"] { color: #f09c40; }
 .rarity[data-r="rare"]   { color: #c9a552; }
 .rarity[data-r="uncommon"] { color: #b3c2d0; }
-.rarity[data-r="common"]   { color: var(--vk-ink-3); }
+.rarity[data-r="common"]   { color: var(--ink-50); }
 
-.vk-detail-type { color: var(--vk-ink-2); font-size: 13px; margin-bottom: 10px; }
-.vk-detail-sep { height: 1px; background: var(--vk-line); margin: 10px 0 12px; }
+.vk-detail-type { color: var(--ink-70); font-size: 13px; margin-bottom: 10px; }
+.vk-detail-sep { height: 1px; background: var(--hairline); margin: 10px 0 12px; }
 
-.vk-detail-rules :deep(.oracle) { font-size: 13px; line-height: 1.45; color: var(--vk-ink-2); }
+.vk-detail-rules :deep(.oracle) { font-size: 13px; line-height: 1.45; color: var(--ink-70); }
 .vk-detail-rules :deep(.oracle .mana-symbol) { display: inline-flex; vertical-align: middle; margin: 0 1px; }
 
 .vk-detail-pt { margin-top: 10px; display: flex; justify-content: flex-end; }
-.pt { background: var(--vk-bg-2); border: 1px solid var(--vk-line); padding: 2px 10px; border-radius: 4px; font-family: var(--font-mono), monospace; font-size: 12px; color: var(--vk-ink-1); }
+.pt { background: var(--bg-2); border: 1px solid var(--hairline); padding: 2px 10px; border-radius: 4px; font-family: var(--font-mono), monospace; font-size: 12px; color: var(--ink-100); }
 
 .vk-detail-section { margin-top: 18px; }
 .vk-detail-section h4 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin: 0 0 8px;
 }
 
@@ -219,10 +219,10 @@ const ptOrLoyalty = computed(() => {
   gap: 4px 10px;
   font-size: 12px;
 }
-.leg-format { color: var(--vk-ink-3); }
+.leg-format { color: var(--ink-50); }
 .leg-status { text-transform: capitalize; }
 .leg-legal { color: #7cb98e; }
 .leg-banned { color: #d06a6a; }
 .leg-restricted { color: #d0a050; }
-.leg-not-legal { color: var(--vk-ink-3); }
+.leg-not-legal { color: var(--ink-50); }
 </style>

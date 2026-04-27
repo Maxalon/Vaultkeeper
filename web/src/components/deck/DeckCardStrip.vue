@@ -102,7 +102,7 @@ function onDragEnd() {
 .gc-badge {
   top: 4px;
   left: 4px;
-  background: var(--vk-gold, #c9a552);
+  background: var(--amber, #c9a552);
   color: #1a1408;
 }
 

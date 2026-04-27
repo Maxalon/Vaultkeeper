@@ -99,7 +99,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   display: flex;
-  background: var(--vk-bg-0);
+  background: var(--bg-0);
   overflow: hidden;
 }
 .deck-tabs {
@@ -109,11 +109,11 @@ onBeforeUnmount(() => {
 .deck-main :deep(.deck-detail-sidebar) {
   width: var(--detail-width, 340px);
   flex-shrink: 0;
-  border-left: 1px solid var(--vk-border, #33312c);
+  border-left: 1px solid var(--hairline, #33312c);
   overflow: auto;
 }
 .deck-skeleton {
   margin: 2rem auto;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
 }
 </style>

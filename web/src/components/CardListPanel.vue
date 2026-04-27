@@ -170,7 +170,7 @@ function onPeekHide() {
 .card-list-panel {
   display: flex;
   flex-direction: column;
-  background: var(--vk-bg-0);
+  background: var(--bg-0);
   overflow: hidden;
   min-height: 0;
   flex: 1;
@@ -180,13 +180,13 @@ function onPeekHide() {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--vk-bg-2);
-  border-bottom: 1px solid var(--vk-line);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--hairline);
   flex-shrink: 0;
 }
 .sel-count {
   font-size: 12px;
-  color: var(--vk-gold);
+  color: var(--amber);
   font-weight: 600;
   margin-right: 4px;
 }
@@ -194,19 +194,19 @@ function onPeekHide() {
   padding: 5px 10px;
   font-size: 11px;
   background: transparent;
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-70);
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
 .sel-btn:hover {
-  border-color: var(--vk-ink-4);
-  color: var(--vk-ink-1);
-  background: var(--vk-bg-1);
+  border-color: var(--ink-30);
+  color: var(--ink-100);
+  background: var(--bg-1);
 }
 .sel-btn.primary {
-  background: var(--vk-gold);
-  border-color: var(--vk-gold);
+  background: var(--amber);
+  border-color: var(--amber);
   color: #1a1408;
   font-weight: 600;
 }
@@ -222,9 +222,9 @@ function onPeekHide() {
   padding: 5px 8px;
   width: auto;
   min-width: 140px;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-line);
-  color: var(--vk-ink-1);
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  color: var(--ink-100);
   border-radius: var(--radius-sm);
 }
 
@@ -251,7 +251,7 @@ function onPeekHide() {
 }
 .empty {
   flex: 1;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   text-align: center;
   padding: 60px 20px;
   font-style: italic;

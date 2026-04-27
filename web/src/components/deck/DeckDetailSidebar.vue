@@ -107,7 +107,7 @@ function onRemove() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--vk-surface, #1d1c1a);
+  background: var(--bg-2, #1d1c1a);
   overflow-y: auto;
 }
 .detail-header {
@@ -118,7 +118,7 @@ function onRemove() {
 .close-btn {
   background: transparent;
   border: none;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   font-size: 1.4rem;
   cursor: pointer;
 }
@@ -147,7 +147,7 @@ function onRemove() {
 .field { display: flex; flex-direction: column; gap: 0.3rem; }
 .field label {
   font-size: 0.72rem;
-  color: var(--vk-fg-dim, #a8a396);
+  color: var(--ink-70, #a8a396);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -155,14 +155,14 @@ function onRemove() {
 .actions button {
   flex: 1;
   background: transparent;
-  border: 1px solid var(--vk-border, #33312c);
+  border: 1px solid var(--hairline, #33312c);
   color: inherit;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
   border-radius: 4px;
   font-size: 0.85rem;
 }
-.actions button:hover:not(:disabled) { background: var(--vk-surface-raised, #26241f); }
+.actions button:hover:not(:disabled) { background: var(--bg-2, #26241f); }
 .actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 .actions .danger {
   background: #7c3226;

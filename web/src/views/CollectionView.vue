@@ -67,7 +67,7 @@ onMounted(async () => {
   grid-row: 2;
   display: flex;
   flex-direction: column;
-  background: var(--vk-bg-0);
+  background: var(--bg-0);
   min-width: 0;
   overflow: hidden;
 }

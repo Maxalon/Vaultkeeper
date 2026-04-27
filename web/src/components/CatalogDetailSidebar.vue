@@ -113,8 +113,8 @@ watch(() => catalog.activeCardOracleId, () => {})
 .vk-detail {
   width: var(--detail-width, 360px);
   flex-shrink: 0;
-  border-left: 1px solid var(--vk-line);
-  background: var(--vk-bg-1);
+  border-left: 1px solid var(--hairline);
+  background: var(--bg-1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -130,7 +130,7 @@ watch(() => catalog.activeCardOracleId, () => {})
 .close {
   background: transparent;
   border: 0;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
@@ -138,7 +138,7 @@ watch(() => catalog.activeCardOracleId, () => {})
   cursor: pointer;
   padding: 0;
 }
-.close:hover { background: var(--vk-bg-2); color: var(--vk-ink-1); }
+.close:hover { background: var(--bg-2); color: var(--ink-100); }
 
 .vk-detail-body {
   flex: 1;
@@ -152,12 +152,12 @@ watch(() => catalog.activeCardOracleId, () => {})
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   margin: 0 0 10px;
 }
 .loading-printings {
   font-style: italic;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-size: 12px;
   padding: 12px 0;
 }
@@ -175,15 +175,15 @@ watch(() => catalog.activeCardOracleId, () => {})
   gap: 10px;
   align-items: center;
   padding: 8px 10px;
-  background: var(--vk-bg-0);
-  border: 1px solid var(--vk-line);
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: border-color 0.1s ease;
 }
-.printing-row:hover { border-color: var(--vk-gold-dim); }
-.printing-row.selected { border-color: var(--vk-gold); background: rgba(201, 165, 82, 0.06); }
-.printing-row input[type="radio"] { accent-color: var(--vk-gold); margin: 0; }
+.printing-row:hover { border-color: var(--amber-lo); }
+.printing-row.selected { border-color: var(--amber); background: rgba(201, 165, 82, 0.06); }
+.printing-row input[type="radio"] { accent-color: var(--amber); margin: 0; }
 .set-icon { width: 24px; height: 24px; object-fit: contain; filter: invert(0.9); }
 .printing-meta {
   display: flex;
@@ -191,18 +191,18 @@ watch(() => catalog.activeCardOracleId, () => {})
   font-size: 12px;
   min-width: 0;
 }
-.set-name { color: var(--vk-ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-name { color: var(--ink-100); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-code-num {
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
   font-family: var(--font-mono), monospace;
   font-size: 10px;
 }
-.release { color: var(--vk-ink-3); font-size: 10px; }
+.release { color: var(--ink-50); font-size: 10px; }
 .ownership {
   display: flex;
   flex-direction: column;
   font-size: 10px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   text-align: right;
   font-family: var(--font-mono), monospace;
 }

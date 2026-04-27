@@ -152,7 +152,11 @@ function onDragStart(e) {
   /* Native virtualization: skip layout/paint for off-screen tiles. */
   content-visibility: auto;
   contain-intrinsic-size: auto 340px;
-  transition: transform 100ms ease, box-shadow 150ms ease;
+  /* box-shadow is deliberately NOT transitioned. A blurred shadow has
+     to be re-rasterised every frame of a transition, which tanks paint
+     budget when 60+ shining tiles are visible. Snapping on hover keeps
+     the visual and removes the per-frame paint. */
+  transition: transform 100ms ease;
 }
 .card-tile:hover {
   transform: translateY(-2px);
@@ -171,7 +175,7 @@ function onDragStart(e) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
   text-align: center;
   padding: 10px;
   font-family: var(--font-display), serif;
@@ -247,7 +251,7 @@ function onDragStart(e) {
   display: flex;
   gap: 4px;
   background: rgba(0, 0, 0, 0.82);
-  border: 1px solid var(--vk-gold-dim, #8a7436);
+  border: 1px solid var(--amber-lo, #8a7436);
   border-radius: 6px;
   padding: 4px;
   z-index: 5;
@@ -255,7 +259,7 @@ function onDragStart(e) {
 .add-menu button {
   background: transparent;
   border: 0;
-  color: var(--vk-gold, #c9a552);
+  color: var(--amber, #c9a552);
   font-size: 11px;
   font-family: var(--font-mono), monospace;
   cursor: pointer;

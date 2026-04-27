@@ -135,31 +135,10 @@ const sorted = computed(() => {
   return rows
 })
 
-const groups = computed(() => {
-  const mode = deck.view.groupBy
-  if (mode === 'full') {
-    // Split the deck into N independent columns by chunking the sorted
-    // list, N from fullColumnCount. Each chunk renders as its own
-    // flex-column group, so hovering a strip (which expands that card's
-    // height) only grows its own column — neighbouring columns do not
-    // reflow. Adding/removing/filtering/sorting or resizing the viewport
-    // still redistributes across columns, because those change either
-    // the list or the column count.
-    const list = sorted.value
-    const cols = fullColumnCount.value
-    if (list.length === 0) return []
-    const perCol = Math.ceil(list.length / cols)
-    const out = []
-    for (let i = 0; i < cols; i++) {
-      const rows = list.slice(i * perCol, (i + 1) * perCol)
-      if (!rows.length) continue
-      out.push({ key: `col-${i}`, label: '', rows })
-    }
-    return out
-  }
-
+/** Build atomic {key, label, rows} groups for any non-"full" grouping. */
+function buildGroups(mode, list) {
   const map = new Map()
-  for (const row of sorted.value) {
+  for (const row of list) {
     const card = row.scryfall_card || {}
     let key = 'Other'
     if (mode === 'categories') key = row.category || 'Uncategorized'
@@ -175,6 +154,56 @@ const groups = computed(() => {
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, rows]) => ({ key, label: key, rows }))
+}
+
+/**
+ * Both "no grouping" and all grouped modes render as N side-by-side JS
+ * flex columns. Hovering a strip expands its own card and reflows only
+ * that column — the column packing is keyed by row counts (a discrete
+ * integer that's stable across hover), NOT by rendered pixel height,
+ * so columns never re-pack mid-hover the way CSS multi-column does.
+ *
+ * full     — one label-less "group" per column, chunked from the sorted
+ *            list into N equal-sized slices.
+ * grouped  — atomic {key,label,rows} groups distributed greedily into
+ *            the shortest column so far. Adjacent same-category groups
+ *            stay atomic; alphabetical ordering is loose across columns
+ *            (inside a column it's preserved in insertion order).
+ */
+const columns = computed(() => {
+  const mode = deck.view.groupBy
+  const nCols = fullColumnCount.value
+
+  if (mode === 'full') {
+    const list = sorted.value
+    if (list.length === 0) return []
+    const perCol = Math.ceil(list.length / nCols)
+    const out = []
+    for (let i = 0; i < nCols; i++) {
+      const rows = list.slice(i * perCol, (i + 1) * perCol)
+      if (!rows.length) continue
+      out.push({
+        key: `col-${i}`,
+        groups: [{ key: `col-${i}`, label: '', rows }],
+      })
+    }
+    return out
+  }
+
+  const groupList = buildGroups(mode, sorted.value)
+  if (groupList.length === 0) return []
+  // Greedy to-shortest-column. Size = row count + 2 (approx header). We
+  // only need the *relative* ordering of columns, not pixel accuracy.
+  const packs = Array.from({ length: nCols }, () => ({ groups: [], size: 0 }))
+  for (const g of groupList) {
+    let best = packs[0]
+    for (const p of packs) if (p.size < best.size) best = p
+    best.groups.push(g)
+    best.size += g.rows.length + 2
+  }
+  return packs
+    .filter((p) => p.groups.length > 0)
+    .map((p, i) => ({ key: `col-${i}`, groups: p.groups }))
 })
 
 const cardIllegalityMap = computed(() => deck.cardLevelIllegalitiesByScryfallId)
@@ -308,88 +337,82 @@ function isIllegal(entry) {
 }
 
 const gcFormat = computed(() => deck.deck?.format === 'commander')
-
-// "No grouping" (full) keeps its JS-chunked flex-row layout; every other mode
-// switches to CSS multi-column so short categories don't leave a dead zone
-// under themselves — the next category packs into the reclaimed space.
-const gridModeClass = computed(() =>
-  deck.view.groupBy === 'full' ? 'mode-full' : 'mode-grouped',
-)
 </script>
 
 <template>
   <div
     ref="gridRef"
     class="deck-grid"
-    :class="[{ 'drag-active': gridDragActive }, gridModeClass]"
+    :class="{ 'drag-active': gridDragActive }"
     @dragenter="onGridDragEnter"
     @dragleave="onGridDragLeave"
     @dragover="onGridDragOver"
     @drop="onGridDrop"
   >
-    <div
-      v-for="group in groups"
-      :key="group.key"
-      class="deck-group"
-      :class="{ 'drop-target': dropTargetGroup === group.key }"
-      @dragenter="onGroupDragEnter($event, group.key)"
-      @dragover="onGroupDragOver($event, group.key)"
-      @dragleave="onGroupDragLeave"
-      @drop="onGroupDrop($event, group.key)"
-    >
-      <header v-if="group.label" class="group-header" @click="toggle(group.key)">
-        <span class="chevron" :class="{ collapsed: collapsed[group.key] }">▾</span>
-        <span>{{ group.label }}</span>
-        <span class="count">({{ group.rows.reduce((s, r) => s + r.quantity, 0) }})</span>
-      </header>
-      <div v-if="!collapsed[group.key]" class="group-body" :class="deck.view.displayMode">
-        <template v-for="entry in group.rows" :key="entry.id">
-          <DeckCardTile
-            v-if="deck.view.displayMode === 'tiles'"
-            :entry="entry"
-            :illegal="isIllegal(entry)"
-            :show-game-changer="gcFormat"
-            @click="onEntryClick(entry)"
-          />
-          <DeckCardStrip
-            v-else
-            :entry="entry"
-            :illegal="isIllegal(entry)"
-            :show-game-changer="gcFormat"
-            @click="onEntryClick(entry)"
-          />
-        </template>
+    <div v-for="column in columns" :key="column.key" class="deck-column">
+      <div
+        v-for="group in column.groups"
+        :key="group.key"
+        class="deck-group"
+        :class="{ 'drop-target': dropTargetGroup === group.key }"
+        @dragenter="onGroupDragEnter($event, group.key)"
+        @dragover="onGroupDragOver($event, group.key)"
+        @dragleave="onGroupDragLeave"
+        @drop="onGroupDrop($event, group.key)"
+      >
+        <header v-if="group.label" class="group-header" @click="toggle(group.key)">
+          <span class="chevron" :class="{ collapsed: collapsed[group.key] }">▾</span>
+          <span>{{ group.label }}</span>
+          <span class="count">({{ group.rows.reduce((s, r) => s + r.quantity, 0) }})</span>
+        </header>
+        <div v-if="!collapsed[group.key]" class="group-body" :class="deck.view.displayMode">
+          <template v-for="entry in group.rows" :key="entry.id">
+            <DeckCardTile
+              v-if="deck.view.displayMode === 'tiles'"
+              :entry="entry"
+              :illegal="isIllegal(entry)"
+              :show-game-changer="gcFormat"
+              @click="onEntryClick(entry)"
+            />
+            <DeckCardStrip
+              v-else
+              :entry="entry"
+              :illegal="isIllegal(entry)"
+              :show-game-changer="gcFormat"
+              @click="onEntryClick(entry)"
+            />
+          </template>
+        </div>
       </div>
     </div>
-    <div v-if="!groups.length" class="empty-state">
+    <div v-if="!columns.length" class="empty-state">
       No cards in this zone. Drop cards here from the catalog.
     </div>
   </div>
 </template>
 
 <style scoped>
-/* Two layouts share the .deck-grid container:
-   - .mode-full ("No grouping"): flex row-wrap over JS-chunked balanced
-     columns. Hovering a strip only grows its own column.
-   - .mode-grouped (categories / type / color / cmc / rarity / zone): CSS
-     multi-column. Groups stay atomic (break-inside: avoid) and the browser
-     packs them top-to-bottom so a short category no longer leaves a dead
-     zone under itself — the next category bleeds up into the space. */
+/* Single layout for both "no grouping" (full) and every grouped mode:
+   N side-by-side JS flex columns. Groups are atomic inside each column.
+   Column assignment is keyed by row counts (stable across hover), so
+   expanding a strip reflows only its own column — neighbouring columns
+   never re-pack the way CSS multi-column did. */
 .deck-grid {
   padding: 0.5rem 1.25rem 1.5rem;
   position: relative;
   transition: background 120ms ease, box-shadow 120ms ease;
-}
-.deck-grid.mode-full {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 1rem 1.25rem;
 }
-.deck-grid.mode-grouped {
-  column-width: var(--card-width);
-  column-gap: 1.25rem;
+.deck-column {
+  flex: 0 0 auto;
+  width: var(--card-width);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 /* Whole-zone hint while a valid drag hovers anywhere in the grid. The
    empty-state pane also picks this up so side/maybe boards with no
@@ -405,30 +428,18 @@ const gridModeClass = computed(() =>
   outline: 2px dashed transparent;
   outline-offset: -2px;
 }
-.mode-full .deck-group {
-  flex: 0 0 auto;
-  width: var(--card-width);
-}
-.mode-grouped .deck-group {
-  width: auto;
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-  page-break-inside: avoid;
-  /* Replaces the flex row-gap for vertical separation between stacked groups. */
-  margin-bottom: 1rem;
-}
 /* Precise column highlight so the user sees exactly which category/column
    the card will land in. */
 .deck-group.drop-target {
   background: rgba(201, 157, 61, 0.12);
-  outline-color: var(--vk-gold, #c9a552);
+  outline-color: var(--amber, #c9a552);
 }
 .group-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.25rem;
-  border-bottom: 1px solid var(--vk-border, #33312c);
+  border-bottom: 1px solid var(--hairline, #33312c);
   font-size: 0.85rem;
   cursor: pointer;
   user-select: none;
@@ -438,7 +449,7 @@ const gridModeClass = computed(() =>
   transition: transform 120ms ease;
 }
 .chevron.collapsed { transform: rotate(-90deg); }
-.count { color: var(--vk-fg-dim, #a8a396); }
+.count { color: var(--ink-70, #a8a396); }
 .group-body {
   display: flex;
   flex-direction: column;
@@ -452,8 +463,8 @@ const gridModeClass = computed(() =>
   flex: 1 1 100%;
   padding: 2rem;
   text-align: center;
-  color: var(--vk-fg-dim, #a8a396);
-  border: 1px dashed var(--vk-border, #33312c);
+  color: var(--ink-70, #a8a396);
+  border: 1px dashed var(--hairline, #33312c);
   border-radius: 6px;
 }
 </style>

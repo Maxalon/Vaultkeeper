@@ -11,6 +11,9 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@fontsource/inter-tight": "^5.2.7",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/newsreader": "^5.2.10",
     "axios": "^1.15.0",
     "nanoid": "^5.0.7",
     "pinia": "^3.0.4",

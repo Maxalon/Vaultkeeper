@@ -70,8 +70,8 @@ const showingLabel = computed(() => {
 .vk-stats-bar {
   display: flex;
   align-items: stretch;
-  background: var(--vk-bg-1);
-  border-bottom: 1px solid var(--vk-line);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--hairline);
   flex-shrink: 0;
 }
 .stat {
@@ -89,26 +89,26 @@ const showingLabel = computed(() => {
   top: 25%;
   bottom: 25%;
   width: 1px;
-  background: var(--vk-line-soft);
+  background: var(--hairline-strong);
 }
 .k {
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--vk-ink-3);
+  color: var(--ink-50);
 }
 .v {
   font-family: var(--font-display), serif;
   font-size: 20px;
   font-weight: 500;
-  color: var(--vk-ink-1);
+  color: var(--ink-100);
   letter-spacing: -0.01em;
 }
 .v.compact {
   font-family: var(--font-sans), sans-serif;
   font-size: 13px;
-  color: var(--vk-ink-2);
+  color: var(--ink-70);
 }
 .grow { flex: 1; }
 .stat:last-child::before { display: none; }
