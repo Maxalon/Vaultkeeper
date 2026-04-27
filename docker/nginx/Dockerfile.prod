@@ -45,6 +45,7 @@ COPY docker/nginx/default.prod.conf.template /etc/nginx/templates/default.conf.t
 COPY docker/nginx/ratelimit.conf /etc/nginx/conf.d/ratelimit.conf
 RUN mkdir -p /etc/nginx/snippets
 COPY docker/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY docker/nginx/security-headers-horizon.conf /etc/nginx/snippets/security-headers-horizon.conf
 
 # Placeholder self-signed TLS cert so the container boots out of the box
 # without a real cert provisioned yet. The deployer is expected to

@@ -123,8 +123,19 @@ server {
     }
 
     # Horizon dashboard — Laravel routes served by php-fpm, same as /api.
-    # Gated by HorizonServiceProvider::gate() (env-driven email allowlist).
+    # Auth: per-environment password gate, see HorizonAuthController +
+    # RequireHorizonAuth middleware (config/horizon.php). The /horizon-setup
+    # and /horizon-login pages are also matched here (prefix match), and
+    # they tolerate the relaxed CSP fine since they ship no scripts at all.
+    #
+    # CSP: Horizon's Vue SPA ships an inline bootstrap script that the
+    # app-wide strict policy blocks. The include below swaps in a CSP that
+    # allows 'unsafe-inline' / 'unsafe-eval' for this location only — any
+    # location that defines its own add_header loses inheritance from the
+    # server block, so the snippet must restate every header we want kept.
     location /horizon {
+        include /etc/nginx/snippets/security-headers-horizon.conf;
+
         include fastcgi_params;
         fastcgi_pass api:9000;
         fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
