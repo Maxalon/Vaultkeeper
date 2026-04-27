@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\HorizonAuthController;
+use App\Http\Controllers\OpsDbProxyController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -21,3 +22,13 @@ Route::get ('/horizon-login',  [HorizonAuthController::class, 'showLogin']);
 Route::post('/horizon-login',  [HorizonAuthController::class, 'login'])
     ->middleware('throttle:5,1');
 Route::post('/horizon-logout', [HorizonAuthController::class, 'logout']);
+
+// ─── Adminer DB UI (gated by the same ops password as /horizon) ──────────
+// Catch-all so every URL under /db (and /db itself) goes through the proxy
+// controller. The controller validates the session, then either redirects
+// to /horizon-login or hands off to the internal nginx location via
+// X-Accel-Redirect. nginx is the only thing that talks to the adminer
+// container.
+Route::any('/db', [OpsDbProxyController::class, 'proxy']);
+Route::any('/db/{path}', [OpsDbProxyController::class, 'proxy'])
+    ->where('path', '.*');

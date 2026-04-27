@@ -20,6 +20,9 @@
 
     <form method="POST" action="/horizon-login" autocomplete="off">
         @csrf
+        @if (request()->filled('next'))
+            <input type="hidden" name="next" value="{{ request()->query('next') }}">
+        @endif
         <div class="field">
             <label for="password">Password</label>
             <input id="password" type="password" name="password" required autofocus>

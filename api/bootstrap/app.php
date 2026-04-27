@@ -19,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
         // Authenticate middleware to skip the redirect path; the exception
         // handler then renders a plain 401.
         $middleware->redirectGuestsTo(fn (Request $request) => null);
+
+        // Adminer (proxied through OpsDbProxyController at /db) submits
+        // its own forms with no Laravel CSRF token. The route only ever
+        // hands off to the internal nginx location after passing the
+        // ops-password session check, so there's no CSRF surface to
+        // protect — the controller never mutates Laravel state.
+        $middleware->validateCsrfTokens(except: ['db', 'db/*']);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Ensure /api/* always gets JSON responses, even when the caller
