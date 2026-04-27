@@ -1,9 +1,17 @@
 <script setup>
 import { computed, ref } from 'vue'
 import DfcPopover from '../DfcPopover.vue'
+import EntryActionsMenu from './EntryActionsMenu.vue'
 import { useDeckStore } from '../../stores/deck'
 
 const deckStore = useDeckStore()
+const menuPos = ref(null)
+
+function onContextMenu(e) {
+  e.preventDefault()
+  menuPos.value = { x: e.clientX, y: e.clientY }
+}
+function closeMenu() { menuPos.value = null }
 
 /**
  * Grid tile for a deck entry. Visually mirrors CardTile from the catalog
@@ -69,6 +77,7 @@ function onDragEnd() {
     :class="{ 'illegal-glow': illegal }"
     :draggable="true"
     @click="onClick"
+    @contextmenu="onContextMenu"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
     @mouseenter="onHoverEnter"
@@ -91,6 +100,8 @@ function onDragEnd() {
       :back-image="card.image_normal_back"
       :anchor="rootRef"
     />
+
+    <EntryActionsMenu :entry="entry" :position="menuPos" @close="closeMenu" />
   </div>
 </template>
 

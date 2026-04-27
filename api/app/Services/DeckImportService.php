@@ -40,6 +40,20 @@ class DeckImportService
         'modern'           => 'modern',
     ];
 
+    /**
+     * Archidekt's `deckFormat` field is a numeric ID, not a string. IDs come
+     * from pyrchidekt's enum (https://github.com/linkian209/pyrchidekt). Only
+     * IDs that map onto a Vaultkeeper-supported format are listed; anything
+     * else falls back to commander, matching SOURCE_FORMAT_MAP's behaviour.
+     */
+    private const ARCHIDEKT_FORMAT_IDS = [
+        1  => 'standard',
+        2  => 'modern',
+        3  => 'commander',
+        6  => 'pauper',
+        14 => 'oathbreaker',
+    ];
+
     public function __construct(
         private ScryfallService $scryfall,
         private BulkSyncService $bulkSync,
@@ -91,6 +105,7 @@ class DeckImportService
      *   format: string,
      *   description?: ?string,
      *   commanders: array<int, array{scryfall_id?: ?string, name: string, set?: ?string}>,
+     *   signature_spells?: array<int, array{scryfall_id?: ?string, name: string, set?: ?string}>,
      *   companion?: ?array{scryfall_id?: ?string, name: string, set?: ?string},
      *   entries: array<int, array{scryfall_id?: ?string, name: string, set?: ?string, quantity: int, zone: string}>
      * }  $dto
@@ -117,6 +132,7 @@ class DeckImportService
             }
         };
         foreach ($dto['commanders'] ?? [] as $c) $collect($c);
+        foreach ($dto['signature_spells'] ?? [] as $s) $collect($s);
         if (! empty($dto['companion'])) $collect($dto['companion']);
         foreach ($dto['entries'] ?? [] as $e) $collect($e);
 
@@ -153,15 +169,37 @@ class DeckImportService
                 );
             };
 
-            $commanderIds = [];
+            $format = $dto['format'] ?? 'commander';
+
+            $commanderIds  = [];
+            $signatureIds  = [];
             foreach ($dto['commanders'] ?? [] as $c) {
                 $id = $pick($c);
                 if ($id === null) {
                     $warnings[] = "Commander not found: {$c['name']}".(! empty($c['set']) ? " ({$c['set']})" : '');
                     continue;
                 }
+                // Archidekt's "Commander" category is overloaded for Oathbreaker
+                // decks: users sometimes mark both the planeswalker and the
+                // signature spell with it. Reclassify any Instant/Sorcery as a
+                // signature spell so it doesn't end up in commander_*_scryfall_id.
+                if ($format === 'oathbreaker' && $this->isInstantOrSorcery($id)) {
+                    $signatureIds[] = $id;
+                    continue;
+                }
                 $commanderIds[] = $id;
                 if (count($commanderIds) >= 2) break;
+            }
+
+            foreach ($dto['signature_spells'] ?? [] as $s) {
+                $id = $pick($s);
+                if ($id === null) {
+                    $warnings[] = "Signature spell not found: {$s['name']}".(! empty($s['set']) ? " ({$s['set']})" : '');
+                    continue;
+                }
+                if (! in_array($id, $signatureIds, true)) {
+                    $signatureIds[] = $id;
+                }
             }
 
             $companionId = null;
@@ -175,7 +213,7 @@ class DeckImportService
             $deck = Deck::create([
                 'user_id'                 => $user->id,
                 'name'                    => substr($dto['name'] ?? 'Imported deck', 0, 100),
-                'format'                  => $dto['format'] ?? 'commander',
+                'format'                  => $format,
                 'description'             => $dto['description'] ?? null,
                 'commander_1_scryfall_id' => $commanderIds[0] ?? null,
                 'commander_2_scryfall_id' => $commanderIds[1] ?? null,
@@ -189,6 +227,10 @@ class DeckImportService
             $this->deckCtrl->syncCommanderEntries($deck);
             $this->deckCtrl->recomputeColorIdentity($deck);
 
+            if (! empty($signatureIds)) {
+                $this->createSignatureSpellEntries($deck, $signatureIds);
+            }
+
             foreach ($dto['entries'] ?? [] as $e) {
                 $scryfallId = $pick($e);
                 if ($scryfallId === null) {
@@ -201,6 +243,11 @@ class DeckImportService
                 // for the commander(s). If the source also listed them in
                 // mainboard (Moxfield does), don't double-insert.
                 if (in_array($scryfallId, $commanderIds, true)) {
+                    continue;
+                }
+                // Same for signature spells: createSignatureSpellEntries above
+                // already inserted them.
+                if (in_array($scryfallId, $signatureIds, true)) {
                     continue;
                 }
 
@@ -473,6 +520,96 @@ class DeckImportService
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Oathbreaker helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Type-line check used to demote misclassified Oathbreaker "commanders"
+     * (Archidekt's "Commander" category gets applied to signature spells in
+     * a lot of user decks). The portion before the em-dash is what counts;
+     * "Tribal Sorcery" still matches Sorcery.
+     */
+    private function isInstantOrSorcery(string $scryfallId): bool
+    {
+        $card = ScryfallCard::where('scryfall_id', $scryfallId)->first();
+        if ($card === null) return false;
+        $parts = preg_split('/\x{2014}/u', $card->type_line ?? '', 2);
+        $pre = trim($parts[0] ?? '');
+        return str_contains($pre, 'Instant') || str_contains($pre, 'Sorcery');
+    }
+
+    /**
+     * Insert deck_entries for the deck's signature spells and link each one
+     * to an oathbreaker via signature_for_entry_id. Pairing logic:
+     *   - 1 oathbreaker → all spells attach to it.
+     *   - 2 oathbreakers → match each spell to the first oathbreaker whose
+     *     color identity is a superset of the spell's. If no match (or the
+     *     deck is malformed) the spell attaches to the first oathbreaker
+     *     and the legality engine flags it.
+     *
+     * @param  string[]  $signatureIds
+     */
+    private function createSignatureSpellEntries(Deck $deck, array $signatureIds): void
+    {
+        // If no oathbreaker is set, signatureFor stays null — the legality
+        // engine surfaces those as "not attached to an oathbreaker".
+        $oathbreakerEntries = DeckEntry::where('deck_id', $deck->id)
+            ->where('is_commander', true)
+            ->with('card')
+            ->get();
+
+        foreach ($signatureIds as $scryfallId) {
+            $spell = ScryfallCard::where('scryfall_id', $scryfallId)->first();
+            if ($spell === null) continue;
+
+            $parent = $this->matchOathbreaker($spell, $oathbreakerEntries);
+
+            $existing = DeckEntry::where('deck_id', $deck->id)
+                ->where('scryfall_id', $scryfallId)
+                ->where('zone', 'main')
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'is_signature_spell'     => true,
+                    'signature_for_entry_id' => $parent?->id,
+                    'quantity'               => 1,
+                ]);
+            } else {
+                DeckEntry::create([
+                    'deck_id'                => $deck->id,
+                    'scryfall_id'            => $scryfallId,
+                    'quantity'               => 1,
+                    'zone'                   => 'main',
+                    'category'               => $this->entryCtrl->autoCategory($spell),
+                    'is_signature_spell'     => true,
+                    'signature_for_entry_id' => $parent?->id,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Pick the oathbreaker entry whose color identity contains every color
+     * in the signature spell's identity. Falls back to the first oathbreaker
+     * (or null if none exist) so legality can flag the broken pairing.
+     */
+    private function matchOathbreaker(ScryfallCard $spell, \Illuminate\Support\Collection $oathbreakers): ?DeckEntry
+    {
+        if ($oathbreakers->isEmpty()) return null;
+        if ($oathbreakers->count() === 1) return $oathbreakers->first();
+
+        $spellColors = array_map('strtoupper', (array) ($spell->color_identity ?? []));
+        foreach ($oathbreakers as $ob) {
+            $obColors = array_map('strtoupper', (array) ($ob->card->color_identity ?? []));
+            if (empty(array_diff($spellColors, $obColors))) {
+                return $ob;
+            }
+        }
+        return $oathbreakers->first();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // Source adapters
     // ─────────────────────────────────────────────────────────────────────
 
@@ -516,9 +653,10 @@ class DeckImportService
             throw ValidationException::withMessages(['url' => ['Archidekt response did not contain any cards.']]);
         }
 
-        $commanders = [];
-        $companion = null;
-        $entries = [];
+        $commanders      = [];
+        $signatureSpells = [];
+        $companion       = null;
+        $entries         = [];
 
         foreach ($json['cards'] as $c) {
             $qty = (int) ($c['quantity'] ?? 0);
@@ -548,6 +686,13 @@ class DeckImportService
                 'set'  => $set,
             ];
 
+            // "Signature Spell" wins over "Commander" — Archidekt sometimes
+            // tags signature spells with both, and treating them as commanders
+            // would land them in commander_*_scryfall_id incorrectly.
+            if (in_array('signature spell', $cats, true) || in_array('signature spells', $cats, true)) {
+                $signatureSpells[] = $row;
+                continue;
+            }
             if (in_array('commander', $cats, true)) {
                 $commanders[] = $row;
                 continue;
@@ -560,17 +705,33 @@ class DeckImportService
             $entries[] = $row + ['quantity' => $qty, 'zone' => $this->archidektZone($c)];
         }
 
-        $formatRaw = strtolower((string) ($json['deckFormat'] ?? ($json['format'] ?? 'commander')));
-        $format = self::SOURCE_FORMAT_MAP[$formatRaw] ?? 'commander';
+        $format = $this->resolveArchidektFormat($json['deckFormat'] ?? ($json['format'] ?? null));
 
         return [
-            'name'        => (string) ($json['name'] ?? "Archidekt deck {$id}"),
-            'format'      => $format,
-            'description' => $json['description'] ?? null,
-            'commanders'  => $commanders,
-            'companion'   => $companion,
-            'entries'     => $entries,
+            'name'             => (string) ($json['name'] ?? "Archidekt deck {$id}"),
+            'format'           => $format,
+            'description'      => $json['description'] ?? null,
+            'commanders'       => $commanders,
+            'signature_spells' => $signatureSpells,
+            'companion'        => $companion,
+            'entries'          => $entries,
         ];
+    }
+
+    /**
+     * Archidekt's `deckFormat` field is a numeric integer (1=Standard,
+     * 2=Modern, 3=Commander, 14=Oathbreaker, ...). A handful of older or
+     * mocked responses send a lowercase string instead, so accept both.
+     */
+    private function resolveArchidektFormat(mixed $raw): string
+    {
+        if (is_int($raw) || (is_string($raw) && ctype_digit(trim($raw)))) {
+            return self::ARCHIDEKT_FORMAT_IDS[(int) $raw] ?? 'commander';
+        }
+        if (is_string($raw)) {
+            return self::SOURCE_FORMAT_MAP[strtolower(trim($raw))] ?? 'commander';
+        }
+        return 'commander';
     }
 
     /** Archidekt encodes zone via card category name or a boolean flag. */
