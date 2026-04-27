@@ -651,29 +651,33 @@ class DeckImportService
         throw ValidationException::withMessages(['username' => ['Could not read a username from the input.']]);
     }
 
+    /** Browsery default headers — Moxfield's WAF rejects bare cURL/PHP UAs. */
+    private const BROWSER_HEADERS = [
+        'User-Agent'      => 'Mozilla/5.0 (Vaultkeeper/1.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        'Accept'          => 'application/json,text/plain,*/*',
+        'Accept-Language' => 'en-US,en;q=0.9',
+    ];
+
     /**
      * List every public deck for an Archidekt username.
      *
-     * Walks the paginated `/api/decks/v3/?ownerexact=<name>` listing and
-     * returns one row per deck with the source URL the single-deck importer
-     * already accepts, plus the folder path (flattened with " / ") so the
-     * caller can map folders to LocationGroups.
+     * The deck listing only carries `parentFolderId` per row, not the folder
+     * name — so we collect those IDs, fetch each folder's metadata via the
+     * detail route (`/api/decks/folders/<id>/`), and build a flattened
+     * "Parent / Child" path that the caller maps to LocationGroups.
      *
      * @return array<int, array{id:int, name:string, url:string, folder_path:?string}>
      */
     public function listArchidektUserDecks(string $username): array
     {
-        $folders = $this->fetchArchidektFolders($username);
-        $folderPaths = $this->buildArchidektFolderPaths($folders);
-
-        $url = 'https://archidekt.com/api/decks/v3/?ownerexact='.urlencode($username).'&pageSize=48';
-        $decks = [];
+        // Pass 1: walk paginated deck listing.
+        $url = 'https://archidekt.com/api/decks/v3/?ownerUsername='.urlencode($username).'&pageSize=48';
+        $rawDecks = [];
+        $folderIds = [];
         $safety = 50; // hard cap on pages so a misbehaving API can't loop forever
 
         while ($url !== null && $safety-- > 0) {
-            $response = Http::withHeaders(['User-Agent' => 'Vaultkeeper/1.0', 'Accept' => 'application/json'])
-                ->timeout(15)
-                ->get($url);
+            $response = Http::withHeaders(self::BROWSER_HEADERS)->timeout(15)->get($url);
 
             if (! $response->successful()) {
                 throw ValidationException::withMessages([
@@ -686,55 +690,147 @@ class DeckImportService
             foreach ($results as $row) {
                 $id = (int) ($row['id'] ?? 0);
                 if ($id <= 0) continue;
-                $folderId = $row['deckFolder'] ?? ($row['folder']['id'] ?? null);
-                $folderPath = $folderId !== null && isset($folderPaths[(int) $folderId])
-                    ? $folderPaths[(int) $folderId]
-                    : ($row['folderName'] ?? null);
-                $decks[] = [
-                    'id'          => $id,
-                    'name'        => (string) ($row['name'] ?? "Archidekt deck {$id}"),
-                    'url'         => "https://archidekt.com/decks/{$id}/",
-                    'folder_path' => $folderPath !== null && $folderPath !== '' ? (string) $folderPath : null,
+                $folderId = isset($row['parentFolderId']) ? (int) $row['parentFolderId'] : null;
+                if ($folderId !== null && $folderId > 0) $folderIds[$folderId] = true;
+                $rawDecks[] = [
+                    'id'        => $id,
+                    'name'      => (string) ($row['name'] ?? "Archidekt deck {$id}"),
+                    'folder_id' => $folderId,
                 ];
             }
             $url = is_array($json) ? ($json['next'] ?? null) : null;
         }
 
-        return $decks;
+        // Pass 2: resolve folder IDs to paths. Best-effort — if Archidekt
+        // declines the folder route we still group decks by ID under a
+        // "Folder #<id>" label so the source structure is preserved.
+        $folderPaths = $this->resolveArchidektFolderPaths(array_keys($folderIds));
+
+        return array_map(static function (array $d) use ($folderPaths) {
+            $fid  = $d['folder_id'];
+            $path = $fid !== null && isset($folderPaths[$fid]) ? $folderPaths[$fid] : null;
+            return [
+                'id'          => $d['id'],
+                'name'        => $d['name'],
+                'url'         => "https://archidekt.com/decks/{$d['id']}/",
+                'folder_path' => $path,
+            ];
+        }, $rawDecks);
     }
 
     /**
-     * Fetch the user's folder tree (`id, name, parent`). Best-effort: if the
-     * endpoint is not reachable we return an empty list and the caller
-     * falls back to the inline folder name on each deck row.
+     * Resolve a set of Archidekt folder IDs to flattened paths. Walks parents
+     * via BFS so nested folders surface as "Parent / Child". The detail
+     * response includes the parent's NAME inline, so we pre-populate parents
+     * eagerly and only re-fetch them to discover grandparents. Per-folder
+     * fetch failures fall back to "Folder #<id>" so the import still
+     * creates a group.
      *
-     * @return array<int, array{id:int, name:string, parent:?int}>
+     * @param  int[]  $rootIds
+     * @return array<int, string>
      */
-    private function fetchArchidektFolders(string $username): array
+    private function resolveArchidektFolderPaths(array $rootIds): array
+    {
+        // id => ['name' => str, 'parent' => ?int, 'fetched' => bool]
+        $folders = [];
+        $queue = array_values(array_filter(array_unique($rootIds), fn ($i) => $i > 0));
+        $rounds = 0;
+
+        while (! empty($queue) && $rounds++ < 8) {
+            $next = [];
+            foreach ($queue as $id) {
+                if (isset($folders[$id]) && $folders[$id]['fetched']) continue;
+
+                $row = $this->fetchArchidektFolder($id);
+                if ($row === null) {
+                    // Mark as fetched-failed so we don't retry, but keep any
+                    // pre-populated name from a child's response.
+                    $folders[$id] = ($folders[$id] ?? ['name' => '', 'parent' => null]) + ['fetched' => true];
+                    continue;
+                }
+                $folders[$id] = [
+                    'name'    => $row['name'],
+                    'parent'  => $row['parent_id'],
+                    'fetched' => true,
+                ];
+
+                // The leaf response gives us the parent's name for free —
+                // pre-populate so a failed parent fetch still has a label.
+                if ($row['parent_id'] !== null && $row['parent_name'] !== null
+                    && empty($folders[$row['parent_id']]['fetched'])) {
+                    $folders[$row['parent_id']] = [
+                        'name'    => $folders[$row['parent_id']]['name'] ?? $row['parent_name'],
+                        'parent'  => null,    // unknown until we fetch
+                        'fetched' => false,
+                    ];
+                }
+                if ($row['parent_id'] !== null && empty($folders[$row['parent_id']]['fetched'])) {
+                    $next[] = $row['parent_id'];
+                }
+            }
+            $queue = $next;
+        }
+
+        $paths = [];
+        foreach ($rootIds as $id) {
+            $name = $folders[$id]['name'] ?? '';
+            if ($name === '') {
+                $paths[$id] = "Folder #{$id}";
+                continue;
+            }
+            $parts = [];
+            $cursor = $id;
+            $depth = 0;
+            while ($cursor !== null && isset($folders[$cursor]) && $depth++ < 12) {
+                $part = trim($folders[$cursor]['name']);
+                if ($part !== '') array_unshift($parts, $part);
+                $cursor = $folders[$cursor]['parent'];
+            }
+            $paths[$id] = ! empty($parts) ? implode(' / ', $parts) : "Folder #{$id}";
+        }
+        return $paths;
+    }
+
+    /**
+     * Fetch one Archidekt folder by id.
+     *
+     * Archidekt returns `parentFolder` as a `{id, name}` object on the detail
+     * route. We capture both pieces so the caller can pre-populate the
+     * parent's name (saves one fetch in the common 2-level-deep case).
+     *
+     * @return array{name:string, parent_id:?int, parent_name:?string}|null
+     */
+    private function fetchArchidektFolder(int $id): ?array
     {
         try {
-            $response = Http::withHeaders(['User-Agent' => 'Vaultkeeper/1.0', 'Accept' => 'application/json'])
-                ->timeout(15)
-                ->get('https://archidekt.com/api/decks/folders/?ownerexact='.urlencode($username));
+            $resp = Http::withHeaders(self::BROWSER_HEADERS)
+                ->timeout(10)
+                ->get("https://archidekt.com/api/decks/folders/{$id}/");
         } catch (\Throwable) {
-            return [];
+            return null;
         }
-        if (! $response->successful()) return [];
-        $json = $response->json();
-        $rows = is_array($json) ? ($json['results'] ?? $json) : [];
-        if (! is_array($rows)) return [];
+        if (! $resp->successful()) return null;
+        $j = $resp->json();
+        if (! is_array($j)) return null;
 
-        $out = [];
-        foreach ($rows as $r) {
-            if (! is_array($r) || empty($r['id'])) continue;
-            $out[] = [
-                'id'     => (int) $r['id'],
-                'name'   => (string) ($r['name'] ?? ''),
-                'parent' => isset($r['parentFolder']) ? (int) $r['parentFolder']
-                    : (isset($r['parent']) ? (int) $r['parent'] : null),
-            ];
+        $name = (string) ($j['name'] ?? '');
+        if ($name === '') return null;
+
+        $parentId = null;
+        $parentName = null;
+        $parent = $j['parentFolder'] ?? $j['parent'] ?? null;
+        if (is_array($parent)) {
+            $parentId   = isset($parent['id']) ? (int) $parent['id'] : null;
+            $parentName = isset($parent['name']) ? (string) $parent['name'] : null;
+        } elseif (is_int($parent) || (is_string($parent) && ctype_digit($parent))) {
+            $parentId = (int) $parent;
         }
-        return $out;
+
+        return [
+            'name'        => $name,
+            'parent_id'   => $parentId,
+            'parent_name' => $parentName,
+        ];
     }
 
     /**
@@ -781,10 +877,18 @@ class DeckImportService
         $totalPages = 1;
         $safety = 50;
 
+        // Moxfield's API host changes occasionally and is gated behind
+        // Cloudflare. Send browser-like headers + Referer to maximize the
+        // chance the WAF lets us through.
+        $headers = self::BROWSER_HEADERS + [
+            'Referer' => 'https://www.moxfield.com/',
+            'Origin'  => 'https://www.moxfield.com',
+        ];
+
         while ($page <= $totalPages && $safety-- > 0) {
-            $response = Http::withHeaders(['User-Agent' => 'Vaultkeeper/1.0', 'Accept' => 'application/json'])
+            $response = Http::withHeaders($headers)
                 ->timeout(15)
-                ->get('https://api.moxfield.com/v2/users/'.urlencode($username).'/decks', [
+                ->get('https://api2.moxfield.com/v2/users/'.urlencode($username).'/decks', [
                     'pageSize'   => 100,
                     'pageNumber' => $page,
                 ]);
