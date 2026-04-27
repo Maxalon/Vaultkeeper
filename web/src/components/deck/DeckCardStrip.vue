@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSettingsStore } from '../../stores/settings'
 import { useDeckStore } from '../../stores/deck'
 import BaseCardStrip from '../strip/BaseCardStrip.vue'
+import EntryActionsMenu from './EntryActionsMenu.vue'
 
 /**
  * Deck-view strip. Thin wrapper over BaseCardStrip that adds the
@@ -40,6 +41,13 @@ function onDragStart(e) {
 function onDragEnd() {
   deckStore.setDragEntry(null)
 }
+
+const menuPos = ref(null)
+function onContextMenu(e) {
+  e.preventDefault()
+  menuPos.value = { x: e.clientX, y: e.clientY }
+}
+function closeMenu() { menuPos.value = null }
 </script>
 
 <template>
@@ -53,6 +61,7 @@ function onDragEnd() {
     :loading-lazy="true"
     :class="{ 'illegal-glow': illegal }"
     @click="emit('click', entry)"
+    @contextmenu="onContextMenu"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
   >
@@ -67,6 +76,7 @@ function onDragEnd() {
       >GC</span>
     </template>
   </BaseCardStrip>
+  <EntryActionsMenu :entry="entry" :position="menuPos" @close="closeMenu" />
 </template>
 
 <style scoped>
