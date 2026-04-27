@@ -16,6 +16,8 @@ class Deck extends Model
         'name',
         'format',
         'description',
+        'source',
+        'source_id',
         'is_archived',
         'commander_1_scryfall_id',
         'commander_2_scryfall_id',

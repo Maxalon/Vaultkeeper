@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\DeckSourceConflictException;
 use App\Jobs\BulkImportUserDecksJob;
 use App\Services\DeckImportService;
 use Illuminate\Http\JsonResponse;
@@ -24,27 +25,49 @@ class DeckImportController extends Controller
             'name'     => 'required_if:source,text|nullable|string|max:100',
             'format'   => ['required_if:source,text', 'nullable', 'string', 'in:'.implode(',', self::FORMATS)],
             'group_id' => 'sometimes|nullable|integer',
+            // 'auto' => create new, but bail with 409 if a same-source deck
+            //          already exists; 'create' = always new (allows
+            //          intentional duplicates); 'update' = overwrite the
+            //          existing same-source deck in place.
+            'mode'     => 'sometimes|nullable|in:auto,create,update',
         ]);
 
-        $result = $data['source'] === 'text'
-            ? $this->importer->importFromText(
-                user:     $request->user(),
-                text:     (string) $data['text'],
-                name:     (string) $data['name'],
-                format:   (string) $data['format'],
-                groupId:  $data['group_id'] ?? null,
-            )
-            : $this->importer->importFromUrl(
-                user:    $request->user(),
-                url:     (string) $data['url'],
-                groupId: $data['group_id'] ?? null,
-            );
+        try {
+            $result = $data['source'] === 'text'
+                ? $this->importer->importFromText(
+                    user:     $request->user(),
+                    text:     (string) $data['text'],
+                    name:     (string) $data['name'],
+                    format:   (string) $data['format'],
+                    groupId:  $data['group_id'] ?? null,
+                )
+                : $this->importer->importFromUrl(
+                    user:    $request->user(),
+                    url:     (string) $data['url'],
+                    groupId: $data['group_id'] ?? null,
+                    mode:    $data['mode'] ?? 'auto',
+                );
+        } catch (DeckSourceConflictException $e) {
+            // 409 surfaces enough info for the frontend to render a
+            // confirmation: existing deck name + id, plus the entry count
+            // so the user can sanity-check before overwriting.
+            return response()->json([
+                'message'  => 'You already imported this deck.',
+                'existing' => [
+                    'id'          => $e->existing->id,
+                    'name'        => $e->existing->name,
+                    'format'      => $e->existing->format,
+                    'updated_at'  => optional($e->existing->updated_at)->toIso8601String(),
+                ],
+            ], 409);
+        }
 
         return response()->json([
             'deck'     => $this->presentDeck($result['deck']),
             'imported' => $result['imported'],
             'skipped'  => $result['skipped'],
             'warnings' => $result['warnings'],
+            'action'   => $result['action'] ?? 'created',
         ], 201);
     }
 
@@ -58,12 +81,17 @@ class DeckImportController extends Controller
     public function bulk(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'source'   => 'required|in:archidekt,moxfield',
-            'username' => 'required|string|max:200',
+            'source'       => 'required|in:archidekt,moxfield',
+            'username'     => 'required|string|max:200',
+            // 'skip'   = leave existing same-source decks untouched (default)
+            // 'update' = overwrite cards/format from the source for any deck
+            //            we've already imported
+            'on_duplicate' => 'sometimes|nullable|in:skip,update',
         ]);
 
         $username = $this->importer->extractUsername($data['source'], $data['username']);
         $jobKey   = (string) Str::uuid();
+        $onDup    = $data['on_duplicate'] ?? 'skip';
 
         Cache::put('bulk-import:'.$jobKey, [
             'state'   => 'queued',
@@ -76,12 +104,14 @@ class DeckImportController extends Controller
             $data['source'],
             $username,
             $jobKey,
+            $onDup,
         );
 
         return response()->json([
-            'job_key'  => $jobKey,
-            'username' => $username,
-            'source'   => $data['source'],
+            'job_key'      => $jobKey,
+            'username'     => $username,
+            'source'       => $data['source'],
+            'on_duplicate' => $onDup,
         ], 202);
     }
 

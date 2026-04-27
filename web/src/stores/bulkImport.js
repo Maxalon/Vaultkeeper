@@ -22,6 +22,8 @@ export const useBulkImportStore = defineStore('bulkImport', {
     message: '',
     total: 0,
     imported: 0,
+    updated: 0,
+    skipped: 0,
     failed: 0,
     warnings: [],
     _pollHandle: null,
@@ -29,7 +31,7 @@ export const useBulkImportStore = defineStore('bulkImport', {
   }),
 
   actions: {
-    async start({ source, username }) {
+    async start({ source, username, onDuplicate = 'skip' }) {
       // If a previous run finished and is still on screen, clear it so we
       // don't show stale results while the new job kicks off.
       this.dismiss()
@@ -39,11 +41,17 @@ export const useBulkImportStore = defineStore('bulkImport', {
       this.message = `Starting bulk import from ${source}…`
       this.total = 0
       this.imported = 0
+      this.updated = 0
+      this.skipped = 0
       this.failed = 0
       this.warnings = []
 
       try {
-        const { data } = await api.post('/decks/import/bulk', { source, username })
+        const { data } = await api.post('/decks/import/bulk', {
+          source,
+          username,
+          on_duplicate: onDuplicate,
+        })
         this.jobKey = data.job_key
         this.message = `Queued bulk import for ${data.username}…`
         this._poll()
@@ -73,6 +81,8 @@ export const useBulkImportStore = defineStore('bulkImport', {
         this.message = data.message || ''
         this.total = data.total ?? 0
         this.imported = data.imported ?? 0
+        this.updated = data.updated ?? 0
+        this.skipped = data.skipped ?? 0
         this.failed = data.failed ?? 0
         if (Array.isArray(data.warnings)) this.warnings = data.warnings
 
@@ -120,6 +130,8 @@ export const useBulkImportStore = defineStore('bulkImport', {
       this.message = ''
       this.total = 0
       this.imported = 0
+      this.updated = 0
+      this.skipped = 0
       this.failed = 0
       this.warnings = []
     },

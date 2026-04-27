@@ -9,6 +9,7 @@ const bulkImport = useBulkImportStore()
 // JWT (see PR notes), so bulk import isn't viable there. Single-deck
 // Moxfield URL imports still work via the regular Import Deck modal.
 const input = ref('')
+const onDuplicate = ref('skip') // 'skip' | 'update'
 const submitting = ref(false)
 const firstInput = ref(null)
 
@@ -26,7 +27,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 async function submit() {
   if (!canSubmit.value) return
   submitting.value = true
-  await bulkImport.start({ source: 'archidekt', username: input.value.trim() })
+  await bulkImport.start({
+    source: 'archidekt',
+    username: input.value.trim(),
+    onDuplicate: onDuplicate.value,
+  })
   submitting.value = false
   emit('close')
 }
@@ -57,6 +62,24 @@ async function submit() {
             placeholder="maxalon  or  https://archidekt.com/u/maxalon"
           />
         </label>
+
+        <fieldset class="field dup-choice">
+          <legend class="label">When a deck has already been imported</legend>
+          <label class="dup-opt">
+            <input type="radio" v-model="onDuplicate" value="skip" />
+            <span class="dup-opt-body">
+              <span class="dup-opt-title">Skip it</span>
+              <span class="dup-opt-hint">Leave existing imports untouched (default).</span>
+            </span>
+          </label>
+          <label class="dup-opt">
+            <input type="radio" v-model="onDuplicate" value="update" />
+            <span class="dup-opt-body">
+              <span class="dup-opt-title">Update with latest from Archidekt</span>
+              <span class="dup-opt-hint">Overwrite cards / commanders / format. Group placement is kept.</span>
+            </span>
+          </label>
+        </fieldset>
 
         <p class="note">
           Moxfield isn't supported in bulk — their API requires a personal
@@ -124,6 +147,33 @@ async function submit() {
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-dim, var(--ink-50));
+}
+.dup-choice {
+  border: 1px solid var(--hairline, var(--border));
+  border-radius: 6px;
+  padding: 10px 12px 4px;
+}
+.dup-choice .label {
+  padding: 0 4px;
+  font-size: 10px;
+}
+.dup-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.dup-opt input { margin-top: 3px; flex-shrink: 0; }
+.dup-opt-body { display: flex; flex-direction: column; gap: 2px; }
+.dup-opt-title {
+  font-size: 12px;
+  color: var(--ink-90, var(--ink-100));
+}
+.dup-opt-hint {
+  font-size: 11px;
+  color: var(--text-dim, var(--ink-50));
+  line-height: 1.4;
 }
 .actions {
   display: flex;

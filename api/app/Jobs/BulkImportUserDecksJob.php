@@ -31,6 +31,7 @@ class BulkImportUserDecksJob implements ShouldQueue
         public string $source,
         public string $username,
         public string $jobKey,
+        public string $onDuplicate = 'skip', // 'skip' | 'update'
     ) {}
 
     public function handle(DeckImportService $importer): void
@@ -72,6 +73,8 @@ class BulkImportUserDecksJob implements ShouldQueue
             'state'    => 'running',
             'total'    => $total,
             'imported' => 0,
+            'updated'  => 0,
+            'skipped'  => 0,
             'failed'   => 0,
             'message'  => "Found {$total} decks. Importing…",
         ]);
@@ -80,10 +83,23 @@ class BulkImportUserDecksJob implements ShouldQueue
         // we don't hit the DB for every deck.
         $groupCache = [];
         $imported = 0;
+        $updated  = 0;
+        $skipped  = 0;
         $failed   = 0;
         $warnings = [];
 
         foreach ($decks as $deck) {
+            // Skip-mode short-circuit: if we already imported this source
+            // deck, don't even hit the upstream API again.
+            if ($this->onDuplicate === 'skip') {
+                [$src, $sid] = $importer->parseSource($deck['url']);
+                if ($importer->findExistingBySource($user->id, $src, $sid)) {
+                    $skipped++;
+                    $this->emitProgress($total, $imported, $updated, $skipped, $failed);
+                    continue;
+                }
+            }
+
             $groupId = null;
             $folderPath = $deck['folder_path'] ?? null;
             if ($folderPath !== null) {
@@ -95,8 +111,17 @@ class BulkImportUserDecksJob implements ShouldQueue
             }
 
             try {
-                $importer->importFromUrl($user, $deck['url'], $groupId);
-                $imported++;
+                // Update mode: importFromUrl with mode=update overwrites a
+                // matching deck if one exists, otherwise creates a new one.
+                // We pre-check existence to know which counter to bump.
+                $isUpdate = false;
+                if ($this->onDuplicate === 'update') {
+                    [$src, $sid] = $importer->parseSource($deck['url']);
+                    $isUpdate = (bool) $importer->findExistingBySource($user->id, $src, $sid);
+                }
+                $mode = $isUpdate ? 'update' : 'create';
+                $importer->importFromUrl($user, $deck['url'], $groupId, $mode);
+                $isUpdate ? $updated++ : $imported++;
             } catch (\Throwable $e) {
                 $failed++;
                 $warnings[] = "{$deck['name']}: {$e->getMessage()}";
@@ -110,23 +135,37 @@ class BulkImportUserDecksJob implements ShouldQueue
             // Light throttle to be polite to upstream APIs.
             usleep(750_000);
 
-            $this->writeStatus([
-                'state'    => 'running',
-                'total'    => $total,
-                'imported' => $imported,
-                'failed'   => $failed,
-                'message'  => "Imported {$imported} of {$total}…",
-            ]);
+            $this->emitProgress($total, $imported, $updated, $skipped, $failed);
         }
+
+        $message = "Imported {$imported} of {$total} decks";
+        if ($updated > 0) $message .= " ({$updated} updated)";
+        if ($skipped > 0) $message .= " ({$skipped} already in your library)";
+        if ($failed > 0)  $message .= " ({$failed} failed)";
 
         $this->writeStatus([
             'state'    => 'done',
             'total'    => $total,
             'imported' => $imported,
+            'updated'  => $updated,
+            'skipped'  => $skipped,
             'failed'   => $failed,
             'warnings' => array_slice($warnings, 0, 25),
-            'message'  => "Imported {$imported} of {$total} decks"
-                .($failed > 0 ? " ({$failed} failed)" : '').'.',
+            'message'  => $message.'.',
+        ]);
+    }
+
+    private function emitProgress(int $total, int $imported, int $updated, int $skipped, int $failed): void
+    {
+        $done = $imported + $updated + $skipped + $failed;
+        $this->writeStatus([
+            'state'    => 'running',
+            'total'    => $total,
+            'imported' => $imported,
+            'updated'  => $updated,
+            'skipped'  => $skipped,
+            'failed'   => $failed,
+            'message'  => "Processed {$done} of {$total}…",
         ]);
     }
 

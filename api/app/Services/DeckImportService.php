@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\DeckSourceConflictException;
 use App\Http\Controllers\DeckController;
 use App\Http\Controllers\DeckEntryController;
 use App\Models\Deck;
@@ -62,18 +63,72 @@ class DeckImportService
     ) {}
 
     /**
-     * @return array{deck: Deck, imported: int, skipped: int, warnings: string[]}
+     * @param  'create'|'update'|'auto'  $mode
+     *   - 'create': always make a new deck (allows intentional duplicates)
+     *   - 'update': overwrite an existing same-source deck; error if none found
+     *   - 'auto':   create if no match exists; otherwise return a conflict so
+     *               the caller (controller) can prompt the user
+     * @return array{deck: Deck, imported: int, skipped: int, warnings: string[], action: 'created'|'updated'}
      */
-    public function importFromUrl(User $user, string $url, ?int $groupId): array
+    public function importFromUrl(User $user, string $url, ?int $groupId, string $mode = 'create'): array
     {
-        $dto = match (true) {
-            $this->looksLikeArchidekt($url) => $this->fetchArchidekt($url),
-            $this->looksLikeMoxfield($url)  => $this->fetchMoxfield($url),
+        [$source, $sourceId] = $this->parseSource($url);
+        $dto = match ($source) {
+            'archidekt' => $this->fetchArchidekt($url),
+            'moxfield'  => $this->fetchMoxfield($url),
             default => throw ValidationException::withMessages([
                 'url' => ['URL must be an Archidekt or Moxfield deck link.'],
             ]),
         };
-        return $this->materialize($user, $dto, $groupId);
+
+        $existing = $this->findExistingBySource($user->id, $source, $sourceId);
+
+        if ($mode === 'update') {
+            if (! $existing) {
+                throw ValidationException::withMessages([
+                    'url' => ['No existing import to update — use create instead.'],
+                ]);
+            }
+            return $this->materialize($user, $dto, $groupId, $source, $sourceId, $existing) + ['action' => 'updated'];
+        }
+
+        if ($mode === 'auto' && $existing) {
+            // Caller decides what to do — surface the conflict.
+            throw new DeckSourceConflictException($existing);
+        }
+
+        return $this->materialize($user, $dto, $groupId, $source, $sourceId, null) + ['action' => 'created'];
+    }
+
+    /**
+     * Look up an existing deck by (user, source, source_id) without
+     * triggering an import. Used by the controller to render a pre-import
+     * confirmation when the user already has this deck.
+     */
+    public function findExistingBySource(int $userId, ?string $source, ?string $sourceId): ?Deck
+    {
+        if ($source === null || $sourceId === null) return null;
+        return Deck::where('user_id', $userId)
+            ->where('source', $source)
+            ->where('source_id', $sourceId)
+            ->first();
+    }
+
+    /**
+     * Read the source slug + source-specific id out of a deck URL.
+     * Returns [null, null] for unrecognized URLs (text imports etc.).
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    public function parseSource(string $url): array
+    {
+        if (preg_match('~archidekt\.com/(?:api/)?decks/(\d+)~i', $url, $m)) {
+            return ['archidekt', (string) $m[1]];
+        }
+        if (preg_match('~moxfield\.com/decks/([\w-]+)~i', $url, $m)) {
+            return ['moxfield', (string) $m[1]];
+        }
+        return [null, null];
     }
 
     /**
@@ -92,7 +147,7 @@ class DeckImportService
         $dto = $this->parseText($text);
         $dto['name']   = $name;
         $dto['format'] = $format;
-        return $this->materialize($user, $dto, $groupId);
+        return $this->materialize($user, $dto, $groupId, null, null, null);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -109,10 +164,20 @@ class DeckImportService
      *   companion?: ?array{scryfall_id?: ?string, name: string, set?: ?string},
      *   entries: array<int, array{scryfall_id?: ?string, name: string, set?: ?string, quantity: int, zone: string}>
      * }  $dto
+     * @param  Deck|null  $existing  When non-null, the deck's cards/commanders/format/
+     *                               description/name are overwritten in place. The deck's
+     *                               group_id, sort_order, and ignored illegalities are
+     *                               preserved (the user may have organised them locally).
      * @return array{deck: Deck, imported: int, skipped: int, warnings: string[]}
      */
-    private function materialize(User $user, array $dto, ?int $groupId): array
-    {
+    private function materialize(
+        User $user,
+        array $dto,
+        ?int $groupId,
+        ?string $source = null,
+        ?string $sourceId = null,
+        ?Deck $existing = null,
+    ): array {
         $warnings = [];
 
         // Archidekt and Moxfield both give us Scryfall UUIDs directly; only
@@ -155,7 +220,7 @@ class DeckImportService
 
         /** @var Deck $deck */
         $deck = DB::transaction(function () use (
-            $user, $dto, $resolved, $idPresent, $groupId, &$warnings, &$imported, &$skipped,
+            $user, $dto, $resolved, $idPresent, $groupId, $source, $sourceId, $existing, &$warnings, &$imported, &$skipped,
         ) {
             $pick = function (array $row) use ($resolved, $idPresent): ?string {
                 if (! empty($row['scryfall_id']) && isset($idPresent[(string) $row['scryfall_id']])) {
@@ -210,16 +275,31 @@ class DeckImportService
                 }
             }
 
-            $deck = Deck::create([
-                'user_id'                 => $user->id,
+            $attributes = [
                 'name'                    => substr($dto['name'] ?? 'Imported deck', 0, 100),
                 'format'                  => $format,
                 'description'             => $dto['description'] ?? null,
                 'commander_1_scryfall_id' => $commanderIds[0] ?? null,
                 'commander_2_scryfall_id' => $commanderIds[1] ?? null,
                 'companion_scryfall_id'   => $companionId,
-                'group_id'                => $groupId,
-            ]);
+            ];
+
+            if ($existing) {
+                // Update mode: overwrite source-derived fields, preserve the
+                // user's local organisation (group_id, sort_order, ignored
+                // illegalities). Wipe DeckEntry rows and let the loop below
+                // re-insert them so card-level edits sync cleanly.
+                $existing->update($attributes);
+                DeckEntry::where('deck_id', $existing->id)->delete();
+                $deck = $existing;
+            } else {
+                $deck = Deck::create($attributes + [
+                    'user_id'   => $user->id,
+                    'source'    => $source,
+                    'source_id' => $sourceId,
+                    'group_id'  => $groupId,
+                ]);
+            }
 
             // Run the same commander-slot + color-identity reconciliation the
             // normal create flow does, so the commander entry rows exist with
@@ -610,21 +690,7 @@ class DeckImportService
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Source adapters
-    // ─────────────────────────────────────────────────────────────────────
-
-    private function looksLikeArchidekt(string $url): bool
-    {
-        return (bool) preg_match('~archidekt\.com/(api/)?decks/\d+~i', $url);
-    }
-
-    private function looksLikeMoxfield(string $url): bool
-    {
-        return (bool) preg_match('~moxfield\.com/decks/[\w-]+~i', $url);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // User-level listing (bulk import)
+    // Source adapters / user-level listing (bulk import)
     // ─────────────────────────────────────────────────────────────────────
 
     /**
