@@ -28,22 +28,21 @@ const COLOR_RESTRICTING_FORMATS = new Set(['commander', 'oathbreaker'])
 function syncDeckContext() {
   if (!props.deckId || !deckStore.deck) {
     catalog.setDeckContext({ deckId: null })
-    return
+  } else {
+    const d = deckStore.deck
+    const colorIdentity = COLOR_RESTRICTING_FORMATS.has(d.format)
+      ? (d.color_identity || '')   // '' = colorless (still a valid filter)
+      : null
+    catalog.setDeckContext({
+      deckId: props.deckId,
+      format: d.format || null,
+      colorIdentity,
+    })
   }
-  const d = deckStore.deck
-  const colorIdentity = COLOR_RESTRICTING_FORMATS.has(d.format)
-    ? (d.color_identity || '')   // '' = colorless (still a valid filter)
-    : null
-  catalog.setDeckContext({
-    deckId: props.deckId,
-    format: d.format || null,
-    colorIdentity,
-  })
-  // Refresh results if a real query is active so the pills have an
-  // immediate effect (without waiting for the user to type again).
-  if ((catalog.query || '').trim().length >= 2) {
-    catalog.search(catalog.query)
-  }
+  // Refresh whenever the pill set changes — a typed query re-runs through
+  // the new filters, and an empty query auto-runs only when the deck has
+  // a meaningful pre-applied filter combination (see isAutoSearchContext).
+  catalog.refreshFromContext()
 }
 const scrollRef = ref(null)
 const stripStack = ref(null)
@@ -84,13 +83,13 @@ const stripColumns = computed(() => {
 })
 
 onMounted(() => {
+  // syncDeckContext → refreshFromContext fires the right search for the
+  // current state: a typed query (>=2 chars) replays through the new
+  // filters; an empty query auto-runs only when the deck supplies enough
+  // pre-applied constraints (format + colors / format + ownedOnly). When
+  // it can't justify a search, results are cleared so a stale prior list
+  // doesn't lie about the new context.
   syncDeckContext()
-
-  // Do NOT fire on mount with an empty query — the window-wrapped query is
-  // a full-table scan of scryfall_cards (~113k rows) when there's no
-  // WHERE filter, which saturates PHP-FPM workers. User has to type
-  // something (or pick a chip) before we run a search.
-  if (queryInput.value.trim() !== '') catalog.search(queryInput.value)
 
   if (stripStack.value) {
     recomputeColumns()
@@ -132,10 +131,17 @@ watch([() => catalog.displayMode, () => catalog.results.length], () => {
 // queue up behind a slow earlier search and saturate the PHP-FPM pool.
 // Longer debounce (400ms) also cuts the number of speculative fires.
 // Single characters skip — "l" would match tens of thousands of cards,
-// which is useless and slow; wait for a discriminating query.
+// which is useless and slow; wait for a discriminating query. An empty
+// query falls back to the deck-view auto-search when its context is
+// active (edhrec-sorted) so clearing the input lands on the same default
+// the panel mounted with.
 watch(queryInput, (v) => {
   if (debounceTimer) clearTimeout(debounceTimer)
   const trimmed = (v || '').trim()
+  if (trimmed.length === 0 && catalog.isAutoSearchContext) {
+    debounceTimer = setTimeout(() => catalog.search(''), 400)
+    return
+  }
   if (trimmed.length < 2) {
     // Clear old results so the UI state doesn't lie about what's shown.
     catalog.results = []
@@ -156,6 +162,17 @@ function onScroll() {
 }
 
 const showWarnings = computed(() => catalog.warnings.length > 0 && !catalog.warningsDismissed)
+
+// Drives the empty-state copy. The "type at least 2 characters" prompt
+// only makes sense when there's no other way to populate the panel:
+// a 1-char query is always mid-typing, and an empty query is only a
+// dead-end when the deck context can't auto-search either.
+const needsMoreInput = computed(() => {
+  const len = (queryInput.value || '').trim().length
+  if (len === 1) return true
+  if (len === 0) return !catalog.isAutoSearchContext
+  return false
+})
 
 const formatLabel = computed(() => {
   const f = catalog.deckFilters.format
@@ -268,7 +285,7 @@ function onAddToDeck(payload) {
         v-if="!catalog.loading && catalog.results.length === 0"
         class="empty"
       >
-        <div v-if="(queryInput || '').trim().length < 2">
+        <div v-if="needsMoreInput">
           Type at least 2 characters to search the catalog.
         </div>
         <div v-else>
