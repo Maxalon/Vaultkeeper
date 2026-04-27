@@ -22,6 +22,9 @@
 
     <form method="POST" action="/horizon-setup" autocomplete="off">
         @csrf
+        @if (request()->filled('next'))
+            <input type="hidden" name="next" value="{{ request()->query('next') }}">
+        @endif
         <div class="field">
             <label for="token">Setup token</label>
             <input id="token" type="text" name="token" required autofocus

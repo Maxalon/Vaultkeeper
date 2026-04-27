@@ -72,6 +72,7 @@ class HorizonAuthController extends Controller
         $data = $request->validate([
             'token'    => 'required|string',
             'password' => self::PASSWORD_RULES,
+            'next'     => 'nullable|string|max:500',
         ]);
 
         $expected = Cache::get(self::SETUP_TOKEN_KEY);
@@ -87,7 +88,7 @@ class HorizonAuthController extends Controller
         $request->session()->regenerate();
         $request->session()->put(self::SESSION_AUTHED, $this->authToken($admin->password_hash));
 
-        return redirect('/horizon');
+        return redirect($this->safeNext($data['next'] ?? null));
     }
 
     public function showLogin(): View|RedirectResponse
@@ -106,6 +107,7 @@ class HorizonAuthController extends Controller
 
         $data = $request->validate([
             'password' => 'required|string|max:200',
+            'next'     => 'nullable|string|max:500',
         ]);
 
         $admin = HorizonAdmin::query()->first();
@@ -117,7 +119,7 @@ class HorizonAuthController extends Controller
         $request->session()->regenerate();
         $request->session()->put(self::SESSION_AUTHED, $this->authToken($admin->password_hash));
 
-        return redirect('/horizon');
+        return redirect($this->safeNext($data['next'] ?? null));
     }
 
     public function logout(Request $request): RedirectResponse
@@ -142,5 +144,21 @@ class HorizonAuthController extends Controller
     public static function authToken(string $passwordHash): string
     {
         return hash('sha256', 'horizon|'.$passwordHash);
+    }
+
+    /**
+     * Whitelist a `?next=` value before using it as a redirect target.
+     *
+     * Only same-origin paths are allowed: must start with a single `/`
+     * and must not start with `//` (which browsers treat as a
+     * protocol-relative URL pointing at another host). Anything else
+     * falls back to /horizon, the default destination.
+     */
+    private function safeNext(?string $next): string
+    {
+        if (is_string($next) && str_starts_with($next, '/') && ! str_starts_with($next, '//')) {
+            return $next;
+        }
+        return '/horizon';
     }
 }

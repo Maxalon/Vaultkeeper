@@ -145,6 +145,56 @@ server {
         access_log off;
     }
 
+    # Adminer DB UI — proxied to the internal `adminer` service, but every
+    # request is funneled through Laravel first so the same ops-password
+    # session that protects /horizon also gates /db. OpsDbProxyController
+    # validates the session, then either 302s to /horizon-login (with a
+    # ?next so the user lands back at /db after signing in) or returns an
+    # X-Accel-Redirect to the internal location below. The internal
+    # location is the only place that talks to adminer:8080, and it is
+    # marked `internal;` so external clients can't reach it directly.
+    #
+    # Rate limit: api_general (20r/s, defined in ratelimit.conf) is a
+    # belt-and-suspenders layer against bots brute-forcing the inner
+    # Adminer login form.
+    #
+    # CSP: Adminer ships inline scripts and styles, so the snippet
+    # included here relaxes script-src/style-src the same way Horizon
+    # does. Every other header from the strict set is preserved.
+    location /db {
+        limit_req zone=api_general burst=20 nodelay;
+        include /etc/nginx/snippets/security-headers-db.conf;
+
+        include fastcgi_params;
+        fastcgi_pass api:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
+        fastcgi_param SCRIPT_NAME /index.php;
+        fastcgi_param DOCUMENT_ROOT /var/www/html/public;
+        fastcgi_param PATH_INFO "";
+        access_log off;
+    }
+
+    # Internal-only proxy to the adminer container. Reachable only via
+    # X-Accel-Redirect from OpsDbProxyController — `internal;` makes
+    # nginx return 404 to any direct external request. The trailing
+    # slashes on both `location` and `proxy_pass` strip the
+    # /__db_internal/ prefix on the way to adminer:8080. Adminer's
+    # responses get their Location: headers rewritten back under /db
+    # so the browser stays on the public path.
+    location /__db_internal/ {
+        internal;
+
+        include /etc/nginx/snippets/security-headers-db.conf;
+
+        proxy_pass http://adminer:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /db;
+        proxy_redirect ~^/(.*)$ /db/$1;
+    }
+
     # /storage/* (set symbols, mana symbols, card back) proxies to the
     # MinIO bucket. MinIO serves objects at /<bucket>/<key>, so we rewrite
     # /storage/sets/XYZ.svg -> /${ASSETS_BUCKET}/sets/XYZ.svg. Bucket name
