@@ -36,6 +36,8 @@ const commanderSlots = computed(() => {
   return slots
 })
 
+const hasAnySigStrip = computed(() => commanderSlots.value.some((s) => s.sig))
+
 function buildSlot(card, index) {
   let sig = null
   if (isOathbreaker.value) {
@@ -209,7 +211,11 @@ watch(
         </div>
       </div>
 
-      <div v-if="commanderSlots.length" class="commanders">
+      <div
+        v-if="commanderSlots.length"
+        class="commanders"
+        :class="{ 'commanders--has-sig': hasAnySigStrip }"
+      >
         <div
           v-for="slot in commanderSlots"
           :key="slot.card.scryfall_id || slot.index"
@@ -257,7 +263,6 @@ watch(
 <style scoped>
 .deck-header {
   position: relative;
-  height: 200px;
   overflow: hidden;
   background: #0d0906;
   border-bottom: 1px solid var(--hairline);
@@ -272,13 +277,13 @@ watch(
   z-index: 0;
 }
 .deck-header-inner {
-  position: absolute;
-  inset: 0;
+  position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  padding: 0 28px;
+  padding: 16px 28px;
   gap: 32px;
+  min-height: 200px;
 }
 .deck-meta {
   flex: 1 1 auto;
@@ -389,7 +394,7 @@ watch(
   gap: 6px;
   width: 132px;
 }
-.commander-slot--no-sig { padding-top: 28px; }
+.commanders--has-sig .commander-slot--no-sig { padding-top: 28px; }
 
 .commander-portrait {
   position: relative;
