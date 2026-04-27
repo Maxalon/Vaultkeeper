@@ -86,10 +86,10 @@ function onRemove() {
             type="button"
             class="role-btn"
             :class="{ 'role-btn--primary': a.kind === 'primary' }"
-            :title="a.hint || ''"
             @click="runAction(a)"
           >
-            {{ a.label }}
+            <span>{{ a.label }}</span>
+            <span v-if="a.hint" class="role-hint">{{ a.hint }}</span>
           </button>
         </div>
       </div>
@@ -200,22 +200,33 @@ function onRemove() {
 .role-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
 }
 .role-btn {
   background: transparent;
   border: 1px solid var(--hairline, #33312c);
   color: inherit;
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.82rem;
-  text-align: left;
+  font-size: 0.85rem;
+  text-align: center;
+  font: inherit;
 }
 .role-btn:hover { background: var(--bg-2, #26241f); }
 .role-btn--primary {
   border-color: #8a6d2e;
   color: var(--amber, #c9a552);
 }
-.role-btn--primary:hover { background: #2a2516; }
+.role-btn--primary:hover {
+  background: #2a2516;
+  border-color: #a18030;
+}
+.role-btn .role-hint {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--ink-70, #a8a396);
+  margin-top: 2px;
+  font-weight: 400;
+}
 </style>

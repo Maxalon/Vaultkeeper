@@ -23,8 +23,8 @@ export function useDeckEntryActions(entryRef) {
   )
   const isOathbreaker = computed(() => format.value === 'oathbreaker')
 
-  const c1Id = computed(() => deck.deck?.commander_1_scryfall_id || null)
-  const c2Id = computed(() => deck.deck?.commander_2_scryfall_id || null)
+  const c1Id = computed(() => deck.deck?.commander1?.scryfall_id || null)
+  const c2Id = computed(() => deck.deck?.commander2?.scryfall_id || null)
   const c1Name = computed(() => deck.deck?.commander1?.name || null)
   const c2Name = computed(() => deck.deck?.commander2?.name || null)
   const oathbreakerEntries = computed(() => deck.commanderEntries)
