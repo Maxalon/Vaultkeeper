@@ -247,12 +247,17 @@ export const useDeckStore = defineStore('deck', {
      * full. The previous occupant of the chosen slot keeps its deck_entries
      * row (with is_commander cleared) — backend syncCommanderEntries handles
      * the flip.
+     *
+     * Note: the deck presenter exposes commanders as nested `commander1` /
+     * `commander2` objects, not the raw `*_scryfall_id` columns, so we read
+     * the current ids off those nested objects and write the column names
+     * the API validator expects.
      */
     async promoteEntryToCommander(deckId, entry, slot = null) {
       if (!entry || !this.deck) return
       const sid = entry.scryfall_id
-      const c1 = this.deck.commander_1_scryfall_id
-      const c2 = this.deck.commander_2_scryfall_id
+      const c1 = this.deck.commander1?.scryfall_id || null
+      const c2 = this.deck.commander2?.scryfall_id || null
       // Already a commander — moving between slots goes through swap instead.
       if (sid === c1 || sid === c2) return
 
@@ -270,9 +275,11 @@ export const useDeckStore = defineStore('deck', {
     async demoteCommander(deckId, entry) {
       if (!entry || !this.deck) return
       const sid = entry.scryfall_id
+      const c1 = this.deck.commander1?.scryfall_id || null
+      const c2 = this.deck.commander2?.scryfall_id || null
       const patch = {}
-      if (this.deck.commander_1_scryfall_id === sid) patch.commander_1_scryfall_id = null
-      if (this.deck.commander_2_scryfall_id === sid) patch.commander_2_scryfall_id = null
+      if (c1 === sid) patch.commander_1_scryfall_id = null
+      if (c2 === sid) patch.commander_2_scryfall_id = null
       if (!Object.keys(patch).length) return
       return this.updateDeck(deckId, patch)
     },
@@ -280,8 +287,8 @@ export const useDeckStore = defineStore('deck', {
     /** Swap commander_1 ↔ commander_2 in one PATCH. No-op if either is empty. */
     async swapCommanders(deckId) {
       if (!this.deck) return
-      const c1 = this.deck.commander_1_scryfall_id
-      const c2 = this.deck.commander_2_scryfall_id
+      const c1 = this.deck.commander1?.scryfall_id || null
+      const c2 = this.deck.commander2?.scryfall_id || null
       if (!c1 || !c2) return
       return this.updateDeck(deckId, {
         commander_1_scryfall_id: c2,
