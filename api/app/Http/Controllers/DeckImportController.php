@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\BulkImportUserDecksJob;
 use App\Services\DeckImportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 
 class DeckImportController extends Controller
 {
@@ -43,6 +46,59 @@ class DeckImportController extends Controller
             'skipped'  => $result['skipped'],
             'warnings' => $result['warnings'],
         ], 201);
+    }
+
+    /**
+     * POST /api/decks/import/bulk
+     *
+     * Kicks off a queued job that imports every public deck for an
+     * Archidekt or Moxfield username. Returns immediately with a poll key
+     * the frontend uses to track progress via `bulkStatus()`.
+     */
+    public function bulk(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'source'   => 'required|in:archidekt,moxfield',
+            'username' => 'required|string|max:200',
+        ]);
+
+        $username = $this->importer->extractUsername($data['source'], $data['username']);
+        $jobKey   = (string) Str::uuid();
+
+        Cache::put('bulk-import:'.$jobKey, [
+            'state'   => 'queued',
+            'message' => "Queued bulk import for {$username}…",
+            'updated_at' => now()->toIso8601String(),
+        ], 3600);
+
+        BulkImportUserDecksJob::dispatch(
+            $request->user()->id,
+            $data['source'],
+            $username,
+            $jobKey,
+        );
+
+        return response()->json([
+            'job_key'  => $jobKey,
+            'username' => $username,
+            'source'   => $data['source'],
+        ], 202);
+    }
+
+    /**
+     * GET /api/decks/import/bulk/{key}
+     *
+     * Returns the latest progress for a bulk-import job. Frontend polls
+     * this every couple of seconds while the spinner is up. Returns 404
+     * when the cache entry has expired.
+     */
+    public function bulkStatus(string $key): JsonResponse
+    {
+        $status = Cache::get('bulk-import:'.$key);
+        if (! $status) {
+            return response()->json(['message' => 'Job not found or expired'], 404);
+        }
+        return response()->json($status);
     }
 
     /**

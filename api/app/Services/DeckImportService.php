@@ -623,6 +623,198 @@ class DeckImportService
         return (bool) preg_match('~moxfield\.com/decks/[\w-]+~i', $url);
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // User-level listing (bulk import)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Pull a username out of a profile URL, or return the input as-is when
+     * already a bare username. Accepts archidekt.com/u/<name>,
+     * moxfield.com/users/<name>, or a raw "<name>" string.
+     */
+    public function extractUsername(string $sourceOrUrl, string $input): string
+    {
+        $trim = trim($input);
+        if ($trim === '') {
+            throw ValidationException::withMessages(['username' => ['Username is required.']]);
+        }
+
+        if (preg_match('~archidekt\.com/u/([\w.\-]+)~i', $trim, $m)) {
+            return $m[1];
+        }
+        if (preg_match('~moxfield\.com/users?/([\w.\-]+)~i', $trim, $m)) {
+            return $m[1];
+        }
+        if (preg_match('~^[\w.\-]+$~', $trim)) {
+            return $trim;
+        }
+        throw ValidationException::withMessages(['username' => ['Could not read a username from the input.']]);
+    }
+
+    /**
+     * List every public deck for an Archidekt username.
+     *
+     * Walks the paginated `/api/decks/v3/?ownerexact=<name>` listing and
+     * returns one row per deck with the source URL the single-deck importer
+     * already accepts, plus the folder path (flattened with " / ") so the
+     * caller can map folders to LocationGroups.
+     *
+     * @return array<int, array{id:int, name:string, url:string, folder_path:?string}>
+     */
+    public function listArchidektUserDecks(string $username): array
+    {
+        $folders = $this->fetchArchidektFolders($username);
+        $folderPaths = $this->buildArchidektFolderPaths($folders);
+
+        $url = 'https://archidekt.com/api/decks/v3/?ownerexact='.urlencode($username).'&pageSize=48';
+        $decks = [];
+        $safety = 50; // hard cap on pages so a misbehaving API can't loop forever
+
+        while ($url !== null && $safety-- > 0) {
+            $response = Http::withHeaders(['User-Agent' => 'Vaultkeeper/1.0', 'Accept' => 'application/json'])
+                ->timeout(15)
+                ->get($url);
+
+            if (! $response->successful()) {
+                throw ValidationException::withMessages([
+                    'username' => ["Archidekt returned HTTP {$response->status()} for user '{$username}'."],
+                ]);
+            }
+
+            $json = $response->json();
+            $results = is_array($json) ? ($json['results'] ?? []) : [];
+            foreach ($results as $row) {
+                $id = (int) ($row['id'] ?? 0);
+                if ($id <= 0) continue;
+                $folderId = $row['deckFolder'] ?? ($row['folder']['id'] ?? null);
+                $folderPath = $folderId !== null && isset($folderPaths[(int) $folderId])
+                    ? $folderPaths[(int) $folderId]
+                    : ($row['folderName'] ?? null);
+                $decks[] = [
+                    'id'          => $id,
+                    'name'        => (string) ($row['name'] ?? "Archidekt deck {$id}"),
+                    'url'         => "https://archidekt.com/decks/{$id}/",
+                    'folder_path' => $folderPath !== null && $folderPath !== '' ? (string) $folderPath : null,
+                ];
+            }
+            $url = is_array($json) ? ($json['next'] ?? null) : null;
+        }
+
+        return $decks;
+    }
+
+    /**
+     * Fetch the user's folder tree (`id, name, parent`). Best-effort: if the
+     * endpoint is not reachable we return an empty list and the caller
+     * falls back to the inline folder name on each deck row.
+     *
+     * @return array<int, array{id:int, name:string, parent:?int}>
+     */
+    private function fetchArchidektFolders(string $username): array
+    {
+        try {
+            $response = Http::withHeaders(['User-Agent' => 'Vaultkeeper/1.0', 'Accept' => 'application/json'])
+                ->timeout(15)
+                ->get('https://archidekt.com/api/decks/folders/?ownerexact='.urlencode($username));
+        } catch (\Throwable) {
+            return [];
+        }
+        if (! $response->successful()) return [];
+        $json = $response->json();
+        $rows = is_array($json) ? ($json['results'] ?? $json) : [];
+        if (! is_array($rows)) return [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            if (! is_array($r) || empty($r['id'])) continue;
+            $out[] = [
+                'id'     => (int) $r['id'],
+                'name'   => (string) ($r['name'] ?? ''),
+                'parent' => isset($r['parentFolder']) ? (int) $r['parentFolder']
+                    : (isset($r['parent']) ? (int) $r['parent'] : null),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Walk the (id → parent) graph and produce the full path for every
+     * folder, joined with " / ". Cycles or missing parents are tolerated
+     * by capping recursion depth.
+     *
+     * @param  array<int, array{id:int, name:string, parent:?int}>  $folders
+     * @return array<int, string>  folder id → "Parent / Child"
+     */
+    private function buildArchidektFolderPaths(array $folders): array
+    {
+        $byId = [];
+        foreach ($folders as $f) $byId[$f['id']] = $f;
+
+        $paths = [];
+        foreach ($byId as $id => $_) {
+            $parts = [];
+            $cursor = $id;
+            $depth = 0;
+            while ($cursor !== null && isset($byId[$cursor]) && $depth++ < 12) {
+                array_unshift($parts, $byId[$cursor]['name']);
+                $cursor = $byId[$cursor]['parent'] ?: null;
+            }
+            $parts = array_values(array_filter(array_map('trim', $parts), fn ($p) => $p !== ''));
+            if (! empty($parts)) $paths[$id] = implode(' / ', $parts);
+        }
+        return $paths;
+    }
+
+    /**
+     * List every public deck for a Moxfield username.
+     *
+     * Moxfield's listing exposes `folderName` directly on each deck, so we
+     * don't need a separate folder-tree call. Pagination is `pageNumber`-
+     * based with `totalPages` in the response.
+     *
+     * @return array<int, array{id:string, name:string, url:string, folder_path:?string}>
+     */
+    public function listMoxfieldUserDecks(string $username): array
+    {
+        $decks = [];
+        $page = 1;
+        $totalPages = 1;
+        $safety = 50;
+
+        while ($page <= $totalPages && $safety-- > 0) {
+            $response = Http::withHeaders(['User-Agent' => 'Vaultkeeper/1.0', 'Accept' => 'application/json'])
+                ->timeout(15)
+                ->get('https://api.moxfield.com/v2/users/'.urlencode($username).'/decks', [
+                    'pageSize'   => 100,
+                    'pageNumber' => $page,
+                ]);
+
+            if (! $response->successful()) {
+                throw ValidationException::withMessages([
+                    'username' => ["Moxfield returned HTTP {$response->status()} for user '{$username}'."],
+                ]);
+            }
+
+            $json = $response->json();
+            if (! is_array($json)) break;
+            $totalPages = (int) ($json['totalPages'] ?? 1);
+            foreach ($json['data'] ?? [] as $row) {
+                $publicId = (string) ($row['publicId'] ?? '');
+                if ($publicId === '') continue;
+                $folder = $row['folderName'] ?? ($row['folder']['name'] ?? null);
+                $decks[] = [
+                    'id'          => $publicId,
+                    'name'        => (string) ($row['name'] ?? "Moxfield deck {$publicId}"),
+                    'url'         => "https://www.moxfield.com/decks/{$publicId}",
+                    'folder_path' => $folder !== null && $folder !== '' ? (string) $folder : null,
+                ];
+            }
+            $page++;
+        }
+
+        return $decks;
+    }
+
     /**
      * @return array{
      *   name: string, format: string, description: ?string,
