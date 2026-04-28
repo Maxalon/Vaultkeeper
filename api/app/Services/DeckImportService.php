@@ -599,6 +599,58 @@ class DeckImportService
         return null;
     }
 
+    /**
+     * Archidekt (and occasionally Moxfield) ship the deck description as a
+     * Quill Delta — either the parsed object `{"ops":[...]}` or, more often,
+     * a JSON-encoded string of the same. Stored verbatim that turns into
+     * `{"ops":[]}` showing up in the UI for empty descriptions, and a wall of
+     * Delta JSON for non-empty ones.
+     *
+     * Flatten it back to plain text by concatenating the string `insert`s,
+     * dropping embeds. Returns null when the result is blank so we don't
+     * persist whitespace-only descriptions either.
+     */
+    private function normalizeImportedDescription(mixed $raw): ?string
+    {
+        if ($raw === null) return null;
+
+        if (is_string($raw)) {
+            $trim = trim($raw);
+            if ($trim === '') return null;
+            // Detect a stringified Quill Delta and decode before flattening.
+            if (str_starts_with($trim, '{') && str_contains($trim, '"ops"')) {
+                $decoded = json_decode($trim, true);
+                if (is_array($decoded) && array_key_exists('ops', $decoded)) {
+                    return $this->flattenQuillDelta($decoded['ops']);
+                }
+            }
+            return $trim;
+        }
+
+        if (is_array($raw) && array_key_exists('ops', $raw)) {
+            return $this->flattenQuillDelta($raw['ops']);
+        }
+
+        return null;
+    }
+
+    /** @param mixed $ops */
+    private function flattenQuillDelta($ops): ?string
+    {
+        if (! is_array($ops)) return null;
+        $text = '';
+        foreach ($ops as $op) {
+            if (! is_array($op)) continue;
+            $insert = $op['insert'] ?? null;
+            if (is_string($insert)) {
+                $text .= $insert;
+            }
+            // Embeds (images, mentions, ...) come through as arrays — skip.
+        }
+        $text = trim($text);
+        return $text === '' ? null : $text;
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Oathbreaker helpers
     // ─────────────────────────────────────────────────────────────────────
@@ -1099,7 +1151,7 @@ class DeckImportService
         return [
             'name'             => (string) ($json['name'] ?? "Archidekt deck {$id}"),
             'format'           => $format,
-            'description'      => $json['description'] ?? null,
+            'description'      => $this->normalizeImportedDescription($json['description'] ?? null),
             'commanders'       => $commanders,
             'signature_spells' => $signatureSpells,
             'companion'        => $companion,
@@ -1220,7 +1272,7 @@ class DeckImportService
         return [
             'name'        => (string) ($json['name'] ?? "Moxfield deck {$publicId}"),
             'format'      => $format,
-            'description' => $json['description'] ?? null,
+            'description' => $this->normalizeImportedDescription($json['description'] ?? null),
             'commanders'  => $commanders,
             'companion'   => $companion,
             'entries'     => $entries,
