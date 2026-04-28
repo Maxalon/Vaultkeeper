@@ -683,15 +683,22 @@ function innerOptions(group) {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 10px;
+  min-height: 28px;
+  box-sizing: border-box;
   border-radius: var(--radius-sm);
   color: var(--ink-70);
   font-size: 12px;
+  line-height: 1.2;
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
   user-select: none;
+}
+.group-header.collapsed {
+  padding: 2px 10px;
+  min-height: 20px;
 }
 .group-header:hover {
   color: var(--ink-100);
@@ -744,11 +751,21 @@ function innerOptions(group) {
 }
 .group-header:hover .group-actions { display: flex; }
 .group-actions .drag-handle {
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 1;
   color: var(--ink-30);
   cursor: grab;
   user-select: none;
   width: 10px;
+}
+.group-actions .edit-btn,
+.group-actions .delete-btn {
+  font-size: 12px;
+  padding: 1px;
+}
+.group-actions .edit-btn :where(svg) {
+  width: 10px;
+  height: 10px;
 }
 .edit-btn,
 .delete-btn {
@@ -772,6 +789,9 @@ function innerOptions(group) {
   padding-left: 12px;
   margin-top: 2px;
   min-height: 8px;
+}
+.group-header.collapsed + .group-locations {
+  display: none;
 }
 .group-locations::before {
   content: '';
