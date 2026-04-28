@@ -14,6 +14,16 @@ const defaults = {
   displayMode: 'A', // 'A' typed-name strips | 'B' corner-badge strips
   sidebarWidth: 240,
   sidebarCollapsed: false,
+
+  // Location sidebar customization
+  sidebarShowEdit: true,
+  sidebarShowDelete: false,
+  sidebarShowDrag: true,
+  sidebarShowCountDrawer: true,
+  sidebarShowCountBinder: true,
+  sidebarShowCountDeck: true,
+  sidebarShowFormatBadge: true,
+  sidebarGroupCounter: 'cards', // 'cards' | 'locations' | 'off'
 }
 
 function clampWidth(value) {
@@ -21,6 +31,16 @@ function clampWidth(value) {
   if (!Number.isFinite(n)) return defaults.sidebarWidth
   return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(n)))
 }
+
+const SIDEBAR_BOOL_KEYS = [
+  'sidebarShowEdit',
+  'sidebarShowDelete',
+  'sidebarShowDrag',
+  'sidebarShowCountDrawer',
+  'sidebarShowCountBinder',
+  'sidebarShowCountDeck',
+  'sidebarShowFormatBadge',
+]
 
 export const useSettingsStore = defineStore('settings', {
   state: () => ({ ...defaults }),
@@ -34,24 +54,19 @@ export const useSettingsStore = defineStore('settings', {
     hydrate() {
       try {
         const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-        this.density = raw.density ?? defaults.density
-        this.hoverMode = raw.hoverMode ?? defaults.hoverMode
-        this.displayMode = raw.displayMode ?? defaults.displayMode
-        this.sidebarWidth = clampWidth(raw.sidebarWidth ?? defaults.sidebarWidth)
-        this.sidebarCollapsed = !!(raw.sidebarCollapsed ?? defaults.sidebarCollapsed)
+        for (const key of Object.keys(defaults)) {
+          if (raw[key] !== undefined) this[key] = raw[key]
+        }
+        this.sidebarWidth = clampWidth(this.sidebarWidth)
+        this.sidebarCollapsed = !!this.sidebarCollapsed
       } catch {
         // Ignore — keep defaults if storage is corrupt.
       }
     },
 
     persist() {
-      const payload = {
-        density: this.density,
-        hoverMode: this.hoverMode,
-        displayMode: this.displayMode,
-        sidebarWidth: this.sidebarWidth,
-        sidebarCollapsed: this.sidebarCollapsed,
-      }
+      const payload = {}
+      for (const key of Object.keys(defaults)) payload[key] = this[key]
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     },
 
@@ -94,6 +109,18 @@ export const useSettingsStore = defineStore('settings', {
 
     toggleSidebarCollapsed() {
       this.sidebarCollapsed = !this.sidebarCollapsed
+      this.persist()
+    },
+
+    setSidebarBool(key, value) {
+      if (!SIDEBAR_BOOL_KEYS.includes(key)) return
+      this[key] = !!value
+      this.persist()
+    },
+
+    setSidebarGroupCounter(value) {
+      if (!['cards', 'locations', 'off'].includes(value)) return
+      this.sidebarGroupCounter = value
       this.persist()
     },
   },
