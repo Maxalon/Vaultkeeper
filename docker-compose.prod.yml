@@ -97,9 +97,9 @@ services:
   # ─── Adminer (MySQL web UI for ops) ────────────────────────────────────────
   # Exposed at /db on the same nginx listener as the rest of the app. No host
   # port mapping — nginx is the only thing that talks to it. Two layers of
-  # auth: the Laravel-side /db catch-all gates the path with the same
-  # ops-password session that protects /horizon (OpsDbProxyController), and
-  # then Adminer's own login form takes the actual MySQL credentials. The DB
+  # auth: nginx gates /db/* via `auth_request` against Laravel's /__db_auth
+  # endpoint (same ops-password session that protects /horizon), and then
+  # Adminer's own login form takes the actual MySQL credentials. The DB
   # user/host/password are NEVER pre-filled by the container — operators type
   # them at first login per environment from .env.<env>, and Adminer remembers
   # the server choice via its own cookie.

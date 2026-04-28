@@ -145,14 +145,16 @@ server {
         access_log off;
     }
 
-    # Adminer DB UI — proxied to the internal `adminer` service, but every
-    # request is funneled through Laravel first so the same ops-password
-    # session that protects /horizon also gates /db. OpsDbProxyController
-    # validates the session, then either 302s to /horizon-login (with a
-    # ?next so the user lands back at /db after signing in) or returns an
-    # X-Accel-Redirect to the internal location below. The internal
-    # location is the only place that talks to adminer:8080, and it is
-    # marked `internal;` so external clients can't reach it directly.
+    # Adminer DB UI — proxied directly to the `adminer` service. Access
+    # is gated by an `auth_request` subrequest to /__db_auth (Laravel),
+    # which checks the same ops-password session that protects /horizon
+    # and answers 204 (let through) or 401 (bounce to login). nginx is
+    # the only thing that talks to adminer:8080.
+    #
+    # The earlier OpsDbProxyController + X-Accel-Redirect scheme dropped
+    # POST bodies on the internal subrequest, which silently broke
+    # Adminer's login form. auth_request keeps the original request
+    # method + body intact because nginx itself is the proxy.
     #
     # Rate limit: api_general (20r/s, defined in ratelimit.conf) is a
     # belt-and-suspenders layer against bots brute-forcing the inner
@@ -161,31 +163,22 @@ server {
     # CSP: Adminer ships inline scripts and styles, so the snippet
     # included here relaxes script-src/style-src the same way Horizon
     # does. Every other header from the strict set is preserved.
-    location /db {
+    location = /db {
+        return 301 /db/;
+    }
+
+    location /db/ {
+        auth_request /__db_auth;
+        error_page 401 = @db_login;
+
         limit_req zone=api_general burst=20 nodelay;
         include /etc/nginx/snippets/security-headers-db.conf;
 
-        include fastcgi_params;
-        fastcgi_pass api:9000;
-        fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
-        fastcgi_param SCRIPT_NAME /index.php;
-        fastcgi_param DOCUMENT_ROOT /var/www/html/public;
-        fastcgi_param PATH_INFO "";
-        access_log off;
-    }
-
-    # Internal-only proxy to the adminer container. Reachable only via
-    # X-Accel-Redirect from OpsDbProxyController — `internal;` makes
-    # nginx return 404 to any direct external request. The trailing
-    # slashes on both `location` and `proxy_pass` strip the
-    # /__db_internal/ prefix on the way to adminer:8080. Adminer's
-    # responses get their Location: headers rewritten back under /db
-    # so the browser stays on the public path.
-    location /__db_internal/ {
-        internal;
-
-        include /etc/nginx/snippets/security-headers-db.conf;
-
+        # Trailing slashes on both location and proxy_pass strip the
+        # /db/ prefix on the way to adminer:8080. Adminer-issued
+        # absolute redirects (`Location: /…`) get rewritten back under
+        # /db so the browser stays on the public path; relative
+        # redirects resolve correctly against the current /db/ URL.
         proxy_pass http://adminer:8080/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -193,6 +186,42 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Prefix /db;
         proxy_redirect ~^/(.*)$ /db/$1;
+
+        access_log off;
+    }
+
+    # Auth subrequest endpoint hit by `auth_request` above. internal;
+    # so external clients can't probe it. Body is suppressed because
+    # auth_request is always GET — passing through a stale
+    # Content-Length from the parent request makes php-fpm hang
+    # waiting for a body that won't arrive.
+    location = /__db_auth {
+        internal;
+
+        include fastcgi_params;
+        fastcgi_pass api:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
+        fastcgi_param SCRIPT_NAME    /index.php;
+        fastcgi_param DOCUMENT_ROOT  /var/www/html/public;
+        fastcgi_param PATH_INFO      "";
+        # Force REQUEST_URI/REQUEST_METHOD to the subrequest values —
+        # fastcgi_params sets them from $request_uri/$request_method
+        # which still reflect the parent /db/... POST in subrequests.
+        fastcgi_param REQUEST_URI    /__db_auth;
+        fastcgi_param REQUEST_METHOD GET;
+        fastcgi_param CONTENT_LENGTH "";
+        fastcgi_param CONTENT_TYPE   "";
+        fastcgi_pass_request_body    off;
+
+        access_log off;
+    }
+
+    # 401 from the auth subrequest -> send the operator to the horizon
+    # login form, with ?next so they land back where they were trying
+    # to go. /horizon-login itself bounces to /horizon-setup when no
+    # admin row exists yet.
+    location @db_login {
+        return 302 /horizon-login?next=$request_uri;
     }
 
     # /storage/* (set symbols, mana symbols, card back) proxies to the
