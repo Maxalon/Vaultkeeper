@@ -68,7 +68,6 @@ const realLocations = computed(() => collection.locations)
             <span class="vk-field-label">Quantity</span>
             <input
               type="number"
-              name="quantity"
               min="1"
               max="9999"
               :value="entry.quantity"
