@@ -267,6 +267,9 @@ function onGroupAdd(evt, group) {
                     <input
                       ref="groupRenameInputRef"
                       class="group-rename-input"
+                      name="group-name"
+                      type="text"
+                      autocomplete="off"
                       v-model="editingGroupName"
                       @click.stop
                       @keydown.enter.stop="confirmEditGroup"
@@ -371,6 +374,8 @@ function onGroupAdd(evt, group) {
       <div v-if="creatingGroup" class="inline-group-input">
         <input
           ref="groupInputRef"
+          name="new-group-name"
+          autocomplete="off"
           v-model="newGroupName"
           type="text"
           placeholder="Group name…"

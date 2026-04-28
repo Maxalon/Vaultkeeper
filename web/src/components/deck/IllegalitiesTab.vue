@@ -79,7 +79,7 @@ function jumpToCard(row) {
         class="illegality-row"
         :class="{ ignored: row.ignored }"
       >
-        <input type="checkbox" :checked="row.ignored" @change="toggle(row)" />
+        <input type="checkbox" name="ignore-illegality" :checked="row.ignored" @change="toggle(row)" />
         <div class="row-body">
           <div class="row-head">
             <span class="row-type">{{ LABELS[row.type] || row.type }}</span>

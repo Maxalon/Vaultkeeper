@@ -46,7 +46,7 @@ const realLocations = computed(() => collection.locations)
         <div class="vk-field-row">
           <label class="vk-field">
             <span class="vk-field-label">Condition</span>
-            <select :value="entry.condition" @change="onConditionChange" class="vk-field-input">
+            <select name="condition" :value="entry.condition" @change="onConditionChange" class="vk-field-input">
               <option>NM</option>
               <option>LP</option>
               <option>MP</option>
@@ -56,7 +56,7 @@ const realLocations = computed(() => collection.locations)
           </label>
           <label class="vk-field">
             <span class="vk-field-label">Location</span>
-            <select :value="entry.location_id ?? ''" @change="onLocationChange" class="vk-field-input">
+            <select name="location" :value="entry.location_id ?? ''" @change="onLocationChange" class="vk-field-input">
               <option value="">Unassigned</option>
               <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
             </select>
@@ -68,6 +68,8 @@ const realLocations = computed(() => collection.locations)
             <span class="vk-field-label">Quantity</span>
             <input
               type="number"
+              name="quantity"
+              autocomplete="off"
               min="1"
               max="9999"
               :value="entry.quantity"
@@ -78,7 +80,7 @@ const realLocations = computed(() => collection.locations)
           <label class="vk-field foil-field">
             <span class="vk-field-label">Foil</span>
             <span class="foil-toggle">
-              <input type="checkbox" :checked="entry.foil" @change="onFoilChange" />
+              <input type="checkbox" name="foil" :checked="entry.foil" @change="onFoilChange" />
               <span>{{ entry.foil ? 'Yes' : 'No' }}</span>
             </span>
           </label>

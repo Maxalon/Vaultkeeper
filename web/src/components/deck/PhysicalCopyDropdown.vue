@@ -25,7 +25,7 @@ function onChange(e) {
 </script>
 
 <template>
-  <select class="physical-copy-dropdown" :value="value ?? ''" @change="onChange">
+  <select class="physical-copy-dropdown" name="physical-copy" :value="value ?? ''" @change="onChange">
     <option value="">— none —</option>
     <option v-for="opt in options" :key="opt.id" :value="opt.id">
       {{ opt.location_name || 'Unassigned' }} · qty {{ opt.quantity }}{{ opt.foil ? ' ·F' : '' }}
