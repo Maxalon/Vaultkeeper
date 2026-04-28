@@ -273,6 +273,18 @@ class CardSearchServiceTest extends TestCase
         $this->assertStringNotContainsString('`cmc`', $sql);
     }
 
+    public function test_order_alone_does_not_warn_unsupported(): void
+    {
+        // Regression: a query consisting solely of `order:edhrec` used to
+        // collapse to a bare leaf, bypass the group-level _strip filter,
+        // and reach applyAtom — which emitted "Operator 'order' is not
+        // supported". The extractSort step must clear the leaf so it's
+        // treated as empty.
+        $out = $this->svc()->search('order:edhrec');
+        $this->assertSame([], $out['warnings']);
+        $this->assertSame('edhrec', $out['sort']['column']);
+    }
+
     public function test_order_price_unsupported_warns(): void
     {
         $out = $this->svc()->search('order:usd');

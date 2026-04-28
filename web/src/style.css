@@ -749,3 +749,17 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   border-radius: 999px;
   letter-spacing: 0.05em;
 }
+
+/* During an active sidebar drag, kill the shell grid's transition so the
+   sidebar tracks the pointer without easing behind it. Also suppress text
+   selection while the cursor sweeps across the page. The class is set on
+   <html> by LocationSidebar's resize handler. */
+html.is-resizing-sidebar .collection-shell,
+html.is-resizing-sidebar .deck-shell {
+  transition: none !important;
+}
+html.is-resizing-sidebar,
+html.is-resizing-sidebar * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
