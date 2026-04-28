@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, h } from 'vue'
+import { computed, ref } from 'vue'
 import ManaCost from './ManaCost.vue'
 import ManaSymbol from './ManaSymbol.vue'
 
@@ -36,27 +36,30 @@ const displayedOracle = computed(() =>
   showBack.value ? props.card?.oracle_text_back : props.card?.oracle_text,
 )
 
-const OracleText = {
-  props: ['text'],
-  setup(p) {
-    return () => {
-      if (!p.text) return null
-      const tokens = p.text.split(/({[^}]+})/g).filter(Boolean)
-      return h(
-        'div',
-        { class: 'oracle' },
-        tokens.flatMap((tok, i) => {
-          if (/^{[^}]+}$/.test(tok)) return [h(ManaSymbol, { key: i, symbol: tok })]
-          return tok.split(/\n+/).flatMap((line, li, arr) => {
-            const out = [h('span', { key: `${i}-${li}` }, line)]
-            if (li < arr.length - 1) out.push(h('br', { key: `${i}-${li}-br` }))
-            return out
-          })
-        }),
-      )
+// Tokenize oracle text into a flat list the template can render: each
+// entry is either a mana symbol, a span of text, or an explicit line break.
+// Done as data + template (rather than an inline render function) so Vue's
+// SFC compiler emits everything statically — no runtime `new Function` paths,
+// which our CSP forbids (script-src without 'unsafe-eval').
+const oracleTokens = computed(() => {
+  const text = displayedOracle.value
+  if (!text) return []
+  const out = []
+  let key = 0
+  for (const tok of text.split(/({[^}]+})/g)) {
+    if (!tok) continue
+    if (/^{[^}]+}$/.test(tok)) {
+      out.push({ key: key++, kind: 'mana', value: tok })
+      continue
     }
-  },
-}
+    const lines = tok.split(/\n+/)
+    lines.forEach((line, i) => {
+      out.push({ key: key++, kind: 'text', value: line })
+      if (i < lines.length - 1) out.push({ key: key++, kind: 'br' })
+    })
+  }
+  return out
+})
 
 const FORMATS = [
   ['standard', 'Standard'],
@@ -109,7 +112,13 @@ const ptOrLoyalty = computed(() => {
     <div class="vk-detail-sep" />
 
     <div class="vk-detail-rules">
-      <component :is="OracleText" :text="displayedOracle" />
+      <div v-if="oracleTokens.length" class="oracle">
+        <template v-for="tok in oracleTokens" :key="tok.key">
+          <ManaSymbol v-if="tok.kind === 'mana'" :symbol="tok.value" />
+          <span v-else-if="tok.kind === 'text'">{{ tok.value }}</span>
+          <br v-else />
+        </template>
+      </div>
     </div>
 
     <div v-if="ptOrLoyalty" class="vk-detail-pt">
