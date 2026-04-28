@@ -792,8 +792,13 @@ class DeckImportService
      * fetch failures fall back to "Folder #<id>" so the import still
      * creates a group.
      *
+     * Archidekt's implicit root folder ("Home") is excluded from the path:
+     * decks directly under it return `null` (→ ungrouped in Vaultkeeper) and
+     * descendants drop the "Home / " prefix so the local layout matches the
+     * user's mental model.
+     *
      * @param  int[]  $rootIds
-     * @return array<int, string>
+     * @return array<int, ?string>  null = deck should be ungrouped
      */
     private function resolveArchidektFolderPaths(array $rootIds): array
     {
@@ -837,8 +842,27 @@ class DeckImportService
             $queue = $next;
         }
 
+        // Identify the user's root folder ("Home" by default) — the one
+        // whose parent is null after a successful fetch. Decks living in
+        // it should land ungrouped in Vaultkeeper, and its name should
+        // not be prefixed onto the path of any descendant. There's
+        // exactly one such folder per Archidekt account.
+        $rootFolderId = null;
+        foreach ($folders as $id => $folder) {
+            if ($folder['parent'] === null && ! empty($folder['fetched']) && $folder['name'] !== '') {
+                $rootFolderId = $id;
+                break;
+            }
+        }
+
         $paths = [];
         foreach ($rootIds as $id) {
+            // Decks directly under the root → no group at all (null path).
+            if ($rootFolderId !== null && $id === $rootFolderId) {
+                $paths[$id] = null;
+                continue;
+            }
+
             $name = $folders[$id]['name'] ?? '';
             if ($name === '') {
                 $paths[$id] = "Folder #{$id}";
@@ -848,6 +872,9 @@ class DeckImportService
             $cursor = $id;
             $depth = 0;
             while ($cursor !== null && isset($folders[$cursor]) && $depth++ < 12) {
+                // Stop at the root: its name ("Home") is implicit and
+                // shouldn't appear as a prefix on every group.
+                if ($cursor === $rootFolderId) break;
                 $part = trim($folders[$cursor]['name']);
                 if ($part !== '') array_unshift($parts, $part);
                 $cursor = $folders[$cursor]['parent'];

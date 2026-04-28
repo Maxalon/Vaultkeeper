@@ -95,8 +95,15 @@ function closeModal() {
 
 function toggleCollapse(groupId) { collection.toggleGroupCollapse(groupId) }
 function isCollapsed(groupId) { return collection.isGroupCollapsed(groupId) }
+// `group.locations` after sidebarItemsMerged() interleaves locations and
+// decks (kind='location' or kind='deck'). Locations carry `card_count`,
+// decks carry `entry_count` (mainboard size) — sum both kinds so a group
+// of imported decks doesn't read 0.
 function groupCardCount(group) {
-  return group.locations.reduce((sum, l) => sum + (l.card_count || 0), 0)
+  return group.locations.reduce(
+    (sum, l) => sum + (l.kind === 'deck' ? (l.entry_count || 0) : (l.card_count || 0)),
+    0,
+  )
 }
 
 async function startCreateGroup() {
