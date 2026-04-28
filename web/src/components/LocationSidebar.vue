@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import draggable from 'vuedraggable'
+import { vDraggable } from 'vue-draggable-plus'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
 import LocationModal from './LocationModal.vue'
@@ -185,12 +185,37 @@ function onlyAcceptLocations(_to, _from, dragEl) {
   return !dragEl.classList.contains('group-section')
 }
 function onGroupAdd(evt, group) {
-  const added = evt.item?._underlying_vm_
+  // vue-draggable-plus exposes the dragged item's data on evt.data
+  // (replacing vuedraggable's evt.item._underlying_vm_).
+  const added = evt.data
   if (!added) return
   const idx = group.locations.indexOf(added)
   if (idx === -1 || idx === group.locations.length - 1) return
   group.locations.splice(idx, 1)
   group.locations.push(added)
+}
+
+// Sortable options shared by every draggable on the sidebar. Sortable's
+// option names are camelCase when supplied via JS (vs the kebab-case
+// component props in vuedraggable v4).
+const outerOptions = {
+  group: { name: 'sidebar', pull: true, put: true },
+  handle: '.drag-handle',
+  animation: 150,
+  ghostClass: 'sortable-ghost',
+  chosenClass: 'sortable-chosen',
+  onEnd: onDragEnd,
+}
+function innerOptions(group) {
+  return {
+    group: { name: 'sidebar', pull: true, put: onlyAcceptLocations },
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd: onDragEnd,
+    onAdd: (evt) => onGroupAdd(evt, group),
+  }
 }
 </script>
 
@@ -228,69 +253,51 @@ function onGroupAdd(evt, group) {
         <span class="num">{{ collection.totalCount }}</span>
       </button>
 
-      <draggable
-        :list="mergedItems"
-        :item-key="itemKey"
-        :group="{ name: 'sidebar', pull: true, put: true }"
-        handle=".drag-handle"
-        :animation="150"
-        ghost-class="sortable-ghost"
-        chosen-class="sortable-chosen"
-        @end="onDragEnd"
+      <div
         class="sidebar-dropzone"
+        v-draggable="[mergedItems, outerOptions]"
       >
-        <template #item="{ element: item }">
+        <template v-for="item in mergedItems" :key="itemKey(item)">
           <div v-if="item.kind === 'group'" class="group-section">
-            <draggable
-              :list="item.locations"
-              item-key="id"
-              :group="{ name: 'sidebar', pull: true, put: onlyAcceptLocations }"
-              handle=".drag-handle"
-              filter=".group-header"
-              :animation="150"
-              ghost-class="sortable-ghost"
-              chosen-class="sortable-chosen"
-              @end="onDragEnd"
-              @add="(evt) => onGroupAdd(evt, item)"
-              class="group-locations"
+            <div
+              class="group-header"
+              :class="{ collapsed: isCollapsed(item.id) }"
+              @click="toggleCollapse(item.id)"
             >
-              <template #header>
-                <div
-                  class="group-header"
-                  :class="{ collapsed: isCollapsed(item.id) }"
-                  @click="toggleCollapse(item.id)"
-                >
-                  <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
-                    <IconChevron />
-                  </span>
-                  <template v-if="editingGroupId === item.id">
-                    <input
-                      ref="groupRenameInputRef"
-                      class="group-rename-input"
-                      name="group-name"
-                      type="text"
-                      autocomplete="off"
-                      v-model="editingGroupName"
-                      @click.stop
-                      @keydown.enter.stop="confirmEditGroup"
-                      @keydown.esc.stop="cancelEditGroup"
-                      @blur="confirmEditGroup"
-                    />
-                  </template>
-                  <template v-else>
-                    <span class="label">{{ item.name }}</span>
-                  </template>
-                  <span class="num">{{ groupCardCount(item) }}</span>
-                  <span class="group-actions" @click.stop>
-                    <span class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
-                    <button type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
-                      <IconEdit />
-                    </button>
-                    <button type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
-                  </span>
-                </div>
+              <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
+                <IconChevron />
+              </span>
+              <template v-if="editingGroupId === item.id">
+                <input
+                  ref="groupRenameInputRef"
+                  class="group-rename-input"
+                  name="group-name"
+                  type="text"
+                  autocomplete="off"
+                  v-model="editingGroupName"
+                  @click.stop
+                  @keydown.enter.stop="confirmEditGroup"
+                  @keydown.esc.stop="cancelEditGroup"
+                  @blur="confirmEditGroup"
+                />
               </template>
-              <template #item="{ element: loc }">
+              <template v-else>
+                <span class="label">{{ item.name }}</span>
+              </template>
+              <span class="num">{{ groupCardCount(item) }}</span>
+              <span class="group-actions" @click.stop>
+                <span class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
+                <button type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
+                  <IconEdit />
+                </button>
+                <button type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
+              </span>
+            </div>
+            <div
+              class="group-locations"
+              v-draggable="[item.locations, innerOptions(item)]"
+            >
+              <template v-for="loc in item.locations" :key="loc.id">
                 <button
                   v-if="loc.kind === 'deck'"
                   v-show="!isCollapsed(item.id)"
@@ -328,7 +335,7 @@ function onGroupAdd(evt, group) {
                   </span>
                 </button>
               </template>
-            </draggable>
+            </div>
           </div>
 
           <button
@@ -367,7 +374,7 @@ function onGroupAdd(evt, group) {
             </span>
           </button>
         </template>
-      </draggable>
+      </div>
     </nav>
 
     <footer>
@@ -780,7 +787,7 @@ function onGroupAdd(evt, group) {
   padding-bottom: 40px;
 }
 
-/* SortableJS ghost / drag states — applied at runtime by vuedraggable */
+/* SortableJS ghost / drag states — applied at runtime by vue-draggable-plus */
 /*noinspection CssUnusedSymbol*/
 :deep(.sortable-ghost) {
   opacity: 0.4;
