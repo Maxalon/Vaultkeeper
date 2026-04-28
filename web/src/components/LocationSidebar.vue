@@ -921,23 +921,4 @@ footer::before {
   color: var(--ink-100);
 }
 
-/* ── Collapsed state ────────────────────────────────────────────── */
-.location-sidebar.collapsed .brand,
-.location-sidebar.collapsed footer,
-.location-sidebar.collapsed .deck-import-split,
-.location-sidebar.collapsed .group-header,
-.location-sidebar.collapsed .sidebar-item .label,
-.location-sidebar.collapsed .sidebar-item .num,
-.location-sidebar.collapsed .sidebar-item .drag,
-.location-sidebar.collapsed .sidebar-item .edit {
-  display: none !important;
-}
-.location-sidebar.collapsed .sidebar-item {
-  justify-content: center;
-  padding: 10px 0;
-  gap: 0;
-}
-.location-sidebar.collapsed .group-locations { padding-left: 0; }
-.location-sidebar.collapsed .group-locations::before { display: none; }
-.location-sidebar.collapsed .locations { padding: 8px 0; }
 </style>

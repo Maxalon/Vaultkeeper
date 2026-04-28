@@ -49,10 +49,18 @@ onMounted(async () => {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  /* Brand column tracks the sidebar width while expanded so the topbar
+     stays aligned during a drag-resize. Collapsed state overrides only
+     the brand width — the sidebar collapses to 0 and disappears. */
+  --brand-width: var(--sidebar-width);
   transition: grid-template-columns 200ms ease;
 }
 .collection-shell[data-sidebar="collapsed"] {
-  --sidebar-width: 56px;
+  --sidebar-width: 0px;
+  --brand-width: 96px;
+}
+.collection-shell[data-sidebar="collapsed"] :deep(.location-sidebar) {
+  display: none;
 }
 .collection-shell :deep(.vk-topbar) {
   grid-column: 1 / -1;

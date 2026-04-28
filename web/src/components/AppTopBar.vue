@@ -202,7 +202,11 @@ function openSettings() {
 <style scoped>
 .vk-topbar {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) auto;
+  /* The brand column is decoupled from the sidebar width so it can stay
+     comfortably sized when the sidebar is collapsed. While expanded,
+     --brand-width mirrors --sidebar-width (set on the shell), so the
+     brand still tracks the sidebar during a drag-resize. */
+  grid-template-columns: var(--brand-width, var(--sidebar-width)) minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--hairline);
   background: var(--bg-1);
@@ -220,14 +224,12 @@ function openSettings() {
   border-right: 1px solid var(--hairline);
   overflow: hidden;
 }
-/* When the sidebar collapses to 56px, the brand column collapses with it.
-   The wordmark text is already hidden by VaultMark's `compact` mode, so
-   here we drop padding entirely and rely on justify-content:center to
-   sit the 18px logo + 28px button (with a 6px gap = 52px) inside the
-   56px strip without clipping. */
+/* When the sidebar is collapsed, the brand column keeps its own width
+   (~96px) and lays out the 18px logo and 28px toggle button with proper
+   breathing room instead of cramming them into the sidebar's footprint. */
 .vk-topbar-brand.collapsed {
-  padding: 0;
-  gap: 6px;
+  padding: 0 16px;
+  gap: 12px;
   justify-content: center;
 }
 
