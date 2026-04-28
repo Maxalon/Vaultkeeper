@@ -122,7 +122,7 @@ function openSettings() {
       </button>
     </div>
 
-    <div class="vk-topbar-center">
+    <div class="vk-topbar-center" :class="`mode-${mode}`">
       <template v-if="mode === 'collection'">
         <FilterChip
           label="Color"
@@ -256,11 +256,19 @@ function openSettings() {
 
 .vk-topbar-center {
   display: flex;
-  align-items: flex-end;
   gap: 6px;
   padding: 0 16px;
   height: 100%;
   min-width: 0; /* lets the tabs-bar child actually clip + scroll */
+}
+/* Collection chips + search sit centered in the topbar's vertical space.
+   Deck tabs hug the bottom edge so they read like browser tabs meeting
+   the hairline below the topbar. */
+.vk-topbar-center.mode-collection {
+  align-items: center;
+}
+.vk-topbar-center.mode-deck {
+  align-items: flex-end;
 }
 
 .vk-topbar-right {
