@@ -312,7 +312,6 @@ const groupCounterOptions = [
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
   background: var(--bg-1);
-  overflow: hidden;
 }
 
 .row {
