@@ -23,12 +23,11 @@ Route::post('/horizon-login',  [HorizonAuthController::class, 'login'])
     ->middleware('throttle:5,1');
 Route::post('/horizon-logout', [HorizonAuthController::class, 'logout']);
 
-// ─── Adminer DB UI (gated by the same ops password as /horizon) ──────────
-// Catch-all so every URL under /db (and /db itself) goes through the proxy
-// controller. The controller validates the session, then either redirects
-// to /horizon-login or hands off to the internal nginx location via
-// X-Accel-Redirect. nginx is the only thing that talks to the adminer
-// container.
-Route::any('/db', [OpsDbProxyController::class, 'proxy']);
-Route::any('/db/{path}', [OpsDbProxyController::class, 'proxy'])
-    ->where('path', '.*');
+// ─── Adminer DB UI auth subrequest ───────────────────────────────────────
+// nginx mounts Adminer at /db and gates every request via
+// `auth_request /__db_auth` against this endpoint. 204 lets the request
+// through to the adminer container; 401 bounces the operator to
+// /horizon-login via nginx's @db_login named location. The proxy to
+// adminer:8080 is done by nginx itself now — Laravel never touches the
+// real /db traffic.
+Route::get('/__db_auth', [OpsDbProxyController::class, 'check']);
