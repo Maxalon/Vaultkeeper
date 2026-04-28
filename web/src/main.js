@@ -30,5 +30,9 @@ app.use(router)
 const settings = useSettingsStore()
 settings.hydrate()
 document.documentElement.setAttribute('data-density', settings.density)
+// Apply persisted sidebar width as a CSS variable so the grid template
+// reflects the user's choice on first paint (the default in style.css is
+// 240px; persisted values override it here before mount).
+document.documentElement.style.setProperty('--sidebar-width', `${settings.sidebarWidth}px`)
 
 app.mount('#app')

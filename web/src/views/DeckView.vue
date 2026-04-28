@@ -1,8 +1,9 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectionStore } from '../stores/collection'
 import { useDeckStore } from '../stores/deck'
+import { useSettingsStore } from '../stores/settings'
 import AppTopBar from '../components/AppTopBar.vue'
 import LocationSidebar from '../components/LocationSidebar.vue'
 import TabSystem from '../components/tabs/TabSystem.vue'
@@ -11,9 +12,9 @@ import DeckRemoveDropZone from '../components/deck/DeckRemoveDropZone.vue'
 
 const collection = useCollectionStore()
 const deck = useDeckStore()
+const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
-const sidebarCollapsed = ref(false)
 
 async function loadAll(id) {
   try {
@@ -55,14 +56,14 @@ onBeforeUnmount(() => {
   <div
     class="deck-shell"
     :class="{ 'detail-open': deck.activeEntryId !== null }"
-    :data-sidebar="sidebarCollapsed ? 'collapsed' : 'expanded'"
+    :data-sidebar="settings.sidebarCollapsed ? 'collapsed' : 'expanded'"
   >
     <AppTopBar
       mode="deck"
-      :sidebar-collapsed="sidebarCollapsed"
-      @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+      :sidebar-collapsed="settings.sidebarCollapsed"
+      @toggle-sidebar="settings.toggleSidebarCollapsed()"
     />
-    <LocationSidebar :collapsed="sidebarCollapsed" />
+    <LocationSidebar :collapsed="settings.sidebarCollapsed" />
     <main class="deck-main">
       <div v-if="deck.loading && !deck.deck" class="deck-skeleton">Loading deck…</div>
       <template v-else>
@@ -82,6 +83,7 @@ onBeforeUnmount(() => {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  transition: grid-template-columns 200ms ease;
 }
 .deck-shell[data-sidebar="collapsed"] { --sidebar-width: 56px; }
 .deck-shell :deep(.vk-topbar) {

@@ -24,6 +24,36 @@ const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
+// ── Sidebar resize ──────────────────────────────────────────────────────
+// The sidebar lives in column 1 of the shell grid (starts at viewport x=0),
+// so the new width during a drag is just the pointer's clientX clamped by
+// the store. Pointer capture keeps the drag alive when the cursor briefly
+// leaves the 5px handle. The is-resizing-sidebar class on <html> disables
+// the shell's grid-template-columns transition so the handle stays glued
+// to the cursor instead of easing behind it.
+function onResizePointerDown(event) {
+  if (event.button !== 0) return
+  event.preventDefault()
+  const handle = event.currentTarget
+  handle.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('is-resizing-sidebar')
+
+  const onMove = (e) => settings.setSidebarWidth(e.clientX)
+  const onUp = (e) => {
+    handle.removeEventListener('pointermove', onMove)
+    handle.removeEventListener('pointerup', onUp)
+    handle.removeEventListener('pointercancel', onUp)
+    if (handle.hasPointerCapture(e.pointerId)) {
+      handle.releasePointerCapture(e.pointerId)
+    }
+    document.documentElement.classList.remove('is-resizing-sidebar')
+    settings.persistSidebar()
+  }
+  handle.addEventListener('pointermove', onMove)
+  handle.addEventListener('pointerup', onUp)
+  handle.addEventListener('pointercancel', onUp)
+}
+
 const mergedItems = computed(() => collection.sidebarItemsMerged)
 
 function activeDeckId() {
@@ -392,6 +422,18 @@ function onGroupAdd(evt, group) {
     <ImportDeckModal v-if="deckImportOpen" @close="deckImportOpen = false" />
     <BulkImportDeckModal v-if="bulkDeckImportOpen" @close="bulkDeckImportOpen = false" />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
+
+    <div
+      v-if="!collapsed"
+      class="resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      :aria-valuenow="settings.sidebarWidth"
+      :aria-valuemin="settings.sidebarMin"
+      :aria-valuemax="settings.sidebarMax"
+      title="Drag to resize sidebar"
+      @pointerdown="onResizePointerDown"
+    />
   </aside>
 </template>
 
@@ -403,6 +445,27 @@ function onGroupAdd(evt, group) {
   border-right: 1px solid var(--hairline);
   overflow: hidden;
   height: 100%;
+  position: relative; /* anchors the resize handle to the right edge */
+}
+
+/* Drag affordance pinned to the sidebar's right edge. Sits on top of the
+   border so the user picks up "the edge" itself. The hover/active tint
+   is subtle on purpose — it's a power-user control. */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms ease;
+  z-index: 5;
+  touch-action: none;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: color-mix(in oklab, var(--amber) 35%, transparent);
 }
 
 .brand {

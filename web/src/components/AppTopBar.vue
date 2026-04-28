@@ -104,8 +104,8 @@ function openSettings() {
 
 <template>
   <header class="vk-topbar">
-    <div class="vk-topbar-brand">
-      <VaultMark />
+    <div class="vk-topbar-brand" :class="{ collapsed: sidebarCollapsed }">
+      <VaultMark :compact="sidebarCollapsed" />
       <button
         class="vk-sidebar-collapse"
         :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -202,7 +202,7 @@ function openSettings() {
 <style scoped>
 .vk-topbar {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) auto;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--hairline);
   background: var(--bg-1);
@@ -219,6 +219,16 @@ function openSettings() {
   gap: 12px;
   border-right: 1px solid var(--hairline);
   overflow: hidden;
+}
+/* When the sidebar collapses to 56px, the brand column collapses with it.
+   The wordmark text is already hidden by VaultMark's `compact` mode, so
+   here we drop padding entirely and rely on justify-content:center to
+   sit the 18px logo + 28px button (with a 6px gap = 52px) inside the
+   56px strip without clipping. */
+.vk-topbar-brand.collapsed {
+  padding: 0;
+  gap: 6px;
+  justify-content: center;
 }
 
 .vk-sidebar-collapse {
