@@ -264,6 +264,7 @@ function innerOptions(group) {
               :class="{ collapsed: isCollapsed(item.id) }"
               @click="toggleCollapse(item.id)"
             >
+              <span class="drag drag-handle group-handle" @click.stop title="Drag">⠿</span>
               <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
                 <IconChevron />
               </span>
@@ -286,7 +287,6 @@ function innerOptions(group) {
               </template>
               <span class="num">{{ groupCardCount(item) }}</span>
               <span class="group-actions" @click.stop>
-                <span class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
                 <button type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
                   <IconEdit />
                 </button>
@@ -677,7 +677,7 @@ function innerOptions(group) {
 .group-section {
   display: flex;
   flex-direction: column;
-  margin-top: 1px;
+  margin-top: 3px;
 }
 .group-header {
   display: flex;
@@ -750,13 +750,34 @@ function innerOptions(group) {
   align-items: center;
 }
 .group-header:hover .group-actions { display: flex; }
-.group-actions .drag-handle {
+.group-header .drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-30);
+  opacity: 0;
+  width: 0;
+  margin-left: -6px;
+  margin-right: 0;
+  cursor: grab;
   font-size: 12px;
   line-height: 1;
-  color: var(--ink-30);
-  cursor: grab;
   user-select: none;
+  padding: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  transition: opacity 0.12s ease, width 0.15s ease, margin 0.15s ease, color 0.1s ease;
+}
+.group-header:hover .drag {
+  opacity: 0.6;
   width: 10px;
+  margin-right: -2px;
+}
+.group-header .drag:hover {
+  opacity: 1;
+  color: var(--ink-100);
 }
 .group-actions .edit-btn,
 .group-actions .delete-btn {
