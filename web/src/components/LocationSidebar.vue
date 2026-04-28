@@ -146,6 +146,11 @@ function shouldShowLocCount(loc) {
   return true
 }
 async function deleteLocation(loc) {
+  if (loc.kind === 'deck') {
+    if (!confirm(`Delete deck "${loc.name}"?`)) return
+    await collection.deleteDeck(loc.id)
+    return
+  }
   if (!confirm(`Delete "${loc.name}"? Cards in it will be unassigned.`)) return
   await collection.deleteLocation(loc.id)
 }
@@ -325,6 +330,14 @@ function innerOptions(group) {
                   <span class="label">{{ loc.name }}</span>
                   <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(loc.format) }}</span>
                   <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.entry_count }}</span>
+                  <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
+                    <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
+                      <IconEdit />
+                    </button>
+                  </span>
+                  <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+                    <button type="button" class="delete-btn" @click="deleteLocation(loc)" title="Delete">×</button>
+                  </span>
                 </button>
                 <button
                   v-else
@@ -367,6 +380,14 @@ function innerOptions(group) {
             <span class="label">{{ item.name }}</span>
             <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(item.format) }}</span>
             <span v-if="shouldShowLocCount(item)" class="num">{{ item.entry_count }}</span>
+            <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
+              <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
+                <IconEdit />
+              </button>
+            </span>
+            <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+              <button type="button" class="delete-btn" @click="deleteLocation(item)" title="Delete">×</button>
+            </span>
           </button>
 
           <button
