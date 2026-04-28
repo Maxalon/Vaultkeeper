@@ -57,6 +57,8 @@ async function submit() {
           <span class="label">Username or profile URL</span>
           <input
             ref="firstInput"
+            name="archidekt-user"
+            autocomplete="off"
             v-model="input"
             type="text"
             placeholder="your-username  or  https://archidekt.com/u/your-username"
@@ -66,14 +68,14 @@ async function submit() {
         <fieldset class="field dup-choice">
           <legend class="label">When a deck has already been imported</legend>
           <label class="dup-opt">
-            <input type="radio" v-model="onDuplicate" value="skip" />
+            <input type="radio" name="on-duplicate" v-model="onDuplicate" value="skip" />
             <span class="dup-opt-body">
               <span class="dup-opt-title">Skip it</span>
               <span class="dup-opt-hint">Leave existing imports untouched (default).</span>
             </span>
           </label>
           <label class="dup-opt">
-            <input type="radio" v-model="onDuplicate" value="update" />
+            <input type="radio" name="on-duplicate" v-model="onDuplicate" value="update" />
             <span class="dup-opt-body">
               <span class="dup-opt-title">Update with latest from Archidekt</span>
               <span class="dup-opt-hint">Overwrite cards / commanders / format. Group placement is kept.</span>

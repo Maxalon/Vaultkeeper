@@ -153,6 +153,8 @@ function openDeck() {
             <span class="label">Deck URL</span>
             <input
               ref="firstInput"
+              name="deck-url"
+              autocomplete="off"
               v-model="url"
               type="url"
               placeholder="https://archidekt.com/decks/… or https://moxfield.com/decks/…"
@@ -165,11 +167,11 @@ function openDeck() {
         <template v-else>
           <label class="field">
             <span class="label">Deck name</span>
-            <input ref="firstInput" v-model="name" type="text" maxlength="100" />
+            <input ref="firstInput" name="deck-name" autocomplete="off" v-model="name" type="text" maxlength="100" />
           </label>
           <label class="field">
             <span class="label">Format</span>
-            <select v-model="format">
+            <select v-model="format" name="format">
               <option value="commander">Commander</option>
               <option value="oathbreaker">Oathbreaker</option>
               <option value="pauper">Pauper</option>
@@ -180,6 +182,7 @@ function openDeck() {
           <label class="field">
             <span class="label">Decklist</span>
             <textarea
+              name="decklist"
               v-model="text"
               class="decklist"
               rows="12"

@@ -32,6 +32,8 @@ function pick(s) {
   <div class="category-input">
     <input
       type="text"
+      name="category"
+      autocomplete="off"
       :value="draft"
       @input="draft = $event.target.value; open = true"
       @focus="open = true"

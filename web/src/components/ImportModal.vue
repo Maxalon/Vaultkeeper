@@ -122,6 +122,7 @@ async function submit() {
         >
           <input
             ref="fileInput"
+            name="import-file"
             type="file"
             accept=".csv,.txt"
             hidden

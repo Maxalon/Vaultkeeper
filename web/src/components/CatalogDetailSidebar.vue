@@ -78,6 +78,7 @@ watch(() => catalog.activeCardOracleId, () => {})
           >
             <input
               type="radio"
+              name="printing"
               :checked="p.scryfall_id === selectedPrintingId"
               :aria-label="p.set_name"
             />
