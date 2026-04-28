@@ -9,6 +9,7 @@ import LocationSidebar from '../components/LocationSidebar.vue'
 import TabSystem from '../components/tabs/TabSystem.vue'
 import DeckDetailSidebar from '../components/deck/DeckDetailSidebar.vue'
 import DeckRemoveDropZone from '../components/deck/DeckRemoveDropZone.vue'
+import DeckCreateCategoryDropZone from '../components/deck/DeckCreateCategoryDropZone.vue'
 
 const collection = useCollectionStore()
 const deck = useDeckStore()
@@ -72,6 +73,7 @@ onBeforeUnmount(() => {
       </template>
     </main>
     <DeckRemoveDropZone />
+    <DeckCreateCategoryDropZone />
   </div>
 </template>
 
