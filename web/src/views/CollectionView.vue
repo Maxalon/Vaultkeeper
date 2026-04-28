@@ -1,6 +1,7 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useCollectionStore } from '../stores/collection'
+import { useSettingsStore } from '../stores/settings'
 import AppTopBar from '../components/AppTopBar.vue'
 import LocationSidebar from '../components/LocationSidebar.vue'
 import StatsBar from '../components/StatsBar.vue'
@@ -8,7 +9,7 @@ import CardListPanel from '../components/CardListPanel.vue'
 import DetailSidebar from '../components/DetailSidebar.vue'
 
 const collection = useCollectionStore()
-const sidebarCollapsed = ref(false)
+const settings = useSettingsStore()
 
 onMounted(async () => {
   await collection.fetchLocations()
@@ -22,14 +23,14 @@ onMounted(async () => {
   <div
     class="collection-shell"
     :class="{ 'detail-open': collection.activeEntryId !== null }"
-    :data-sidebar="sidebarCollapsed ? 'collapsed' : 'expanded'"
+    :data-sidebar="settings.sidebarCollapsed ? 'collapsed' : 'expanded'"
   >
     <AppTopBar
       mode="collection"
-      :sidebar-collapsed="sidebarCollapsed"
-      @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+      :sidebar-collapsed="settings.sidebarCollapsed"
+      @toggle-sidebar="settings.toggleSidebarCollapsed()"
     />
-    <LocationSidebar :collapsed="sidebarCollapsed" />
+    <LocationSidebar :collapsed="settings.sidebarCollapsed" />
     <main class="main-area">
       <StatsBar />
       <div class="main-body">
@@ -48,10 +49,18 @@ onMounted(async () => {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  /* Brand column tracks the sidebar width while expanded so the topbar
+     stays aligned during a drag-resize. Collapsed state overrides only
+     the brand width — the sidebar collapses to 0 and disappears. */
+  --brand-width: var(--sidebar-width);
   transition: grid-template-columns 200ms ease;
 }
 .collection-shell[data-sidebar="collapsed"] {
-  --sidebar-width: 56px;
+  --sidebar-width: 0px;
+  --brand-width: 96px;
+}
+.collection-shell[data-sidebar="collapsed"] :deep(.location-sidebar) {
+  display: none;
 }
 .collection-shell :deep(.vk-topbar) {
   grid-column: 1 / -1;

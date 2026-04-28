@@ -1,12 +1,13 @@
 <script setup>
-import { computed, ref, nextTick } from 'vue'
+import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import draggable from 'vuedraggable'
+import { vDraggable } from 'vue-draggable-plus'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
 import ImportDeckModal from './ImportDeckModal.vue'
+import BulkImportDeckModal from './BulkImportDeckModal.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
 import IconBinder from '../assets/icons/binder.svg'
@@ -23,6 +24,36 @@ const settings = useSettingsStore()
 const route = useRoute()
 const router = useRouter()
 
+// ── Sidebar resize ──────────────────────────────────────────────────────
+// The sidebar lives in column 1 of the shell grid (starts at viewport x=0),
+// so the new width during a drag is just the pointer's clientX clamped by
+// the store. Pointer capture keeps the drag alive when the cursor briefly
+// leaves the 5px handle. The is-resizing-sidebar class on <html> disables
+// the shell's grid-template-columns transition so the handle stays glued
+// to the cursor instead of easing behind it.
+function onResizePointerDown(event) {
+  if (event.button !== 0) return
+  event.preventDefault()
+  const handle = event.currentTarget
+  handle.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('is-resizing-sidebar')
+
+  const onMove = (e) => settings.setSidebarWidth(e.clientX)
+  const onUp = (e) => {
+    handle.removeEventListener('pointermove', onMove)
+    handle.removeEventListener('pointerup', onUp)
+    handle.removeEventListener('pointercancel', onUp)
+    if (handle.hasPointerCapture(e.pointerId)) {
+      handle.releasePointerCapture(e.pointerId)
+    }
+    document.documentElement.classList.remove('is-resizing-sidebar')
+    settings.persistSidebar()
+  }
+  handle.addEventListener('pointermove', onMove)
+  handle.addEventListener('pointerup', onUp)
+  handle.addEventListener('pointercancel', onUp)
+}
+
 const mergedItems = computed(() => collection.sidebarItemsMerged)
 
 function activeDeckId() {
@@ -38,8 +69,26 @@ function formatShort(f) {
 }
 const importOpen = ref(false)
 const deckImportOpen = ref(false)
+const bulkDeckImportOpen = ref(false)
+const deckImportMenuOpen = ref(false)
 const modalOpen = ref(false)
 const editingLocation = ref(null)
+
+function openBulkDeckImport() {
+  deckImportMenuOpen.value = false
+  bulkDeckImportOpen.value = true
+}
+function toggleDeckImportMenu() {
+  deckImportMenuOpen.value = !deckImportMenuOpen.value
+}
+// Close the dropdown on any document click outside the split-button cluster.
+function onDocClick(e) {
+  if (!e.target.closest?.('.deck-import-split')) {
+    deckImportMenuOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 const creatingGroup = ref(false)
 const newGroupName = ref('')
@@ -76,8 +125,34 @@ function closeModal() {
 
 function toggleCollapse(groupId) { collection.toggleGroupCollapse(groupId) }
 function isCollapsed(groupId) { return collection.isGroupCollapsed(groupId) }
+// `group.locations` after sidebarItemsMerged() interleaves locations and
+// decks (kind='location' or kind='deck'). Locations carry `card_count`,
+// decks carry `entry_count` (mainboard size) — sum both kinds so a group
+// of imported decks doesn't read 0.
 function groupCardCount(group) {
-  return group.locations.reduce((sum, l) => sum + (l.card_count || 0), 0)
+  return group.locations.reduce(
+    (sum, l) => sum + (l.kind === 'deck' ? (l.entry_count || 0) : (l.card_count || 0)),
+    0,
+  )
+}
+function groupCounterValue(group) {
+  if (settings.sidebarGroupCounter === 'locations') return group.locations.length
+  return groupCardCount(group)
+}
+function shouldShowLocCount(loc) {
+  if (loc.kind === 'deck') return settings.sidebarShowCountDeck
+  if (loc.type === 'drawer') return settings.sidebarShowCountDrawer
+  if (loc.type === 'binder') return settings.sidebarShowCountBinder
+  return true
+}
+async function deleteLocation(loc) {
+  if (loc.kind === 'deck') {
+    if (!confirm(`Delete deck "${loc.name}"?`)) return
+    await collection.deleteDeck(loc.id)
+    return
+  }
+  if (!confirm(`Delete "${loc.name}"? Cards in it will be unassigned.`)) return
+  await collection.deleteLocation(loc.id)
 }
 
 async function startCreateGroup() {
@@ -129,12 +204,37 @@ function onlyAcceptLocations(_to, _from, dragEl) {
   return !dragEl.classList.contains('group-section')
 }
 function onGroupAdd(evt, group) {
-  const added = evt.item?._underlying_vm_
+  // vue-draggable-plus exposes the dragged item's data on evt.data
+  // (replacing vuedraggable's evt.item._underlying_vm_).
+  const added = evt.data
   if (!added) return
   const idx = group.locations.indexOf(added)
   if (idx === -1 || idx === group.locations.length - 1) return
   group.locations.splice(idx, 1)
   group.locations.push(added)
+}
+
+// Sortable options shared by every draggable on the sidebar. Sortable's
+// option names are camelCase when supplied via JS (vs the kebab-case
+// component props in vuedraggable v4).
+const outerOptions = {
+  group: { name: 'sidebar', pull: true, put: true },
+  handle: '.drag-handle',
+  animation: 150,
+  ghostClass: 'sortable-ghost',
+  chosenClass: 'sortable-chosen',
+  onEnd: onDragEnd,
+}
+function innerOptions(group) {
+  return {
+    group: { name: 'sidebar', pull: true, put: onlyAcceptLocations },
+    handle: '.drag-handle',
+    animation: 150,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    onEnd: onDragEnd,
+    onAdd: (evt) => onGroupAdd(evt, group),
+  }
 }
 </script>
 
@@ -172,66 +272,51 @@ function onGroupAdd(evt, group) {
         <span class="num">{{ collection.totalCount }}</span>
       </button>
 
-      <draggable
-        :list="mergedItems"
-        :item-key="itemKey"
-        :group="{ name: 'sidebar', pull: true, put: true }"
-        handle=".drag-handle"
-        :animation="150"
-        ghost-class="sortable-ghost"
-        chosen-class="sortable-chosen"
-        @end="onDragEnd"
+      <div
         class="sidebar-dropzone"
+        v-draggable="[mergedItems, outerOptions]"
       >
-        <template #item="{ element: item }">
+        <template v-for="item in mergedItems" :key="itemKey(item)">
           <div v-if="item.kind === 'group'" class="group-section">
-            <draggable
-              :list="item.locations"
-              item-key="id"
-              :group="{ name: 'sidebar', pull: true, put: onlyAcceptLocations }"
-              handle=".drag-handle"
-              filter=".group-header"
-              :animation="150"
-              ghost-class="sortable-ghost"
-              chosen-class="sortable-chosen"
-              @end="onDragEnd"
-              @add="(evt) => onGroupAdd(evt, item)"
-              class="group-locations"
+            <div
+              class="group-header"
+              :class="{ collapsed: isCollapsed(item.id) }"
+              @click="toggleCollapse(item.id)"
             >
-              <template #header>
-                <div
-                  class="group-header"
-                  :class="{ collapsed: isCollapsed(item.id) }"
-                  @click="toggleCollapse(item.id)"
-                >
-                  <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
-                    <IconChevron />
-                  </span>
-                  <template v-if="editingGroupId === item.id">
-                    <input
-                      ref="groupRenameInputRef"
-                      class="group-rename-input"
-                      v-model="editingGroupName"
-                      @click.stop
-                      @keydown.enter.stop="confirmEditGroup"
-                      @keydown.esc.stop="cancelEditGroup"
-                      @blur="confirmEditGroup"
-                    />
-                  </template>
-                  <template v-else>
-                    <span class="label">{{ item.name }}</span>
-                  </template>
-                  <span class="num">{{ groupCardCount(item) }}</span>
-                  <span class="group-actions" @click.stop>
-                    <span class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
-                    <button type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
-                      <IconEdit />
-                    </button>
-                    <button type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
-                  </span>
-                </div>
+              <span v-if="settings.sidebarShowDrag" class="drag drag-handle group-handle" @click.stop title="Drag">⠿</span>
+              <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
+                <IconChevron />
+              </span>
+              <template v-if="editingGroupId === item.id">
+                <input
+                  ref="groupRenameInputRef"
+                  class="group-rename-input"
+                  name="group-name"
+                  type="text"
+                  autocomplete="off"
+                  v-model="editingGroupName"
+                  @click.stop
+                  @keydown.enter.stop="confirmEditGroup"
+                  @keydown.esc.stop="cancelEditGroup"
+                  @blur="confirmEditGroup"
+                />
               </template>
-              <template #item="{ element: loc }">
+              <template v-else>
+                <span class="label">{{ item.name }}</span>
+              </template>
+              <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ groupCounterValue(item) }}</span>
+              <span class="group-actions" @click.stop>
+                <button v-if="settings.sidebarShowEdit" type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
+                  <IconEdit />
+                </button>
+                <button v-if="settings.sidebarShowDelete" type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
+              </span>
+            </div>
+            <div
+              class="group-locations"
+              v-draggable="[item.locations, innerOptions(item)]"
+            >
+              <template v-for="loc in item.locations" :key="loc.id">
                 <button
                   v-if="loc.kind === 'deck'"
                   v-show="!isCollapsed(item.id)"
@@ -240,11 +325,19 @@ function onGroupAdd(evt, group) {
                   :class="{ active: activeDeckId() === loc.id }"
                   @click="openDeck(loc)"
                 >
-                  <span class="drag drag-handle" @click.stop>⠿</span>
+                  <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
                   <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
                   <span class="label">{{ loc.name }}</span>
-                  <span class="format-badge">{{ formatShort(loc.format) }}</span>
-                  <span class="num">{{ loc.entry_count }}</span>
+                  <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(loc.format) }}</span>
+                  <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.entry_count }}</span>
+                  <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
+                    <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
+                      <IconEdit />
+                    </button>
+                  </span>
+                  <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+                    <button type="button" class="delete-btn" @click="deleteLocation(loc)" title="Delete">×</button>
+                  </span>
                 </button>
                 <button
                   v-else
@@ -254,22 +347,25 @@ function onGroupAdd(evt, group) {
                   :class="{ active: isActive(loc) }"
                   @click="activate(loc)"
                 >
-                  <span class="drag drag-handle" @click.stop>⠿</span>
+                  <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
                   <span class="set-sym loc-icon" aria-hidden="true">
                     <IconDrawer v-if="loc.type === 'drawer'" />
                     <IconBinder v-else-if="loc.type === 'binder'" />
                     <IconDeck v-else-if="loc.type === 'deck'" />
                   </span>
                   <span class="label">{{ loc.name }}</span>
-                  <span class="num">{{ loc.card_count }}</span>
-                  <span class="edit" @click.stop>
+                  <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.card_count }}</span>
+                  <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
                     <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
                       <IconEdit />
                     </button>
                   </span>
+                  <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+                    <button type="button" class="delete-btn" @click="deleteLocation(loc)" title="Delete">×</button>
+                  </span>
                 </button>
               </template>
-            </draggable>
+            </div>
           </div>
 
           <button
@@ -279,11 +375,19 @@ function onGroupAdd(evt, group) {
             :class="{ active: activeDeckId() === item.id }"
             @click="openDeck(item)"
           >
-            <span class="drag drag-handle" @click.stop>⠿</span>
+            <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
             <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
             <span class="label">{{ item.name }}</span>
-            <span class="format-badge">{{ formatShort(item.format) }}</span>
-            <span class="num">{{ item.entry_count }}</span>
+            <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(item.format) }}</span>
+            <span v-if="shouldShowLocCount(item)" class="num">{{ item.entry_count }}</span>
+            <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
+              <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
+                <IconEdit />
+              </button>
+            </span>
+            <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+              <button type="button" class="delete-btn" @click="deleteLocation(item)" title="Delete">×</button>
+            </span>
           </button>
 
           <button
@@ -293,28 +397,33 @@ function onGroupAdd(evt, group) {
             :class="{ active: isActive(item) }"
             @click="activate(item)"
           >
-            <span class="drag drag-handle" @click.stop>⠿</span>
+            <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
             <span class="set-sym loc-icon" aria-hidden="true">
               <IconDrawer v-if="item.type === 'drawer'" />
               <IconBinder v-else-if="item.type === 'binder'" />
               <IconDeck v-else-if="item.type === 'deck'" />
             </span>
             <span class="label">{{ item.name }}</span>
-            <span class="num">{{ item.card_count }}</span>
-            <span class="edit" @click.stop>
+            <span v-if="shouldShowLocCount(item)" class="num">{{ item.card_count }}</span>
+            <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
               <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
                 <IconEdit />
               </button>
             </span>
+            <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+              <button type="button" class="delete-btn" @click="deleteLocation(item)" title="Delete">×</button>
+            </span>
           </button>
         </template>
-      </draggable>
+      </div>
     </nav>
 
     <footer>
       <div v-if="creatingGroup" class="inline-group-input">
         <input
           ref="groupInputRef"
+          name="new-group-name"
+          autocomplete="off"
           v-model="newGroupName"
           type="text"
           placeholder="Group name…"
@@ -334,17 +443,50 @@ function onGroupAdd(evt, group) {
         </svg>
         Import CSV
       </button>
-      <button type="button" class="import-btn" @click="deckImportOpen = true">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        Import Deck
-      </button>
+      <div class="deck-import-split">
+        <button type="button" class="import-btn split-main" @click="deckImportOpen = true">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          Import Deck
+        </button>
+        <button
+          type="button"
+          class="import-btn split-chevron"
+          :class="{ open: deckImportMenuOpen }"
+          @click="toggleDeckImportMenu"
+          aria-haspopup="menu"
+          :aria-expanded="deckImportMenuOpen"
+          aria-label="More import options"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 4l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <div v-if="deckImportMenuOpen" class="split-menu" role="menu">
+          <button type="button" class="split-menu-item" role="menuitem" @click="openBulkDeckImport">
+            Bulk import from user…
+          </button>
+        </div>
+      </div>
     </footer>
 
     <ImportModal v-if="importOpen" @close="importOpen = false" />
     <ImportDeckModal v-if="deckImportOpen" @close="deckImportOpen = false" />
+    <BulkImportDeckModal v-if="bulkDeckImportOpen" @close="bulkDeckImportOpen = false" />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
+
+    <div
+      v-if="!collapsed"
+      class="resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      :aria-valuenow="settings.sidebarWidth"
+      :aria-valuemin="settings.sidebarMin"
+      :aria-valuemax="settings.sidebarMax"
+      title="Drag to resize sidebar"
+      @pointerdown="onResizePointerDown"
+    />
   </aside>
 </template>
 
@@ -356,6 +498,27 @@ function onGroupAdd(evt, group) {
   border-right: 1px solid var(--hairline);
   overflow: hidden;
   height: 100%;
+  position: relative; /* anchors the resize handle to the right edge */
+}
+
+/* Drag affordance pinned to the sidebar's right edge. Sits on top of the
+   border so the user picks up "the edge" itself. The hover/active tint
+   is subtle on purpose — it's a power-user control. */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms ease;
+  z-index: 5;
+  touch-action: none;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: color-mix(in oklab, var(--amber) 35%, transparent);
 }
 
 .brand {
@@ -497,9 +660,10 @@ function onGroupAdd(evt, group) {
   letter-spacing: 0.04em;
 }
 
-/* Hover-revealed drag handle + edit (shared between top-level + nested rows) */
+/* Hover-revealed drag handle + edit + delete (shared between top-level + nested rows) */
 .sidebar-item .drag,
-.sidebar-item .edit {
+.sidebar-item .edit,
+.sidebar-item .del {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -520,7 +684,8 @@ function onGroupAdd(evt, group) {
   user-select: none;
   padding: 0;
 }
-.sidebar-item .edit {
+.sidebar-item .edit,
+.sidebar-item .del {
   width: 0;
   margin-left: 0;
   margin-right: -4px;
@@ -531,17 +696,21 @@ function onGroupAdd(evt, group) {
   width: 10px;
   margin-right: -2px;
 }
-.sidebar-item:hover .edit {
+.sidebar-item:hover .edit,
+.sidebar-item:hover .del {
   opacity: 0.6;
   width: 14px;
   margin-left: 2px;
 }
 .sidebar-item .drag:hover,
-.sidebar-item .edit:hover {
+.sidebar-item .edit:hover,
+.sidebar-item .del:hover {
   opacity: 1;
   color: var(--ink-100);
 }
-.sidebar-item .edit-btn {
+.sidebar-item .del:hover { color: #d46a6a; }
+.sidebar-item .edit-btn,
+.sidebar-item .delete-btn {
   background: transparent;
   border: 0;
   color: inherit;
@@ -550,26 +719,37 @@ function onGroupAdd(evt, group) {
   display: inline-flex;
   align-items: center;
 }
+.sidebar-item .delete-btn {
+  font-size: 16px;
+  line-height: 1;
+}
 
 /* ── Group section ──────────────────────────────────────────────── */
 .group-section {
   display: flex;
   flex-direction: column;
-  margin-top: 6px;
+  margin-top: 3px;
 }
 .group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 10px;
+  min-height: 28px;
+  box-sizing: border-box;
   border-radius: var(--radius-sm);
   color: var(--ink-70);
   font-size: 12px;
+  line-height: 1.2;
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
   transition: color 0.1s ease, background 0.1s ease;
   user-select: none;
+}
+.group-header.collapsed {
+  padding: 2px 10px;
+  min-height: 20px;
 }
 .group-header:hover {
   color: var(--ink-100);
@@ -621,12 +801,43 @@ function onGroupAdd(evt, group) {
   align-items: center;
 }
 .group-header:hover .group-actions { display: flex; }
-.group-actions .drag-handle {
-  font-size: 14px;
+.group-header .drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--ink-30);
+  opacity: 0;
+  width: 0;
+  margin-left: -6px;
+  margin-right: 0;
   cursor: grab;
+  font-size: 12px;
+  line-height: 1;
   user-select: none;
+  padding: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  transition: opacity 0.12s ease, width 0.15s ease, margin 0.15s ease, color 0.1s ease;
+}
+.group-header:hover .drag {
+  opacity: 0.6;
   width: 10px;
+  margin-right: -2px;
+}
+.group-header .drag:hover {
+  opacity: 1;
+  color: var(--ink-100);
+}
+.group-actions .edit-btn,
+.group-actions .delete-btn {
+  font-size: 12px;
+  padding: 1px;
+}
+.group-actions .edit-btn :where(svg) {
+  width: 10px;
+  height: 10px;
 }
 .edit-btn,
 .delete-btn {
@@ -651,6 +862,9 @@ function onGroupAdd(evt, group) {
   margin-top: 2px;
   min-height: 8px;
 }
+.group-header.collapsed + .group-locations {
+  display: none;
+}
 .group-locations::before {
   content: '';
   position: absolute;
@@ -665,7 +879,7 @@ function onGroupAdd(evt, group) {
   padding-bottom: 40px;
 }
 
-/* SortableJS ghost / drag states — applied at runtime by vuedraggable */
+/* SortableJS ghost / drag states — applied at runtime by vue-draggable-plus */
 /*noinspection CssUnusedSymbol*/
 :deep(.sortable-ghost) {
   opacity: 0.4;
@@ -753,22 +967,62 @@ footer::before {
   background: color-mix(in oklab, var(--amber) 85%, white);
 }
 
-/* ── Collapsed state ────────────────────────────────────────────── */
-.location-sidebar.collapsed .brand,
-.location-sidebar.collapsed footer,
-.location-sidebar.collapsed .group-header,
-.location-sidebar.collapsed .sidebar-item .label,
-.location-sidebar.collapsed .sidebar-item .num,
-.location-sidebar.collapsed .sidebar-item .drag,
-.location-sidebar.collapsed .sidebar-item .edit {
-  display: none !important;
+/* ── Split-button (Import Deck + dropdown) ──────────────────────── */
+.deck-import-split {
+  position: relative;
+  display: flex;
+  margin-top: 4px;
+  gap: 1px;
 }
-.location-sidebar.collapsed .sidebar-item {
-  justify-content: center;
-  padding: 10px 0;
+.deck-import-split .import-btn {
+  margin-top: 0;
+}
+.deck-import-split .split-main {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.deck-import-split .split-chevron {
+  flex: 0 0 auto;
+  width: 32px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
   gap: 0;
 }
-.location-sidebar.collapsed .group-locations { padding-left: 0; }
-.location-sidebar.collapsed .group-locations::before { display: none; }
-.location-sidebar.collapsed .locations { padding: 8px 0; }
+.deck-import-split .split-chevron svg {
+  transition: transform 0.15s ease;
+}
+.deck-import-split .split-chevron.open svg {
+  transform: rotate(180deg);
+}
+.split-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-1);
+  border: 1px solid var(--hairline, var(--border));
+  border-radius: var(--radius-sm, 4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  z-index: 30;
+}
+.split-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--ink-90, var(--ink-100));
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.split-menu-item:hover {
+  background: var(--bg-2);
+  color: var(--ink-100);
+}
+
 </style>

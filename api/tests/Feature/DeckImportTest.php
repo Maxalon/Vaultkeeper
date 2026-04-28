@@ -227,6 +227,234 @@ class DeckImportTest extends TestCase
         ]);
     }
 
+    public function test_archidekt_import_flattens_quill_delta_description(): void
+    {
+        // Archidekt ships descriptions as a stringified Quill Delta. An empty
+        // editor sends the literal string `{"ops":[]}`, and non-empty content
+        // is a JSON object whose ops are concatenated to yield plain text.
+        // Storing either verbatim leaks Delta JSON into the UI.
+        Http::fake([
+            'archidekt.com/api/decks/15517081/' => Http::response([
+                'id'         => 15517081,
+                'name'       => 'Empty Description',
+                'deckFormat' => 'commander',
+                'description' => '{"ops":[]}',
+                'cards'      => [
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition'    => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                ],
+            ], 200),
+            'archidekt.com/api/decks/15517082/' => Http::response([
+                'id'         => 15517082,
+                'name'       => 'Filled Description',
+                'deckFormat' => 'commander',
+                'description' => '{"ops":[{"insert":"Stax brew. "},{"insert":"Hard lock","attributes":{"bold":true}},{"insert":" by turn 4.\n"}]}',
+                'cards'      => [
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition'    => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $emptyId = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url'    => 'https://archidekt.com/decks/15517081/empty',
+            ])
+            ->assertCreated()
+            ->json('deck.id');
+
+        $this->assertDatabaseHas('decks', [
+            'id'          => $emptyId,
+            'description' => null,
+        ]);
+
+        $filledId = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url'    => 'https://archidekt.com/decks/15517082/filled',
+            ])
+            ->assertCreated()
+            ->json('deck.id');
+
+        $this->assertDatabaseHas('decks', [
+            'id'          => $filledId,
+            'description' => 'Stax brew. Hard lock by turn 4.',
+        ]);
+    }
+
+    public function test_archidekt_oathbreaker_import_resolves_format_and_signature_spell(): void
+    {
+        // Wrenn and Six = legendary planeswalker (legal oathbreaker).
+        // Fork in the Road = sorcery (legal signature spell).
+        ScryfallCard::factory()->create([
+            'scryfall_id'    => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'name'           => 'Wrenn and Six',
+            'set_code'       => 'mh1',
+            'type_line'      => 'Legendary Planeswalker — Wrenn',
+            'color_identity' => ['R', 'G'],
+        ]);
+        ScryfallCard::factory()->create([
+            'scryfall_id'    => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'name'           => 'Fork in the Road',
+            'set_code'       => 'mh3',
+            'type_line'      => 'Sorcery',
+            'color_identity' => ['G'],
+        ]);
+
+        // Real Archidekt API response: deckFormat is the integer 14
+        // (Oathbreaker), and the user's deck has both the oathbreaker AND the
+        // signature spell tagged with the "Commander" category — exactly the
+        // shape that used to misroute the spell into commander_2_scryfall_id.
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id'         => 99,
+                'name'       => 'Wrenn Oathbreaker',
+                'deckFormat' => 14,
+                'cards'      => [
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            'oracleCard' => ['name' => 'Wrenn and Six'],
+                            'edition'    => ['editioncode' => 'mh1'],
+                        ],
+                    ],
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            'oracleCard' => ['name' => 'Fork in the Road'],
+                            'edition'    => ['editioncode' => 'mh3'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url'    => 'https://archidekt.com/decks/99/wrenn',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+
+        // Format should be derived from the numeric deckFormat=14, not
+        // silently fall back to "commander".
+        $this->assertDatabaseHas('decks', [
+            'id'                      => $deckId,
+            'format'                  => 'oathbreaker',
+            'commander_1_scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'commander_2_scryfall_id' => null,
+        ]);
+        // Wrenn lands in the commander slot.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id'            => $deckId,
+            'scryfall_id'        => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'is_commander'       => true,
+            'is_signature_spell' => false,
+            'zone'               => 'main',
+        ]);
+        // Fork is reclassified as a signature spell, attached to Wrenn.
+        $oathbreakerEntryId = \App\Models\DeckEntry::where('deck_id', $deckId)
+            ->where('scryfall_id', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
+            ->value('id');
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id'                => $deckId,
+            'scryfall_id'            => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'is_commander'           => false,
+            'is_signature_spell'     => true,
+            'signature_for_entry_id' => $oathbreakerEntryId,
+            'zone'                   => 'main',
+        ]);
+    }
+
+    public function test_archidekt_signature_spell_category_is_recognised(): void
+    {
+        ScryfallCard::factory()->create([
+            'scryfall_id'    => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'name'           => 'Wrenn and Six',
+            'set_code'       => 'mh1',
+            'type_line'      => 'Legendary Planeswalker — Wrenn',
+            'color_identity' => ['R', 'G'],
+        ]);
+        ScryfallCard::factory()->create([
+            'scryfall_id'    => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'name'           => 'Fork in the Road',
+            'set_code'       => 'mh3',
+            'type_line'      => 'Sorcery',
+            'color_identity' => ['G'],
+        ]);
+
+        // Properly-categorised Archidekt deck: oathbreaker has "Commander",
+        // spell has "Signature Spell". The string-format legacy path also
+        // gets exercised here ("oathbreaker" instead of integer 14).
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id'         => 100,
+                'name'       => 'Wrenn Oathbreaker (clean)',
+                'deckFormat' => 'oathbreaker',
+                'cards'      => [
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            'oracleCard' => ['name' => 'Wrenn and Six'],
+                            'edition'    => ['editioncode' => 'mh1'],
+                        ],
+                    ],
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Signature Spell'],
+                        'card' => [
+                            'uid'        => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            'oracleCard' => ['name' => 'Fork in the Road'],
+                            'edition'    => ['editioncode' => 'mh3'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url'    => 'https://archidekt.com/decks/100/wrenn',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+        $this->assertDatabaseHas('decks', [
+            'id'                      => $deckId,
+            'format'                  => 'oathbreaker',
+            'commander_1_scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        ]);
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id'            => $deckId,
+            'scryfall_id'        => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'is_signature_spell' => true,
+        ]);
+    }
+
     public function test_moxfield_import_parses_commander_and_companion(): void
     {
         Http::fake([

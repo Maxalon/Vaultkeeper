@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useDeckStore } from '../../stores/deck'
+import { useDeckEntryActions } from '../../composables/useDeckEntryActions'
 import CardDetailBody from '../CardDetailBody.vue'
 import ZoneSelector from './ZoneSelector.vue'
 import CategoryInput from './CategoryInput.vue'
@@ -12,6 +13,7 @@ const deck = useDeckStore()
 const entry = computed(() =>
   deck.entries.find((e) => e.id === deck.activeEntryId) || null,
 )
+const { actions } = useDeckEntryActions(entry)
 
 const deckId = computed(() => deck.deck?.id)
 
@@ -25,6 +27,10 @@ const isGc = computed(() =>
   && entry.value?.scryfall_card?.commander_game_changer,
 )
 
+const isRoleLocked = computed(
+  () => !!(entry.value?.is_commander || entry.value?.is_signature_spell),
+)
+
 function onClose() {
   deck.activeEntryId = null
 }
@@ -35,9 +41,13 @@ function patch(fields) {
 }
 
 function onZoneChange(zone) {
-  if (entry.value && !entry.value.is_commander) {
+  if (entry.value && !isRoleLocked.value) {
     deck.moveEntryZone(deckId.value, entry.value.id, zone)
   }
+}
+
+function runAction(action) {
+  action.run().catch(() => { /* store-level toast */ })
 }
 
 function onRemove() {
@@ -62,9 +72,26 @@ function onRemove() {
         <label>Zone</label>
         <ZoneSelector
           :value="entry.zone"
-          :disabled="entry.is_commander"
+          :disabled="isRoleLocked"
           @change="onZoneChange"
         />
+      </div>
+
+      <div v-if="actions.length" class="field">
+        <label>{{ entry.is_commander ? 'Commander' : entry.is_signature_spell ? 'Signature spell' : 'Role' }}</label>
+        <div class="role-actions">
+          <button
+            v-for="a in actions"
+            :key="a.id"
+            type="button"
+            class="role-btn"
+            :class="{ 'role-btn--primary': a.kind === 'primary' }"
+            @click="runAction(a)"
+          >
+            <span>{{ a.label }}</span>
+            <span v-if="a.hint" class="role-hint">{{ a.hint }}</span>
+          </button>
+        </div>
       </div>
 
       <div class="field">
@@ -170,4 +197,36 @@ function onRemove() {
   color: #f5eadf;
 }
 .actions .danger:hover { background: #8e3c31; }
+.role-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.role-btn {
+  background: transparent;
+  border: 1px solid var(--hairline, #33312c);
+  color: inherit;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-align: center;
+  font: inherit;
+}
+.role-btn:hover { background: var(--bg-2, #26241f); }
+.role-btn--primary {
+  border-color: #8a6d2e;
+  color: var(--amber, #c9a552);
+}
+.role-btn--primary:hover {
+  background: #2a2516;
+  border-color: #a18030;
+}
+.role-btn .role-hint {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--ink-70, #a8a396);
+  margin-top: 2px;
+  font-weight: 400;
+}
 </style>

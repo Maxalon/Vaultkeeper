@@ -253,4 +253,45 @@ class BulkSyncOracleTableTest extends TestCase
         $this->assertTrue((bool) ScryfallOracle::find($mdfc)->is_mdfc);
         $this->assertTrue((bool) ScryfallOracle::find($leveler)->is_leveler);
     }
+
+    /**
+     * Regression: legacy scryfall_cards rows synced before parseTypeLine()
+     * existed (or digital-only Alchemy cards now filtered out by the
+     * paper-only ingest gate, so they never get re-parsed) carry a valid
+     * type_line but NULL supertypes/types/subtypes. The oracle rebuild
+     * must back-fill those columns instead of copying the NULLs forward,
+     * otherwise every t: / type: / subtype: filter silently drops them.
+     */
+    public function test_oracle_rebuild_backfills_null_type_columns_from_type_line(): void
+    {
+        $oid = '00000000-0000-0000-0000-000000000090';
+        $card = ScryfallCard::factory()->create([
+            'oracle_id' => $oid,
+            'name'      => 'Mine Security',
+            'type_line' => 'Legendary Creature — Kavu Soldier',
+        ]);
+
+        // Simulate the legacy state: factory leaves these NULL, but assert
+        // explicitly so the test fails loud if the factory ever changes.
+        DB::table('scryfall_cards')->where('id', $card->id)->update([
+            'supertypes' => null,
+            'types'      => null,
+            'subtypes'   => null,
+        ]);
+        $this->assertNull(DB::table('scryfall_cards')->where('id', $card->id)->value('types'));
+
+        $this->rebuild();
+
+        $oracle = ScryfallOracle::find($oid);
+        $this->assertSame(['Legendary'], $oracle->supertypes);
+        $this->assertSame(['Creature'],  $oracle->types);
+        $this->assertSame(['Kavu', 'Soldier'], $oracle->subtypes);
+
+        // And the source row should be backfilled too — so subsequent
+        // searches against scryfall_cards see the parsed values as well.
+        $this->assertSame(['Creature'], json_decode(
+            DB::table('scryfall_cards')->where('id', $card->id)->value('types'),
+            true,
+        ));
+    }
 }

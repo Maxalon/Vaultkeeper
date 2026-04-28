@@ -241,6 +241,98 @@ export const useDeckStore = defineStore('deck', {
       return this.updateDeck(this.deck.id, { [field]: scryfallId })
     },
 
+    /**
+     * Promote a deck entry into a commander slot. `slot` is 1 or 2; when null
+     * we auto-pick the first empty slot, falling back to slot 1 if both are
+     * full. The previous occupant of the chosen slot keeps its deck_entries
+     * row (with is_commander cleared) — backend syncCommanderEntries handles
+     * the flip.
+     *
+     * Note: the deck presenter exposes commanders as nested `commander1` /
+     * `commander2` objects, not the raw `*_scryfall_id` columns, so we read
+     * the current ids off those nested objects and write the column names
+     * the API validator expects.
+     */
+    async promoteEntryToCommander(deckId, entry, slot = null) {
+      if (!entry || !this.deck) return
+      const sid = entry.scryfall_id
+      const c1 = this.deck.commander1?.scryfall_id || null
+      const c2 = this.deck.commander2?.scryfall_id || null
+      // Already a commander — moving between slots goes through swap instead.
+      if (sid === c1 || sid === c2) return
+
+      let target = slot
+      if (target === null) {
+        if (!c1) target = 1
+        else if (!c2) target = 2
+        else target = 1
+      }
+      const field = target === 2 ? 'commander_2_scryfall_id' : 'commander_1_scryfall_id'
+      return this.updateDeck(deckId, { [field]: sid })
+    },
+
+    /** Clear an entry from whichever commander slot(s) it occupies. */
+    async demoteCommander(deckId, entry) {
+      if (!entry || !this.deck) return
+      const sid = entry.scryfall_id
+      const c1 = this.deck.commander1?.scryfall_id || null
+      const c2 = this.deck.commander2?.scryfall_id || null
+      const patch = {}
+      if (c1 === sid) patch.commander_1_scryfall_id = null
+      if (c2 === sid) patch.commander_2_scryfall_id = null
+      if (!Object.keys(patch).length) return
+      return this.updateDeck(deckId, patch)
+    },
+
+    /** Swap commander_1 ↔ commander_2 in one PATCH. No-op if either is empty. */
+    async swapCommanders(deckId) {
+      if (!this.deck) return
+      const c1 = this.deck.commander1?.scryfall_id || null
+      const c2 = this.deck.commander2?.scryfall_id || null
+      if (!c1 || !c2) return
+      return this.updateDeck(deckId, {
+        commander_1_scryfall_id: c2,
+        commander_2_scryfall_id: c1,
+      })
+    },
+
+    /**
+     * Mark a main-zone entry as a signature spell, attached to an oathbreaker
+     * entry id. When parentEntryId is null we pick the oathbreaker whose
+     * color identity contains every color of the spell; with no match we
+     * fall back to the first oathbreaker so legality can flag it.
+     */
+    async makeSignatureSpell(deckId, entry, parentEntryId = null) {
+      if (!entry) return
+      let parent = parentEntryId
+      if (parent === null) {
+        const oathbreakers = this.commanderEntries
+        if (oathbreakers.length === 1) {
+          parent = oathbreakers[0].id
+        } else if (oathbreakers.length > 1) {
+          const spellColors = entry.scryfall_card?.color_identity || []
+          const match = oathbreakers.find((ob) => {
+            const obColors = ob.scryfall_card?.color_identity || []
+            return spellColors.every((c) => obColors.includes(c))
+          })
+          parent = (match || oathbreakers[0]).id
+        }
+      }
+      return this.updateEntry(deckId, entry.id, {
+        is_signature_spell: true,
+        signature_for_entry_id: parent,
+      })
+    },
+
+    /** Clear is_signature_spell + signature_for_entry_id, leaving the entry as a normal main-zone card. */
+    async demoteSignatureSpell(deckId, entry) {
+      if (!entry) return
+      return this.updateEntry(deckId, entry.id, {
+        is_signature_spell: false,
+        signature_for_entry_id: null,
+      })
+    },
+
     async ignoreIllegality(id, payload) {
       await api.post(`/decks/${id}/illegalities/ignore`, payload)
       await this.loadIllegalities(id)

@@ -69,7 +69,7 @@ server {
     add_header X-Content-Type-Options    "nosniff" always;
     add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=()" always;
-    add_header Content-Security-Policy   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.bunny.net; img-src 'self' data: blob: https:; font-src 'self' https://fonts.bunny.net; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+    add_header Content-Security-Policy   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
 
     # ─── Request body limits ─────────────────────────────────────────────────
     # Default 1M is too small for /api/import (CSV up to 5 MB per
@@ -123,8 +123,19 @@ server {
     }
 
     # Horizon dashboard — Laravel routes served by php-fpm, same as /api.
-    # Gated by HorizonServiceProvider::gate() (env-driven email allowlist).
+    # Auth: per-environment password gate, see HorizonAuthController +
+    # RequireHorizonAuth middleware (config/horizon.php). The /horizon-setup
+    # and /horizon-login pages are also matched here (prefix match), and
+    # they tolerate the relaxed CSP fine since they ship no scripts at all.
+    #
+    # CSP: Horizon's Vue SPA ships an inline bootstrap script that the
+    # app-wide strict policy blocks. The include below swaps in a CSP that
+    # allows 'unsafe-inline' / 'unsafe-eval' for this location only — any
+    # location that defines its own add_header loses inheritance from the
+    # server block, so the snippet must restate every header we want kept.
     location /horizon {
+        include /etc/nginx/snippets/security-headers-horizon.conf;
+
         include fastcgi_params;
         fastcgi_pass api:9000;
         fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
@@ -132,6 +143,85 @@ server {
         fastcgi_param DOCUMENT_ROOT /var/www/html/public;
         fastcgi_param PATH_INFO "";
         access_log off;
+    }
+
+    # Adminer DB UI — proxied directly to the `adminer` service. Access
+    # is gated by an `auth_request` subrequest to /__db_auth (Laravel),
+    # which checks the same ops-password session that protects /horizon
+    # and answers 204 (let through) or 401 (bounce to login). nginx is
+    # the only thing that talks to adminer:8080.
+    #
+    # The earlier OpsDbProxyController + X-Accel-Redirect scheme dropped
+    # POST bodies on the internal subrequest, which silently broke
+    # Adminer's login form. auth_request keeps the original request
+    # method + body intact because nginx itself is the proxy.
+    #
+    # Rate limit: api_general (20r/s, defined in ratelimit.conf) is a
+    # belt-and-suspenders layer against bots brute-forcing the inner
+    # Adminer login form.
+    #
+    # CSP: Adminer ships inline scripts and styles, so the snippet
+    # included here relaxes script-src/style-src the same way Horizon
+    # does. Every other header from the strict set is preserved.
+    location = /db {
+        return 301 /db/;
+    }
+
+    location /db/ {
+        auth_request /__db_auth;
+        error_page 401 = @db_login;
+
+        limit_req zone=api_general burst=20 nodelay;
+        include /etc/nginx/snippets/security-headers-db.conf;
+
+        # Trailing slashes on both location and proxy_pass strip the
+        # /db/ prefix on the way to adminer:8080. Adminer-issued
+        # absolute redirects (`Location: /…`) get rewritten back under
+        # /db so the browser stays on the public path; relative
+        # redirects resolve correctly against the current /db/ URL.
+        proxy_pass http://adminer:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Prefix /db;
+        proxy_redirect ~^/(.*)$ /db/$1;
+
+        access_log off;
+    }
+
+    # Auth subrequest endpoint hit by `auth_request` above. internal;
+    # so external clients can't probe it. Body is suppressed because
+    # auth_request is always GET — passing through a stale
+    # Content-Length from the parent request makes php-fpm hang
+    # waiting for a body that won't arrive.
+    location = /__db_auth {
+        internal;
+
+        include fastcgi_params;
+        fastcgi_pass api:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/public/index.php;
+        fastcgi_param SCRIPT_NAME    /index.php;
+        fastcgi_param DOCUMENT_ROOT  /var/www/html/public;
+        fastcgi_param PATH_INFO      "";
+        # Force REQUEST_URI/REQUEST_METHOD to the subrequest values —
+        # fastcgi_params sets them from $request_uri/$request_method
+        # which still reflect the parent /db/... POST in subrequests.
+        fastcgi_param REQUEST_URI    /__db_auth;
+        fastcgi_param REQUEST_METHOD GET;
+        fastcgi_param CONTENT_LENGTH "";
+        fastcgi_param CONTENT_TYPE   "";
+        fastcgi_pass_request_body    off;
+
+        access_log off;
+    }
+
+    # 401 from the auth subrequest -> send the operator to the horizon
+    # login form, with ?next so they land back where they were trying
+    # to go. /horizon-login itself bounces to /horizon-setup when no
+    # admin row exists yet.
+    location @db_login {
+        return 302 /horizon-login?next=$request_uri;
     }
 
     # /storage/* (set symbols, mana symbols, card back) proxies to the

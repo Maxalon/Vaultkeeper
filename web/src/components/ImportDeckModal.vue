@@ -17,6 +17,9 @@ const submitting = ref(false)
 const error = ref('')
 const result = ref(null)
 const firstInput = ref(null)
+// Conflict info from a 409 response — when set, the modal shows the
+// 3-button "Update / Add as new / Cancel" choice instead of the form.
+const conflict = ref(null)
 
 function onKeydown(e) {
   if (e.key === 'Escape') emit('close')
@@ -44,16 +47,22 @@ const canSubmit = computed(() => {
   return !!(text.value.trim() && name.value.trim())
 })
 
-async function submit() {
-  if (!canSubmit.value) return
+// `mode` is sent on every URL import:
+//   'auto'   — first attempt; backend bails with 409 if a same-source deck exists.
+//   'update' — overwrite the matching existing deck.
+//   'create' — force a new deck (intentional duplicate).
+async function submit(mode = 'auto') {
+  if (!canSubmit.value && mode === 'auto') return
   submitting.value = true
   error.value = ''
   result.value = null
+  conflict.value = null
   try {
     const payload = tab.value === 'url'
       ? {
           source: detectedSource.value === 'Archidekt' ? 'archidekt' : 'moxfield',
           url: url.value.trim(),
+          mode,
         }
       : {
           source: 'text',
@@ -63,7 +72,9 @@ async function submit() {
         }
     result.value = await collection.importDeck(payload)
   } catch (e) {
-    if (e.response?.status === 422) {
+    if (e.response?.status === 409 && e.response.data?.existing) {
+      conflict.value = e.response.data.existing
+    } else if (e.response?.status === 422) {
       const errs = e.response.data.errors
       error.value = errs
         ? Object.values(errs).flat().join('; ')
@@ -76,8 +87,12 @@ async function submit() {
   }
 }
 
+function cancelConflict() {
+  conflict.value = null
+}
+
 function openDeck() {
-  const id = result.value?.deck?.id
+  const id = result.value?.deck?.id ?? conflict.value?.id
   emit('close')
   if (id) router.push({ name: 'deck', params: { id } })
 }
@@ -93,7 +108,7 @@ function openDeck() {
     >
       <h2 id="import-deck-title" class="display">Import Deck</h2>
 
-      <div v-if="!result" class="tabs" role="tablist">
+      <div v-if="!result && !conflict" class="tabs" role="tablist">
         <button
           type="button"
           class="tab"
@@ -112,12 +127,34 @@ function openDeck() {
         >From text</button>
       </div>
 
-      <form v-if="!result" @submit.prevent="submit">
+      <div v-if="conflict" class="conflict">
+        <p class="conflict-msg">
+          You already imported this deck as
+          <strong>{{ conflict.name }}</strong>.
+        </p>
+        <p class="conflict-hint">
+          <strong>Update</strong> overwrites the cards, commanders, format and
+          description from the source — the deck's group placement and any
+          ignored illegalities are kept.
+          <strong>Add as new</strong> imports a separate copy.
+        </p>
+        <div class="actions">
+          <button type="button" @click="cancelConflict">Cancel</button>
+          <button type="button" @click="submit('create')" :disabled="submitting">Add as new</button>
+          <button type="button" class="primary" @click="submit('update')" :disabled="submitting">
+            {{ submitting ? 'Updating…' : 'Update' }}
+          </button>
+        </div>
+      </div>
+
+      <form v-else-if="!result" @submit.prevent="submit('auto')">
         <template v-if="tab === 'url'">
           <label class="field">
             <span class="label">Deck URL</span>
             <input
               ref="firstInput"
+              name="deck-url"
+              autocomplete="off"
               v-model="url"
               type="url"
               placeholder="https://archidekt.com/decks/… or https://moxfield.com/decks/…"
@@ -130,11 +167,11 @@ function openDeck() {
         <template v-else>
           <label class="field">
             <span class="label">Deck name</span>
-            <input ref="firstInput" v-model="name" type="text" maxlength="100" />
+            <input ref="firstInput" name="deck-name" autocomplete="off" v-model="name" type="text" maxlength="100" />
           </label>
           <label class="field">
             <span class="label">Format</span>
-            <select v-model="format">
+            <select v-model="format" name="format">
               <option value="commander">Commander</option>
               <option value="oathbreaker">Oathbreaker</option>
               <option value="pauper">Pauper</option>
@@ -145,6 +182,7 @@ function openDeck() {
           <label class="field">
             <span class="label">Decklist</span>
             <textarea
+              name="decklist"
               v-model="text"
               class="decklist"
               rows="12"
@@ -330,4 +368,22 @@ function openDeck() {
   padding: 2px 8px;
   border-radius: 999px;
 }
+.conflict {
+  padding-top: 4px;
+}
+.conflict-msg {
+  margin: 0 0 10px;
+  padding: 12px;
+  background: var(--bg-0);
+  border-left: 2px solid var(--gold);
+  border-radius: 0 4px 4px 0;
+  font-size: 13px;
+}
+.conflict-hint {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.conflict-hint strong { color: var(--gold); }
 </style>

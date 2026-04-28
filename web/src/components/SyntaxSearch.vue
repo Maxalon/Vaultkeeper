@@ -47,6 +47,9 @@ function onInput(event) {
       </div>
       <input
         class="vk-syntax-input"
+        name="search"
+        type="search"
+        autocomplete="off"
         :value="modelValue"
         :placeholder="placeholder"
         spellcheck="false"

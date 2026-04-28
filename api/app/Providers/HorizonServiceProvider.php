@@ -23,28 +23,29 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     /**
      * Register the Horizon gate.
      *
-     * Access in non-local environments is restricted to the email addresses
-     * listed in HORIZON_ALLOWED_EMAILS (comma-separated) in the environment.
-     * In the local environment the parent class grants access to everyone so
-     * we don't override that.
-     *
-     * The allowlist lives in env instead of a database column so we don't
-     * need an admin-user schema change just to lock down /horizon, and so
-     * prod can rotate allowed operators by editing .env and redeploying.
+     * The dashboard is gated by a per-environment password chosen at first
+     * access via /horizon-setup (HorizonAuthController). The session value
+     * `horizon_authed` holds a token derived from the admin's password
+     * hash; we compare it to the current hash so any password change or
+     * `horizon:reset-credentials` wipe instantly invalidates every active
+     * session. RequireHorizonAuth (registered in config/horizon.php) does
+     * the same check at the middleware layer to redirect unauthenticated
+     * visitors to the setup/login form; this gate is the second line of
+     * defence if that middleware is misconfigured.
      */
     protected function gate(): void
     {
         Gate::define('viewHorizon', function ($user = null) {
-            $allowed = array_filter(array_map(
-                'trim',
-                explode(',', (string) env('HORIZON_ALLOWED_EMAILS', ''))
-            ));
+            $admin = \App\Models\HorizonAdmin::query()->first();
+            if (! $admin) return false;
 
-            if (empty($allowed)) {
-                return false;
-            }
+            $sessionToken = session('horizon_authed');
+            if (! is_string($sessionToken) || $sessionToken === '') return false;
 
-            return in_array(optional($user)->email, $allowed, true);
+            return hash_equals(
+                \App\Http\Controllers\HorizonAuthController::authToken($admin->password_hash),
+                $sessionToken,
+            );
         });
     }
 }

@@ -216,6 +216,8 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
           <input
             v-if="activeType === 'drawer'"
             ref="nameInput"
+            name="location-name"
+            autocomplete="off"
             v-model="drawerForm.name"
             type="text"
             maxlength="100"
@@ -223,6 +225,8 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
           <input
             v-else-if="activeType === 'binder'"
             ref="nameInput"
+            name="location-name"
+            autocomplete="off"
             v-model="binderForm.name"
             type="text"
             maxlength="100"
@@ -230,6 +234,8 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
           <input
             v-else
             ref="nameInput"
+            name="location-name"
+            autocomplete="off"
             v-model="deckForm.name"
             type="text"
             maxlength="100"
@@ -240,18 +246,21 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
           <span class="label">Description <span class="hint">(optional)</span></span>
           <textarea
             v-if="activeType === 'drawer'"
+            name="description"
             v-model="drawerForm.description"
             maxlength="500"
             rows="3"
           ></textarea>
           <textarea
             v-else-if="activeType === 'binder'"
+            name="description"
             v-model="binderForm.description"
             maxlength="500"
             rows="3"
           ></textarea>
           <textarea
             v-else
+            name="description"
             v-model="deckForm.description"
             maxlength="500"
             rows="3"
@@ -262,7 +271,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
         <template v-if="activeType === 'deck'">
           <label class="field">
             <span class="label">Format</span>
-            <select v-model="deckForm.format">
+            <select v-model="deckForm.format" name="format">
               <option value="commander">Commander</option>
               <option value="oathbreaker">Oathbreaker</option>
               <option value="pauper">Pauper</option>
@@ -273,7 +282,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 
           <div v-if="showCommanderSlots" class="field autocomplete-field">
             <span class="label">{{ deckForm.format === 'oathbreaker' ? 'Oathbreaker' : 'Commander' }}</span>
-            <input type="text" v-model="commander1Name" placeholder="Search…" />
+            <input type="text" name="commander" autocomplete="off" v-model="commander1Name" placeholder="Search…" />
             <ul v-if="cmdr1Results.length" class="autocomplete-list">
               <li v-for="c in cmdr1Results" :key="c.scryfall_id" @mousedown.prevent="pickCommander(1, c)">
                 {{ c.name }} · {{ c.set_code?.toUpperCase() }}
@@ -283,7 +292,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 
           <div v-if="showPartnerSlot" class="field autocomplete-field">
             <span class="label">Partner (optional)</span>
-            <input type="text" v-model="commander2Name" placeholder="Search…" />
+            <input type="text" name="partner" autocomplete="off" v-model="commander2Name" placeholder="Search…" />
             <ul v-if="cmdr2Results.length" class="autocomplete-list">
               <li v-for="c in cmdr2Results" :key="c.scryfall_id" @mousedown.prevent="pickCommander(2, c)">
                 {{ c.name }} · {{ c.set_code?.toUpperCase() }}
@@ -293,7 +302,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 
           <div v-if="showCompanion" class="field autocomplete-field">
             <span class="label">Companion (optional)</span>
-            <input type="text" v-model="companionName" placeholder="Search…" />
+            <input type="text" name="companion" autocomplete="off" v-model="companionName" placeholder="Search…" />
             <ul v-if="compResults.length" class="autocomplete-list">
               <li v-for="c in compResults" :key="c.scryfall_id" @mousedown.prevent="pickCompanion(c)">
                 {{ c.name }} · {{ c.set_code?.toUpperCase() }}

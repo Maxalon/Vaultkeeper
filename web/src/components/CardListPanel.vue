@@ -117,7 +117,7 @@ function onPeekHide() {
       <button type="button" class="sel-btn" @click="collection.selectAll()">All</button>
       <button type="button" class="sel-btn" @click="collection.clearSelection()">None</button>
       <div class="sel-move">
-        <select v-model="moveTarget">
+        <select name="move-target" v-model="moveTarget">
           <option value="" disabled selected>Move to…</option>
           <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
         </select>

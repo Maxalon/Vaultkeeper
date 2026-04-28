@@ -83,7 +83,9 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    // 'web' brings session/CSRF/cookies; RequireHorizonAuth bounces
+    // unauthenticated visitors to /horizon-setup or /horizon-login.
+    'middleware' => ['web', \App\Http\Middleware\RequireHorizonAuth::class],
 
     /*
     |--------------------------------------------------------------------------
@@ -212,10 +214,22 @@ return [
         ],
     ],
 
+    // Horizon looks up supervisors by APP_ENV. Any environment missing from
+    // this map starts the master with zero supervisors, so jobs queue but
+    // never run. Staging runs the same workload as production with smaller
+    // headroom — production-tier scaling on a half-sized box would peg CPU.
     'environments' => [
         'production' => [
             'supervisor-1' => [
                 'maxProcesses' => 10,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
+        ],
+
+        'staging' => [
+            'supervisor-1' => [
+                'maxProcesses' => 3,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],

@@ -104,8 +104,8 @@ function openSettings() {
 
 <template>
   <header class="vk-topbar">
-    <div class="vk-topbar-brand">
-      <VaultMark />
+    <div class="vk-topbar-brand" :class="{ collapsed: sidebarCollapsed }">
+      <VaultMark :compact="sidebarCollapsed" />
       <button
         class="vk-sidebar-collapse"
         :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -122,7 +122,7 @@ function openSettings() {
       </button>
     </div>
 
-    <div class="vk-topbar-center">
+    <div class="vk-topbar-center" :class="`mode-${mode}`">
       <template v-if="mode === 'collection'">
         <FilterChip
           label="Color"
@@ -202,7 +202,11 @@ function openSettings() {
 <style scoped>
 .vk-topbar {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr) auto;
+  /* The brand column is decoupled from the sidebar width so it can stay
+     comfortably sized when the sidebar is collapsed. While expanded,
+     --brand-width mirrors --sidebar-width (set on the shell), so the
+     brand still tracks the sidebar during a drag-resize. */
+  grid-template-columns: var(--brand-width, var(--sidebar-width)) minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--hairline);
   background: var(--bg-1);
@@ -219,6 +223,14 @@ function openSettings() {
   gap: 12px;
   border-right: 1px solid var(--hairline);
   overflow: hidden;
+}
+/* When the sidebar is collapsed, the brand column keeps its own width
+   (~96px) and lays out the 18px logo and 28px toggle button with proper
+   breathing room instead of cramming them into the sidebar's footprint. */
+.vk-topbar-brand.collapsed {
+  padding: 0 16px;
+  gap: 12px;
+  justify-content: center;
 }
 
 .vk-sidebar-collapse {
@@ -244,11 +256,19 @@ function openSettings() {
 
 .vk-topbar-center {
   display: flex;
-  align-items: flex-end;
   gap: 6px;
   padding: 0 16px;
   height: 100%;
   min-width: 0; /* lets the tabs-bar child actually clip + scroll */
+}
+/* Collection chips + search sit centered in the topbar's vertical space.
+   Deck tabs hug the bottom edge so they read like browser tabs meeting
+   the hairline below the topbar. */
+.vk-topbar-center.mode-collection {
+  align-items: center;
+}
+.vk-topbar-center.mode-deck {
+  align-items: flex-end;
 }
 
 .vk-topbar-right {

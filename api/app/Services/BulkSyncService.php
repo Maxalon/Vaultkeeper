@@ -836,6 +836,14 @@ class BulkSyncService
             WHERE c.oracle_id IS NULL
         SQL);
 
+        // Dropped-tag cleanup — rows whose tag is no longer in the configured
+        // list (e.g. an operator removed `wheel` from config/scryfall.php).
+        // Without this, dropped tags would silently linger in card_oracle_tags
+        // forever and keep showing up on otag: searches and card detail.
+        if (! empty($tags)) {
+            DB::table('card_oracle_tags')->whereNotIn('tag', $tags)->delete();
+        }
+
         Log::info('BulkSyncService::syncOracleTags — done', $perTagCounts);
 
         return $perTagCounts;
@@ -1052,6 +1060,145 @@ class BulkSyncService
     }
 
     /**
+     * Default staleness window for pruneStaleCards(). 21 days gives Scryfall
+     * three weekly bulk-sync windows to surface a card before we drop it —
+     * enough headroom to absorb a transient outage on their side without
+     * triggering false-positive deletions.
+     */
+    public const STALE_CARD_THRESHOLD_DAYS = 21;
+
+    /**
+     * Delete scryfall_cards rows whose last_synced_at is older than
+     * $thresholdDays. Catches two cases in one sweep:
+     *
+     *   1. Digital-only Alchemy / MTGO-only printings sitting in the table
+     *      from before the paper-only intake filter — they never reappear
+     *      in the bulk feed, so their last_synced_at never advances.
+     *   2. Cards Scryfall has dropped from the catalog entirely (errata-
+     *      removed, merged into another oracle, etc.). Anything we still
+     *      cared about would have been rewritten by handleMigrations()
+     *      first; whatever remains stale really is gone.
+     *
+     * Rows referenced by user data (collection_entries / deck_entries) are
+     * skipped — those FKs are RESTRICT, so the DELETE would error anyway,
+     * but more importantly we never want to silently corrupt a user's
+     * collection/deck. They surface in the returned `protected` count so
+     * an operator can investigate (and resolve via scryfall:purge-non-paper,
+     * which has the online preflight to back-check Scryfall).
+     *
+     * scryfall_cards_raw rows cascade-delete on the FK so they clean up
+     * automatically. decks.commander_*_scryfall_id and companion_scryfall_id
+     * are SET NULL on delete — safe.
+     *
+     * @return array{deleted: int, protected: int, cutoff: string}
+     */
+    public function pruneStaleCards(int $thresholdDays = self::STALE_CARD_THRESHOLD_DAYS): array
+    {
+        $cutoff = now()->subDays($thresholdDays);
+
+        // Pinned: stale rows still referenced by user data. Count first
+        // (before the DELETE shrinks the candidate pool) so we can surface
+        // them to the operator — the existing scryfall:purge-non-paper
+        // command handles their cleanup with an online preflight.
+        $protected = DB::table('scryfall_cards')
+            ->where('last_synced_at', '<', $cutoff)
+            ->where(function ($q) {
+                $q->whereExists(function ($sq) {
+                    $sq->from('collection_entries')
+                        ->whereColumn('collection_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+                })->orWhereExists(function ($sq) {
+                    $sq->from('deck_entries')
+                        ->whereColumn('deck_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+                });
+            })
+            ->count();
+
+        // Delete the unreferenced stale rows in one shot. Using NOT EXISTS
+        // (correlated subquery) keeps the work in the DB — no PHP-side
+        // ID materialization, no chunked IN() lists.
+        $deleted = DB::table('scryfall_cards')
+            ->where('last_synced_at', '<', $cutoff)
+            ->whereNotExists(function ($q) {
+                $q->from('collection_entries')
+                    ->whereColumn('collection_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+            })
+            ->whereNotExists(function ($q) {
+                $q->from('deck_entries')
+                    ->whereColumn('deck_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+            })
+            ->delete();
+
+        if ($deleted > 0 || $protected > 0) {
+            Log::info(
+                "BulkSyncService::pruneStaleCards — deleted {$deleted} stale rows, "
+                . "protected {$protected} via user-data FKs (cutoff: {$cutoff->toDateTimeString()})"
+            );
+        }
+
+        return [
+            'deleted'   => $deleted,
+            'protected' => $protected,
+            'cutoff'    => $cutoff->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * Re-derive supertypes/types/subtypes from type_line for any
+     * scryfall_cards row that has a type_line but missing parsed columns.
+     *
+     * Targets legacy rows synced before parseTypeLine() existed (or before
+     * the paper-only filter started excluding digital-only Alchemy cards
+     * from re-syncs) — those rows still carry valid type_line strings but
+     * have NULL in supertypes/types/subtypes, which then propagates into
+     * scryfall_oracles and breaks t:/type:/subtype: filters.
+     *
+     * Idempotent: only touches rows where at least one of the three parsed
+     * columns is NULL. Runs in chunks via the auto-increment id so it scales.
+     *
+     * @return int  rows updated
+     */
+    public function backfillCardTypes(): int
+    {
+        if ($this->multiWordSubtypes === []) {
+            $this->loadMultiWordSubtypes();
+        }
+
+        $updated = 0;
+        ScryfallCard::query()
+            ->whereNotNull('type_line')
+            ->where(function ($q) {
+                $q->whereNull('supertypes')
+                  ->orWhereNull('types')
+                  ->orWhereNull('subtypes');
+            })
+            ->select('id', 'type_line')
+            ->chunkById(self::UPSERT_CHUNK, function ($cards) use (&$updated) {
+                $now = now();
+                foreach ($cards as $card) {
+                    $parsed = $this->parseTypeLine(
+                        (string) $card->type_line,
+                        $this->multiWordSubtypes,
+                    );
+                    DB::table('scryfall_cards')
+                        ->where('id', $card->id)
+                        ->update([
+                            'supertypes' => json_encode($parsed['supertypes']),
+                            'types'      => json_encode($parsed['types']),
+                            'subtypes'   => json_encode($parsed['subtypes']),
+                            'updated_at' => $now,
+                        ]);
+                    $updated++;
+                }
+            });
+
+        if ($updated > 0) {
+            Log::info("BulkSyncService::backfillCardTypes — backfilled {$updated} cards");
+        }
+
+        return $updated;
+    }
+
+    /**
      * Rebuild scryfall_oracles from scryfall_cards. One row per oracle_id.
      *
      * - Picks the default representative printing with the same priority
@@ -1070,6 +1217,14 @@ class BulkSyncService
      */
     public function syncOracleTable(): array
     {
+        // Defensive: legacy rows (digital-only Alchemy cards synced before
+        // the paper-only filter, or rows predating the type-line parser)
+        // can sit in scryfall_cards with NULL parsed-type columns. The
+        // INSERT-SELECT below copies those NULLs straight into
+        // scryfall_oracles and breaks every t:/type:/subtype: filter, so
+        // re-derive them from type_line first.
+        $this->backfillCardTypes();
+
         $excludedList = "'" . implode("','", self::INELIGIBLE_SET_TYPES) . "'";
 
         DB::statement('TRUNCATE TABLE scryfall_oracles');

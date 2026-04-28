@@ -94,6 +94,31 @@ services:
           cpus: '1.0'
           memory: 256M
 
+  # ─── Adminer (MySQL web UI for ops) ────────────────────────────────────────
+  # Exposed at /db on the same nginx listener as the rest of the app. No host
+  # port mapping — nginx is the only thing that talks to it. Two layers of
+  # auth: nginx gates /db/* via `auth_request` against Laravel's /__db_auth
+  # endpoint (same ops-password session that protects /horizon), and then
+  # Adminer's own login form takes the actual MySQL credentials. The DB
+  # user/host/password are NEVER pre-filled by the container — operators type
+  # them at first login per environment from .env.<env>, and Adminer remembers
+  # the server choice via its own cookie.
+  adminer:
+    image: adminer:5
+    restart: unless-stopped
+    environment:
+      ADMINER_DESIGN: dracula
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - vaultkeeper
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
   # ─── MinIO bucket bootstrap (one-shot) ─────────────────────────────────────
   # Creates the assets bucket and sets a read-public policy so the nginx
   # edge can serve objects without signed URLs. Exits when done; the api
@@ -151,7 +176,6 @@ services:
       ASSETS_AWS_ENDPOINT: http://minio:9000
       ASSETS_PUBLIC_URL: ${APP_URL}/storage
       JWT_SECRET: ${JWT_SECRET}
-      HORIZON_ALLOWED_EMAILS: ${HORIZON_ALLOWED_EMAILS:-}
     depends_on:
       db:
         condition: service_healthy

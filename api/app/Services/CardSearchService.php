@@ -535,7 +535,12 @@ class CardSearchService
             }
         }
 
+        // Clear the atom so isEmpty() treats this leaf as empty when it's
+        // the root node (parser collapses single-child AND groups, so a
+        // query of just `order:edhrec` arrives here as a bare leaf with no
+        // surrounding group to filter it out via the _strip flag).
         $node['_strip'] = true;
+        $node['atom'] = null;
     }
 
     /**
