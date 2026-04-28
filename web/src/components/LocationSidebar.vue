@@ -79,6 +79,20 @@ function isCollapsed(groupId) { return collection.isGroupCollapsed(groupId) }
 function groupCardCount(group) {
   return group.locations.reduce((sum, l) => sum + (l.card_count || 0), 0)
 }
+function groupCounterValue(group) {
+  if (settings.sidebarGroupCounter === 'locations') return group.locations.length
+  return groupCardCount(group)
+}
+function shouldShowLocCount(loc) {
+  if (loc.kind === 'deck') return settings.sidebarShowCountDeck
+  if (loc.type === 'drawer') return settings.sidebarShowCountDrawer
+  if (loc.type === 'binder') return settings.sidebarShowCountBinder
+  return true
+}
+async function deleteLocation(loc) {
+  if (!confirm(`Delete "${loc.name}"? Cards in it will be unassigned.`)) return
+  await collection.deleteLocation(loc.id)
+}
 
 async function startCreateGroup() {
   creatingGroup.value = true
@@ -221,13 +235,13 @@ function onGroupAdd(evt, group) {
                   <template v-else>
                     <span class="label">{{ item.name }}</span>
                   </template>
-                  <span class="num">{{ groupCardCount(item) }}</span>
+                  <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ groupCounterValue(item) }}</span>
                   <span class="group-actions" @click.stop>
-                    <span class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
-                    <button type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
+                    <span v-if="settings.sidebarShowDrag" class="drag-handle group-handle" @click.stop title="Drag">⠿</span>
+                    <button v-if="settings.sidebarShowEdit" type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
                       <IconEdit />
                     </button>
-                    <button type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
+                    <button v-if="settings.sidebarShowDelete" type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
                   </span>
                 </div>
               </template>
@@ -240,11 +254,11 @@ function onGroupAdd(evt, group) {
                   :class="{ active: activeDeckId() === loc.id }"
                   @click="openDeck(loc)"
                 >
-                  <span class="drag drag-handle" @click.stop>⠿</span>
+                  <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
                   <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
                   <span class="label">{{ loc.name }}</span>
-                  <span class="format-badge">{{ formatShort(loc.format) }}</span>
-                  <span class="num">{{ loc.entry_count }}</span>
+                  <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(loc.format) }}</span>
+                  <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.entry_count }}</span>
                 </button>
                 <button
                   v-else
@@ -254,18 +268,21 @@ function onGroupAdd(evt, group) {
                   :class="{ active: isActive(loc) }"
                   @click="activate(loc)"
                 >
-                  <span class="drag drag-handle" @click.stop>⠿</span>
+                  <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
                   <span class="set-sym loc-icon" aria-hidden="true">
                     <IconDrawer v-if="loc.type === 'drawer'" />
                     <IconBinder v-else-if="loc.type === 'binder'" />
                     <IconDeck v-else-if="loc.type === 'deck'" />
                   </span>
                   <span class="label">{{ loc.name }}</span>
-                  <span class="num">{{ loc.card_count }}</span>
-                  <span class="edit" @click.stop>
+                  <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.card_count }}</span>
+                  <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
                     <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
                       <IconEdit />
                     </button>
+                  </span>
+                  <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+                    <button type="button" class="delete-btn" @click="deleteLocation(loc)" title="Delete">×</button>
                   </span>
                 </button>
               </template>
@@ -279,11 +296,11 @@ function onGroupAdd(evt, group) {
             :class="{ active: activeDeckId() === item.id }"
             @click="openDeck(item)"
           >
-            <span class="drag drag-handle" @click.stop>⠿</span>
+            <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
             <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
             <span class="label">{{ item.name }}</span>
-            <span class="format-badge">{{ formatShort(item.format) }}</span>
-            <span class="num">{{ item.entry_count }}</span>
+            <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(item.format) }}</span>
+            <span v-if="shouldShowLocCount(item)" class="num">{{ item.entry_count }}</span>
           </button>
 
           <button
@@ -293,18 +310,21 @@ function onGroupAdd(evt, group) {
             :class="{ active: isActive(item) }"
             @click="activate(item)"
           >
-            <span class="drag drag-handle" @click.stop>⠿</span>
+            <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
             <span class="set-sym loc-icon" aria-hidden="true">
               <IconDrawer v-if="item.type === 'drawer'" />
               <IconBinder v-else-if="item.type === 'binder'" />
               <IconDeck v-else-if="item.type === 'deck'" />
             </span>
             <span class="label">{{ item.name }}</span>
-            <span class="num">{{ item.card_count }}</span>
-            <span class="edit" @click.stop>
+            <span v-if="shouldShowLocCount(item)" class="num">{{ item.card_count }}</span>
+            <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
               <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
                 <IconEdit />
               </button>
+            </span>
+            <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
+              <button type="button" class="delete-btn" @click="deleteLocation(item)" title="Delete">×</button>
             </span>
           </button>
         </template>
@@ -497,9 +517,10 @@ function onGroupAdd(evt, group) {
   letter-spacing: 0.04em;
 }
 
-/* Hover-revealed drag handle + edit (shared between top-level + nested rows) */
+/* Hover-revealed drag handle + edit + delete (shared between top-level + nested rows) */
 .sidebar-item .drag,
-.sidebar-item .edit {
+.sidebar-item .edit,
+.sidebar-item .del {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -520,7 +541,8 @@ function onGroupAdd(evt, group) {
   user-select: none;
   padding: 0;
 }
-.sidebar-item .edit {
+.sidebar-item .edit,
+.sidebar-item .del {
   width: 0;
   margin-left: 0;
   margin-right: -4px;
@@ -531,17 +553,21 @@ function onGroupAdd(evt, group) {
   width: 10px;
   margin-right: -2px;
 }
-.sidebar-item:hover .edit {
+.sidebar-item:hover .edit,
+.sidebar-item:hover .del {
   opacity: 0.6;
   width: 14px;
   margin-left: 2px;
 }
 .sidebar-item .drag:hover,
-.sidebar-item .edit:hover {
+.sidebar-item .edit:hover,
+.sidebar-item .del:hover {
   opacity: 1;
   color: var(--ink-100);
 }
-.sidebar-item .edit-btn {
+.sidebar-item .del:hover { color: #d46a6a; }
+.sidebar-item .edit-btn,
+.sidebar-item .delete-btn {
   background: transparent;
   border: 0;
   color: inherit;
@@ -549,6 +575,10 @@ function onGroupAdd(evt, group) {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+}
+.sidebar-item .delete-btn {
+  font-size: 16px;
+  line-height: 1;
 }
 
 /* ── Group section ──────────────────────────────────────────────── */
@@ -760,7 +790,9 @@ footer::before {
 .location-sidebar.collapsed .sidebar-item .label,
 .location-sidebar.collapsed .sidebar-item .num,
 .location-sidebar.collapsed .sidebar-item .drag,
-.location-sidebar.collapsed .sidebar-item .edit {
+.location-sidebar.collapsed .sidebar-item .edit,
+.location-sidebar.collapsed .sidebar-item .del,
+.location-sidebar.collapsed .sidebar-item .format-badge {
   display: none !important;
 }
 .location-sidebar.collapsed .sidebar-item {

@@ -6,7 +6,27 @@ const defaults = {
   density: 'default', // 'compact' | 'default' | 'cozy'
   hoverMode: 'expand', // 'expand' (current behaviour) | 'peek' (popover)
   displayMode: 'A', // 'A' typed-name strips | 'B' corner-badge strips
+
+  // Location sidebar customization
+  sidebarShowEdit: true,
+  sidebarShowDelete: false,
+  sidebarShowDrag: true,
+  sidebarShowCountDrawer: true,
+  sidebarShowCountBinder: true,
+  sidebarShowCountDeck: true,
+  sidebarShowFormatBadge: true,
+  sidebarGroupCounter: 'cards', // 'cards' | 'locations' | 'off'
 }
+
+const SIDEBAR_BOOL_KEYS = [
+  'sidebarShowEdit',
+  'sidebarShowDelete',
+  'sidebarShowDrag',
+  'sidebarShowCountDrawer',
+  'sidebarShowCountBinder',
+  'sidebarShowCountDeck',
+  'sidebarShowFormatBadge',
+]
 
 export const useSettingsStore = defineStore('settings', {
   state: () => ({ ...defaults }),
@@ -15,20 +35,17 @@ export const useSettingsStore = defineStore('settings', {
     hydrate() {
       try {
         const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-        this.density = raw.density ?? defaults.density
-        this.hoverMode = raw.hoverMode ?? defaults.hoverMode
-        this.displayMode = raw.displayMode ?? defaults.displayMode
+        for (const key of Object.keys(defaults)) {
+          if (raw[key] !== undefined) this[key] = raw[key]
+        }
       } catch {
         // Ignore — keep defaults if storage is corrupt.
       }
     },
 
     persist() {
-      const payload = {
-        density: this.density,
-        hoverMode: this.hoverMode,
-        displayMode: this.displayMode,
-      }
+      const payload = {}
+      for (const key of Object.keys(defaults)) payload[key] = this[key]
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     },
 
@@ -48,6 +65,18 @@ export const useSettingsStore = defineStore('settings', {
     setDisplayMode(value) {
       if (!['A', 'B'].includes(value)) return
       this.displayMode = value
+      this.persist()
+    },
+
+    setSidebarBool(key, value) {
+      if (!SIDEBAR_BOOL_KEYS.includes(key)) return
+      this[key] = !!value
+      this.persist()
+    },
+
+    setSidebarGroupCounter(value) {
+      if (!['cards', 'locations', 'off'].includes(value)) return
+      this.sidebarGroupCounter = value
       this.persist()
     },
   },
