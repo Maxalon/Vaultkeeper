@@ -281,7 +281,7 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     /**
-     * Persist the full drag-and-drop state. Fires after vuedraggable has
+     * Persist the full drag-and-drop state. Fires after vue-draggable-plus has
      * already mutated the reactive arrays, so the UI is already correct —
      * we just need the server to match. On failure, surface the error and
      * refetch to snap back.
