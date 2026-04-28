@@ -70,6 +70,8 @@ function closeMenu() { menuPos.value = null }
            it with the base's animated corner badge, so hide this one to
            avoid stacking two quantity markers. -->
       <span v-if="qty > 1 && isModeA" class="qty-badge">{{ qty }}</span>
+    </template>
+    <template #overlay-extras>
       <span
         v-if="showGameChanger && card.commander_game_changer"
         class="gc-badge"
@@ -86,9 +88,11 @@ function closeMenu() { menuPos.value = null }
   border: 1px solid #0a0a0a;
 }
 
-/* Badges sit inside the base's .strip-clip via the #badges slot. */
-.qty-badge, .gc-badge {
+/* Floating quantity pill, top-right of the strip-clip. */
+.qty-badge {
   position: absolute;
+  top: 4px;
+  right: 4px;
   min-width: 22px;
   height: 20px;
   padding: 0 6px;
@@ -102,19 +106,12 @@ function closeMenu() { menuPos.value = null }
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   z-index: 3;
-}
-.qty-badge {
-  top: 4px;
-  right: 4px;
   background: rgba(0, 0, 0, 0.82);
   color: #fff;
 }
-.gc-badge {
-  top: 4px;
-  left: 4px;
-  background: var(--amber, #c9a552);
-  color: #1a1408;
-}
+
+/* GC pill rides inside the overlay bar (left of mana cost) — visual
+   styling comes from the global .gc-badge rule in style.css. */
 
 /* .illegal-glow itself is a global rule in style.css (shared pulse
    with DeckCardTile / CommanderZone); nothing strip-specific to add. */
