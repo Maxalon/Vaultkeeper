@@ -836,6 +836,14 @@ class BulkSyncService
             WHERE c.oracle_id IS NULL
         SQL);
 
+        // Dropped-tag cleanup — rows whose tag is no longer in the configured
+        // list (e.g. an operator removed `wheel` from config/scryfall.php).
+        // Without this, dropped tags would silently linger in card_oracle_tags
+        // forever and keep showing up on otag: searches and card detail.
+        if (! empty($tags)) {
+            DB::table('card_oracle_tags')->whereNotIn('tag', $tags)->delete();
+        }
+
         Log::info('BulkSyncService::syncOracleTags — done', $perTagCounts);
 
         return $perTagCounts;
