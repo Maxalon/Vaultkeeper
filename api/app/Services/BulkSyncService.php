@@ -1052,6 +1052,89 @@ class BulkSyncService
     }
 
     /**
+     * Default staleness window for pruneStaleCards(). 21 days gives Scryfall
+     * three weekly bulk-sync windows to surface a card before we drop it —
+     * enough headroom to absorb a transient outage on their side without
+     * triggering false-positive deletions.
+     */
+    public const STALE_CARD_THRESHOLD_DAYS = 21;
+
+    /**
+     * Delete scryfall_cards rows whose last_synced_at is older than
+     * $thresholdDays. Catches two cases in one sweep:
+     *
+     *   1. Digital-only Alchemy / MTGO-only printings sitting in the table
+     *      from before the paper-only intake filter — they never reappear
+     *      in the bulk feed, so their last_synced_at never advances.
+     *   2. Cards Scryfall has dropped from the catalog entirely (errata-
+     *      removed, merged into another oracle, etc.). Anything we still
+     *      cared about would have been rewritten by handleMigrations()
+     *      first; whatever remains stale really is gone.
+     *
+     * Rows referenced by user data (collection_entries / deck_entries) are
+     * skipped — those FKs are RESTRICT, so the DELETE would error anyway,
+     * but more importantly we never want to silently corrupt a user's
+     * collection/deck. They surface in the returned `protected` count so
+     * an operator can investigate (and resolve via scryfall:purge-non-paper,
+     * which has the online preflight to back-check Scryfall).
+     *
+     * scryfall_cards_raw rows cascade-delete on the FK so they clean up
+     * automatically. decks.commander_*_scryfall_id and companion_scryfall_id
+     * are SET NULL on delete — safe.
+     *
+     * @return array{deleted: int, protected: int, cutoff: string}
+     */
+    public function pruneStaleCards(int $thresholdDays = self::STALE_CARD_THRESHOLD_DAYS): array
+    {
+        $cutoff = now()->subDays($thresholdDays);
+
+        // Pinned: stale rows still referenced by user data. Count first
+        // (before the DELETE shrinks the candidate pool) so we can surface
+        // them to the operator — the existing scryfall:purge-non-paper
+        // command handles their cleanup with an online preflight.
+        $protected = DB::table('scryfall_cards')
+            ->where('last_synced_at', '<', $cutoff)
+            ->where(function ($q) {
+                $q->whereExists(function ($sq) {
+                    $sq->from('collection_entries')
+                        ->whereColumn('collection_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+                })->orWhereExists(function ($sq) {
+                    $sq->from('deck_entries')
+                        ->whereColumn('deck_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+                });
+            })
+            ->count();
+
+        // Delete the unreferenced stale rows in one shot. Using NOT EXISTS
+        // (correlated subquery) keeps the work in the DB — no PHP-side
+        // ID materialization, no chunked IN() lists.
+        $deleted = DB::table('scryfall_cards')
+            ->where('last_synced_at', '<', $cutoff)
+            ->whereNotExists(function ($q) {
+                $q->from('collection_entries')
+                    ->whereColumn('collection_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+            })
+            ->whereNotExists(function ($q) {
+                $q->from('deck_entries')
+                    ->whereColumn('deck_entries.scryfall_id', 'scryfall_cards.scryfall_id');
+            })
+            ->delete();
+
+        if ($deleted > 0 || $protected > 0) {
+            Log::info(
+                "BulkSyncService::pruneStaleCards — deleted {$deleted} stale rows, "
+                . "protected {$protected} via user-data FKs (cutoff: {$cutoff->toDateTimeString()})"
+            );
+        }
+
+        return [
+            'deleted'   => $deleted,
+            'protected' => $protected,
+            'cutoff'    => $cutoff->toDateTimeString(),
+        ];
+    }
+
+    /**
      * Re-derive supertypes/types/subtypes from type_line for any
      * scryfall_cards row that has a type_line but missing parsed columns.
      *
