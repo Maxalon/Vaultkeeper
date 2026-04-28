@@ -227,6 +227,76 @@ class DeckImportTest extends TestCase
         ]);
     }
 
+    public function test_archidekt_import_flattens_quill_delta_description(): void
+    {
+        // Archidekt ships descriptions as a stringified Quill Delta. An empty
+        // editor sends the literal string `{"ops":[]}`, and non-empty content
+        // is a JSON object whose ops are concatenated to yield plain text.
+        // Storing either verbatim leaks Delta JSON into the UI.
+        Http::fake([
+            'archidekt.com/api/decks/15517081/' => Http::response([
+                'id'         => 15517081,
+                'name'       => 'Empty Description',
+                'deckFormat' => 'commander',
+                'description' => '{"ops":[]}',
+                'cards'      => [
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition'    => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                ],
+            ], 200),
+            'archidekt.com/api/decks/15517082/' => Http::response([
+                'id'         => 15517082,
+                'name'       => 'Filled Description',
+                'deckFormat' => 'commander',
+                'description' => '{"ops":[{"insert":"Stax brew. "},{"insert":"Hard lock","attributes":{"bold":true}},{"insert":" by turn 4.\n"}]}',
+                'cards'      => [
+                    [
+                        'quantity'   => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition'    => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $emptyId = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url'    => 'https://archidekt.com/decks/15517081/empty',
+            ])
+            ->assertCreated()
+            ->json('deck.id');
+
+        $this->assertDatabaseHas('decks', [
+            'id'          => $emptyId,
+            'description' => null,
+        ]);
+
+        $filledId = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url'    => 'https://archidekt.com/decks/15517082/filled',
+            ])
+            ->assertCreated()
+            ->json('deck.id');
+
+        $this->assertDatabaseHas('decks', [
+            'id'          => $filledId,
+            'description' => 'Stax brew. Hard lock by turn 4.',
+        ]);
+    }
+
     public function test_archidekt_oathbreaker_import_resolves_format_and_signature_spell(): void
     {
         // Wrenn and Six = legendary planeswalker (legal oathbreaker).
