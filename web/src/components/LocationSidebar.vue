@@ -677,7 +677,7 @@ function innerOptions(group) {
 .group-section {
   display: flex;
   flex-direction: column;
-  margin-top: 6px;
+  margin-top: 1px;
 }
 .group-header {
   display: flex;
