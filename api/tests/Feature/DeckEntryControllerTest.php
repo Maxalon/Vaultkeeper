@@ -80,9 +80,23 @@ class DeckEntryControllerTest extends TestCase
     public static function autoCategoryProvider(): array
     {
         // [oracle_tags_on_card, type_line, expected_category]
+        // Priority cases pin the order in config/scryfall.php — when a card
+        // carries multiple tags, the higher-priority one wins. Editing the
+        // config order without updating these tests should be a hard fail.
         return [
             'oracle tag wins — ramp'            => [['ramp'],        'Artifact',  'ramp'],
-            'first matching tag wins'           => [['burn','removal'],'Instant','removal'],
+
+            // Priority order checks (specific → general):
+            'priority: burn over removal'       => [['removal','burn'],     'Instant',     'burn'],
+            'priority: bounce over removal'     => [['removal','bounce'],   'Instant',     'bounce'],
+            'priority: boardwipe over removal'  => [['removal','boardwipe'],'Sorcery',     'boardwipe'],
+            'priority: wheel over draw'         => [['draw','wheel'],       'Sorcery',     'wheel'],
+            'priority: reanimate over recursion'=> [['recursion','reanimate'],'Instant',   'reanimate'],
+            'priority: mana-rock over ramp'     => [['ramp','mana-rock'],   'Artifact',    'mana-rock'],
+            'priority: mana-dork over ramp'     => [['ramp','mana-dork'],   'Creature',    'mana-dork'],
+            'priority: tutor beats sac-outlet'  => [['sacrifice-outlet','tutor'], 'Enchantment', 'tutor'],
+            'priority: draw beats tax'          => [['tax','draw'],         'Enchantment', 'draw'],
+
             'no tag match — Battle via type'    => [['unknown'],     'Battle — Siege', 'battle'],
             'no tag match — Planeswalker'       => [[],              'Legendary Planeswalker — Jace', 'planeswalker'],
             'no tag match — Creature'           => [[],              'Creature — Elf', 'creature'],
