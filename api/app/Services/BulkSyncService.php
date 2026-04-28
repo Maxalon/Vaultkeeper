@@ -1052,6 +1052,62 @@ class BulkSyncService
     }
 
     /**
+     * Re-derive supertypes/types/subtypes from type_line for any
+     * scryfall_cards row that has a type_line but missing parsed columns.
+     *
+     * Targets legacy rows synced before parseTypeLine() existed (or before
+     * the paper-only filter started excluding digital-only Alchemy cards
+     * from re-syncs) — those rows still carry valid type_line strings but
+     * have NULL in supertypes/types/subtypes, which then propagates into
+     * scryfall_oracles and breaks t:/type:/subtype: filters.
+     *
+     * Idempotent: only touches rows where at least one of the three parsed
+     * columns is NULL. Runs in chunks via the auto-increment id so it scales.
+     *
+     * @return int  rows updated
+     */
+    public function backfillCardTypes(): int
+    {
+        if ($this->multiWordSubtypes === []) {
+            $this->loadMultiWordSubtypes();
+        }
+
+        $updated = 0;
+        ScryfallCard::query()
+            ->whereNotNull('type_line')
+            ->where(function ($q) {
+                $q->whereNull('supertypes')
+                  ->orWhereNull('types')
+                  ->orWhereNull('subtypes');
+            })
+            ->select('id', 'type_line')
+            ->chunkById(self::UPSERT_CHUNK, function ($cards) use (&$updated) {
+                $now = now();
+                foreach ($cards as $card) {
+                    $parsed = $this->parseTypeLine(
+                        (string) $card->type_line,
+                        $this->multiWordSubtypes,
+                    );
+                    DB::table('scryfall_cards')
+                        ->where('id', $card->id)
+                        ->update([
+                            'supertypes' => json_encode($parsed['supertypes']),
+                            'types'      => json_encode($parsed['types']),
+                            'subtypes'   => json_encode($parsed['subtypes']),
+                            'updated_at' => $now,
+                        ]);
+                    $updated++;
+                }
+            });
+
+        if ($updated > 0) {
+            Log::info("BulkSyncService::backfillCardTypes — backfilled {$updated} cards");
+        }
+
+        return $updated;
+    }
+
+    /**
      * Rebuild scryfall_oracles from scryfall_cards. One row per oracle_id.
      *
      * - Picks the default representative printing with the same priority
@@ -1070,6 +1126,14 @@ class BulkSyncService
      */
     public function syncOracleTable(): array
     {
+        // Defensive: legacy rows (digital-only Alchemy cards synced before
+        // the paper-only filter, or rows predating the type-line parser)
+        // can sit in scryfall_cards with NULL parsed-type columns. The
+        // INSERT-SELECT below copies those NULLs straight into
+        // scryfall_oracles and breaks every t:/type:/subtype: filter, so
+        // re-derive them from type_line first.
+        $this->backfillCardTypes();
+
         $excludedList = "'" . implode("','", self::INELIGIBLE_SET_TYPES) . "'";
 
         DB::statement('TRUNCATE TABLE scryfall_oracles');
