@@ -40,6 +40,7 @@ class LocationGroupController extends Controller
 
         $locations = Location::query()
             ->where('user_id', $userId)
+            ->userManaged()
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();

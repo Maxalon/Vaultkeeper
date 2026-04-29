@@ -21,6 +21,7 @@ class LocationController extends Controller
 
         $locations = Location::query()
             ->where('user_id', $userId)
+            ->userManaged()
             ->withCount(['entries as card_count' => function ($q) use ($userId) {
                 $q->where('user_id', $userId);
             }])
@@ -66,6 +67,9 @@ class LocationController extends Controller
     public function update(Request $request, Location $location): JsonResponse
     {
         abort_if($location->user_id !== auth()->id(), 403);
+        // Auto-managed rows (deck-location, pending bucket) are renamed/created
+        // exclusively by their owning model — refuse direct user mutation.
+        abort_if($location->role !== Location::ROLE_USER, 403, 'Cannot edit auto-managed location.');
 
         $data = $request->validate([
             'type'        => 'required|in:drawer,binder,deck',
@@ -85,6 +89,7 @@ class LocationController extends Controller
     public function destroy(Location $location): Response
     {
         abort_if($location->user_id !== auth()->id(), 403);
+        abort_if($location->role !== Location::ROLE_USER, 403, 'Cannot delete auto-managed location.');
 
         // Detach entries before deleting so the user doesn't lose collection
         // rows just because they removed a drawer.
