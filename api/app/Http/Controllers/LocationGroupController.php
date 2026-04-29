@@ -91,7 +91,39 @@ class LocationGroupController extends Controller
             'items'       => $items,
             'total_count' => $total,
             'decks'       => $this->sidebarDecks($userId),
+            'pending'     => $this->sidebarPending($userId),
         ]);
+    }
+
+    /**
+     * Pending-relocation summary for the sidebar. Returns NULL when the
+     * bucket either doesn't exist yet (the user has never shrunk a deck) or
+     * exists but is empty — in either case there's nothing to render.
+     *
+     * @return array{id: int, name: string, card_count: int}|null
+     */
+    private function sidebarPending(int $userId): ?array
+    {
+        $pending = Location::query()
+            ->where('user_id', $userId)
+            ->where('role', Location::ROLE_PENDING_RELOCATION)
+            ->first();
+
+        if ($pending === null) {
+            return null;
+        }
+
+        $count = CollectionEntry::where('location_id', $pending->id)->count();
+
+        if ($count === 0) {
+            return null;
+        }
+
+        return [
+            'id'         => $pending->id,
+            'name'       => $pending->name,
+            'card_count' => $count,
+        ];
     }
 
     /**

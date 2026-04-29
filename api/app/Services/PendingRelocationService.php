@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\CollectionEntry;
+use App\Models\Deck;
 use App\Models\Location;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -37,5 +39,27 @@ class PendingRelocationService
                 'name'    => 'Pending Relocation',
             ]);
         });
+    }
+
+    /**
+     * Move the given collection_entry into its owner's pending-relocation
+     * bucket, stamping the source deck so the UI can label "from <deck>".
+     * If `$deckBeingDeleted` is true, also flips source_deck_deleted on this
+     * row — used by the Deck deleting observer so the snapshot stays the
+     * canonical label after the FK nulls source_deck_id out.
+     */
+    public function moveCopyToPending(
+        CollectionEntry $copy,
+        Deck $sourceDeck,
+        bool $deckBeingDeleted = false,
+    ): void {
+        $pending = $this->ensureLocation($copy->user);
+
+        $copy->forceFill([
+            'location_id'               => $pending->id,
+            'source_deck_id'            => $sourceDeck->id,
+            'source_deck_name_snapshot' => mb_substr($sourceDeck->name, 0, 100),
+            'source_deck_deleted'       => $deckBeingDeleted,
+        ])->save();
     }
 }
