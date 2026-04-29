@@ -99,6 +99,12 @@ export const useCollectionStore = defineStore('collection', {
     sidebarItems: [],
     /** Full decks list (flat — already split across groups by group_id). */
     decks: [],
+    /**
+     * Pending-relocation summary: { id, name, card_count } when there are
+     * copies awaiting re-shelving, otherwise null. Driven by the backend so
+     * the row only shows up when there's something in it.
+     */
+    pending: null,
     collapsedGroups: loadCollapsedGroups(),
     totalCount: 0,
     activeLocationId: null, // number | null (null = all cards)
@@ -204,6 +210,7 @@ export const useCollectionStore = defineStore('collection', {
       this.sidebarItems = data.items
       this.totalCount = data.total_count
       this.decks = data.decks || []
+      this.pending = data.pending || null
     },
 
     // Alias so existing callers (createLocation, updateEntry, batchMove,
