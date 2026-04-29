@@ -114,4 +114,40 @@ class AuthControllerTest extends TestCase
 
         $this->assertNotEmpty($response->json('access_token'));
     }
+
+    public function test_complete_onboarding_stamps_timestamp_for_new_user(): void
+    {
+        $user = User::factory()->create(['onboarding_completed_at' => null]);
+        $token = auth('api')->login($user);
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/auth/onboarding/complete')
+            ->assertOk()
+            ->assertJsonPath('id', $user->id);
+
+        $this->assertNotNull($user->fresh()->onboarding_completed_at);
+    }
+
+    public function test_complete_onboarding_is_idempotent(): void
+    {
+        $original = now()->subDays(7);
+        $user = User::factory()->create(['onboarding_completed_at' => $original]);
+        $token = auth('api')->login($user);
+
+        $this->withHeader('Authorization', "Bearer {$token}")
+            ->postJson('/api/auth/onboarding/complete')
+            ->assertOk();
+
+        // Existing timestamp must be preserved — we want "first welcomed" not
+        // "last clicked".
+        $this->assertEquals(
+            $original->toDateTimeString(),
+            $user->fresh()->onboarding_completed_at->toDateTimeString(),
+        );
+    }
+
+    public function test_complete_onboarding_rejects_unauthenticated_request(): void
+    {
+        $this->postJson('/api/auth/onboarding/complete')->assertUnauthorized();
+    }
 }

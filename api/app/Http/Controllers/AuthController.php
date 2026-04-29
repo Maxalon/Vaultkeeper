@@ -86,6 +86,23 @@ class AuthController extends Controller
         return response()->json(Auth::guard('api')->user());
     }
 
+    /**
+     * Stamps onboarding_completed_at on the current user. Idempotent — calling
+     * it after the user has already finished onboarding is a no-op (we don't
+     * overwrite the original timestamp, since "when did this user first land"
+     * is more useful than "when did they last click the button").
+     */
+    public function completeOnboarding(): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+
+        if ($user->onboarding_completed_at === null) {
+            $user->forceFill(['onboarding_completed_at' => now()])->save();
+        }
+
+        return response()->json($user);
+    }
+
     protected function respondWithToken(string $token): JsonResponse
     {
         return response()->json([
