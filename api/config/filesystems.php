@@ -41,7 +41,9 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            // Honour ASSETS_PUBLIC_URL when set so prod/staging build the
+            // same absolute URLs whether the assets disk is local or s3.
+            'url' => env('ASSETS_PUBLIC_URL', env('APP_URL').'/storage'),
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
@@ -61,11 +63,13 @@ return [
         ],
 
         // Static set-symbol / mana-symbol / card-back assets (sourced from
-        // mtg-vectors + Scryfall). Served at /storage and cached aggressively.
+        // mtg-vectors + Scryfall). In prod served from MinIO via Caddy at
+        // assets.vault[-staging].kontrollzentrale.de; in dev served from
+        // the local filesystem under /storage.
         //
-        // Driver is env-driven so dev runs on the local filesystem (same as
-        // today) while prod / staging point at MinIO or real S3 without any
-        // code change. The same code path handles both.
+        // Driver is env-driven so dev runs on the local filesystem while
+        // prod / staging point at MinIO without any code change. Same
+        // code path handles both.
         'assets' => env('ASSETS_DISK_DRIVER', 'local') === 's3'
             ? [
                 'driver'                  => 's3',
@@ -83,7 +87,7 @@ return [
             : [
                 'driver'     => 'local',
                 'root'       => storage_path('app/public'),
-                'url'        => env('APP_URL').'/storage',
+                'url'        => env('ASSETS_PUBLIC_URL', env('APP_URL').'/storage'),
                 'visibility' => 'public',
                 'throw'      => false,
                 'report'     => false,
