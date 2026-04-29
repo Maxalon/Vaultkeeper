@@ -36,6 +36,18 @@ server {
     http2 on;
     server_name _;
 
+    # Emit relative Location headers (e.g. `/db/`, `/horizon-login?next=…`)
+    # exactly as written in `return 30x` directives instead of letting
+    # nginx rewrite them to absolute URLs. The container only listens on
+    # 443 internally; on staging the host maps 8443→443, so an absolute
+    # redirect built from nginx's own listening port would emit
+    # `https://host/…` (port 443 stripped because it's the HTTPS default)
+    # and the browser would land on whatever serves the host's :443 — the
+    # prod nginx, in our side-by-side staging+prod layout. Keeping
+    # redirects relative lets the browser resolve them against the
+    # original request URL and preserve the :8443 port.
+    absolute_redirect off;
+
     # Cert paths. The image ships with a self-signed placeholder cert so
     # nginx can start out of the box. The deployer overrides both files
     # by bind-mounting /etc/nginx/certs from the host:
