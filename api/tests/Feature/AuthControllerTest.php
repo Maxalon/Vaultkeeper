@@ -3,8 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
 class AuthControllerTest extends TestCase
@@ -149,5 +152,115 @@ class AuthControllerTest extends TestCase
     public function test_complete_onboarding_rejects_unauthenticated_request(): void
     {
         $this->postJson('/api/auth/onboarding/complete')->assertUnauthorized();
+    }
+
+    public function test_forgot_password_sends_reset_link_for_known_email(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create(['email' => 'collector@example.test']);
+
+        $this->postJson('/api/auth/forgot-password', [
+            'email' => 'collector@example.test',
+        ])->assertOk()
+            ->assertJsonPath('message', "If that address is on file, we've sent a reset link.");
+
+        Notification::assertSentTo($user, ResetPassword::class);
+    }
+
+    public function test_forgot_password_returns_generic_response_for_unknown_email(): void
+    {
+        Notification::fake();
+
+        // Same 200 + generic message as the happy path — no enumeration leak.
+        $this->postJson('/api/auth/forgot-password', [
+            'email' => 'nobody@example.test',
+        ])->assertOk()
+            ->assertJsonPath('message', "If that address is on file, we've sent a reset link.");
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_forgot_password_validates_email(): void
+    {
+        $this->postJson('/api/auth/forgot-password', ['email' => 'not-an-email'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_reset_password_sets_new_password_with_valid_token(): void
+    {
+        $user = User::factory()->create([
+            'email'    => 'collector@example.test',
+            'password' => Hash::make('old-password-1234'),
+        ]);
+
+        $token = Password::createToken($user);
+
+        $this->postJson('/api/auth/reset-password', [
+            'token'                 => $token,
+            'email'                 => 'collector@example.test',
+            'password'              => 'fresh-password-9999',
+            'password_confirmation' => 'fresh-password-9999',
+        ])->assertOk()
+            ->assertJsonPath('message', 'Password reset.');
+
+        $this->assertTrue(Hash::check('fresh-password-9999', $user->fresh()->password));
+
+        // The freshly minted password should sign the user in cleanly.
+        $this->postJson('/api/auth/login', [
+            'username' => $user->username,
+            'password' => 'fresh-password-9999',
+        ])->assertOk()
+            ->assertJsonStructure(['access_token']);
+    }
+
+    public function test_reset_password_consumes_token_so_it_cannot_be_replayed(): void
+    {
+        $user = User::factory()->create(['email' => 'collector@example.test']);
+        $token = Password::createToken($user);
+
+        $this->postJson('/api/auth/reset-password', [
+            'token'                 => $token,
+            'email'                 => 'collector@example.test',
+            'password'              => 'fresh-password-9999',
+            'password_confirmation' => 'fresh-password-9999',
+        ])->assertOk();
+
+        // Same token, second time — broker must reject it.
+        $this->postJson('/api/auth/reset-password', [
+            'token'                 => $token,
+            'email'                 => 'collector@example.test',
+            'password'              => 'another-password-7777',
+            'password_confirmation' => 'another-password-7777',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_reset_password_rejects_invalid_token(): void
+    {
+        User::factory()->create(['email' => 'collector@example.test']);
+
+        $this->postJson('/api/auth/reset-password', [
+            'token'                 => 'totally-bogus-token',
+            'email'                 => 'collector@example.test',
+            'password'              => 'fresh-password-9999',
+            'password_confirmation' => 'fresh-password-9999',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_reset_password_rejects_short_password(): void
+    {
+        $user = User::factory()->create(['email' => 'collector@example.test']);
+        $token = Password::createToken($user);
+
+        $this->postJson('/api/auth/reset-password', [
+            'token'                 => $token,
+            'email'                 => 'collector@example.test',
+            'password'              => 'short',
+            'password_confirmation' => 'short',
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['password']);
     }
 }

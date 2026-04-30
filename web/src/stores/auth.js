@@ -29,6 +29,16 @@ export const useAuthStore = defineStore('auth', {
       return data
     },
 
+    async forgotPassword({ email }) {
+      const { data } = await api.post('/auth/forgot-password', { email })
+      return data
+    },
+
+    async resetPassword(payload) {
+      const { data } = await api.post('/auth/reset-password', payload)
+      return data
+    },
+
     async fetchMe() {
       const { data } = await api.get('/auth/me')
       this.user = data
