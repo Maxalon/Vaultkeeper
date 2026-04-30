@@ -71,7 +71,7 @@ async function onSubmit() {
         <p v-if="error" class="vk-login-error">{{ error }}</p>
 
         <div class="vk-login-meta">
-          <a href="#" @click.prevent>Forgot password?</a>
+          <a @click.prevent="router.push('/forgot-password')">Forgot password?</a>
           <a @click.prevent="router.push('/register')">Create an account</a>
         </div>
       </form>
