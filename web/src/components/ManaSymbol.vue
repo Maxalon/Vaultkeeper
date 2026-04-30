@@ -1,20 +1,23 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { assetUrl } from '../lib/assets.js'
 
 const props = defineProps({
   symbol: { type: String, required: true }, // e.g. "{W}", "{2/W}", "{T}"
 })
 
-// Backend stores symbols at /storage/symbols/{NAME}.svg with braces stripped
-// AND slashes flattened — see SyncSets command. {2/W} → 2W.svg.
+// Backend stores symbols at /symbols/{NAME}.svg (under the assets host)
+// with braces stripped AND slashes flattened — see SyncSets command.
+// {2/W} → 2W.svg.
 const clean = computed(() => props.symbol.replace(/[{}/]/g, ''))
+const src = computed(() => assetUrl(`/symbols/${clean.value}.svg`))
 const failed = ref(false)
 </script>
 
 <template>
   <img
     v-if="!failed"
-    :src="`/storage/symbols/${clean}.svg`"
+    :src="src"
     :alt="symbol"
     :title="symbol"
     class="mana-symbol"
