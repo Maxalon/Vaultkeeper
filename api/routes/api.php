@@ -20,6 +20,13 @@ Route::prefix('auth')->group(function () {
     // Public — same throttle as login since it's the obvious next abuse vector.
     Route::post('register', [AuthController::class, 'register'])
         ->middleware('throttle:10,1');
+
+    // Password recovery — public, throttled to match login. The broker also
+    // applies a per-user 60s throttle (config/auth.php) on top of this.
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])
+        ->middleware('throttle:10,1');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])
+        ->middleware('throttle:10,1');
 });
 
 // Public — fed to the unauthenticated login hero. Returns one random

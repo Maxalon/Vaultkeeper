@@ -29,6 +29,16 @@ const routes = [
     component: () => import('../views/RegisterView.vue'),
   },
   {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: () => import('../views/ForgotPasswordView.vue'),
+  },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: () => import('../views/ResetPasswordView.vue'),
+  },
+  {
     path: '/collection',
     name: 'collection',
     component: CollectionView,
@@ -69,9 +79,10 @@ router.beforeEach((to) => {
   if (to.meta.requiresAuth && !tokenValid) {
     return { name: 'login' }
   }
-  // If the user is already signed in, both /login and /register should bounce
-  // them back into the app.
-  if ((to.name === 'login' || to.name === 'register') && tokenValid) {
+  // If the user is already signed in, the unauthenticated entry points all
+  // bounce back into the app.
+  const unauthRoutes = ['login', 'register', 'forgot-password', 'reset-password']
+  if (unauthRoutes.includes(to.name) && tokenValid) {
     return { name: 'collection' }
   }
 })
