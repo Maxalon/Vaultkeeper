@@ -24,6 +24,13 @@ function onQuantityChange(e) {
   patch({ quantity: q })
 }
 
+async function onRemove() {
+  if (!entry.value) return
+  const name = entry.value.card?.name || 'this card'
+  if (!confirm(`Remove ${name} from your collection?`)) return
+  await collection.deleteEntry(entry.value.id)
+}
+
 function close() { collection.closeActiveEntry() }
 
 const realLocations = computed(() => collection.locations)
@@ -84,6 +91,12 @@ const realLocations = computed(() => collection.locations)
               <span>{{ entry.foil ? 'Yes' : 'No' }}</span>
             </span>
           </label>
+        </div>
+
+        <div class="vk-remove-row">
+          <button type="button" class="vk-remove-btn" @click="onRemove">
+            Remove from collection
+          </button>
         </div>
       </section>
 
@@ -222,6 +235,27 @@ select.vk-field-input {
   width: auto;
   margin: 0;
   accent-color: var(--amber);
+}
+
+.vk-remove-row {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.vk-remove-btn {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  color: var(--cond-hp, #d97757);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+.vk-remove-btn:hover {
+  background: rgba(217, 119, 87, 0.08);
+  border-color: var(--cond-hp, #d97757);
 }
 
 .wanted {
