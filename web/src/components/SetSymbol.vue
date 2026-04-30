@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { assetUrl } from '../lib/assets.js'
 
 const props = defineProps({
   set: { type: String, required: true },
@@ -20,7 +21,9 @@ const rarityLetter = computed(() => {
 // Files on disk are uppercase (LEA, FDN, ...). Force uppercase here so a
 // case-mismatched API response (or a hand-typed set_code) still resolves.
 const setUpper = computed(() => (props.set || '').toString().toUpperCase())
-const src = computed(() => `/storage/sets/${setUpper.value}/${rarityLetter.value}.svg`)
+const src = computed(() =>
+  assetUrl(`/sets/${setUpper.value}/${rarityLetter.value}.svg`),
+)
 
 const failed = ref(false)
 watch(src, () => { failed.value = false })

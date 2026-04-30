@@ -11,7 +11,8 @@ Self-hosted MTG (Magic: The Gathering) collection management tool.
 api/    Laravel 13 PHP backend (JWT auth, MySQL, Horizon)
 web/    Vue 3 + Vite frontend (Pinia, Vue Router)
 app/    Kotlin/Compose Android client (placeholder)
-docker/ Dev + prod Dockerfiles for api and nginx
+docker/ Dockerfiles for api (dev + prod) and the prod SPA sidecar,
+        plus the dev-only nginx config that fronts api + Vite at :8080
 ```
 
 ## Dev environment

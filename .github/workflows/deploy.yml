@@ -48,18 +48,31 @@ jobs:
       # the short SHA as an immutable tag for rollback or pinned deploys.
       # Owner is lowercased because container registries reject uppercase
       # in repository names, but github.repository_owner preserves case.
-      - name: Determine image tags
+      #
+      # SPA build args are also picked here: VITE_ASSETS_URL is baked into
+      # the bundle at build time (Vite resolves import.meta.env.* statically),
+      # so prod and staging require distinct images. The host's .env doesn't
+      # influence this — it has to be settled before `vite build` runs.
+      - name: Determine image tags + SPA build args
         id: tags
         run: |
           OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           API_IMAGE="ghcr.io/${OWNER}/vaultkeeper-api"
-          NGINX_IMAGE="ghcr.io/${OWNER}/vaultkeeper-nginx"
+          SPA_IMAGE="ghcr.io/${OWNER}/vaultkeeper-spa"
           BRANCH="${GITHUB_REF_NAME}"
           SHA="${GITHUB_SHA::7}"
+
+          if [ "$BRANCH" = "main" ]; then
+            VITE_ASSETS_URL="https://assets.vault.kontrollzentrale.de"
+          else
+            VITE_ASSETS_URL="https://assets.vault-staging.kontrollzentrale.de"
+          fi
+
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
           echo "api_tags=${API_IMAGE}:${BRANCH},${API_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
-          echo "nginx_tags=${NGINX_IMAGE}:${BRANCH},${NGINX_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "spa_tags=${SPA_IMAGE}:${BRANCH},${SPA_IMAGE}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "vite_assets_url=${VITE_ASSETS_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Build & push API image
         uses: docker/build-push-action@v6
@@ -71,15 +84,18 @@ jobs:
           cache-from: type=gha,scope=api-${{ github.ref_name }}
           cache-to: type=gha,mode=max,scope=api-${{ github.ref_name }}
 
-      - name: Build & push nginx image
+      - name: Build & push SPA image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/nginx/Dockerfile.prod
+          file: docker/spa/Dockerfile.prod
           push: true
-          tags: ${{ steps.tags.outputs.nginx_tags }}
-          cache-from: type=gha,scope=nginx-${{ github.ref_name }}
-          cache-to: type=gha,mode=max,scope=nginx-${{ github.ref_name }}
+          tags: ${{ steps.tags.outputs.spa_tags }}
+          build-args: |
+            VITE_API_BASE_URL=/api
+            VITE_ASSETS_URL=${{ steps.tags.outputs.vite_assets_url }}
+          cache-from: type=gha,scope=spa-${{ github.ref_name }}
+          cache-to: type=gha,mode=max,scope=spa-${{ github.ref_name }}
 
   # ─── Deploy to the target environment ────────────────────────────────────
   #
@@ -128,7 +144,6 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
           USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          # Write the deploy key to a temp file
           install -m 600 /dev/null /tmp/deploy_key
           echo "$SSH_KEY" > /tmp/deploy_key
 
@@ -149,10 +164,10 @@ jobs:
             cd "${DEPLOY_DIR}"
 
             # Pick up docker-compose.override.yml if the host has one
-            # (typically holds host-specific bind mounts like TLS certs).
-            # Without this, `up -d` recreates containers without the
-            # override — e.g. nginx loses its cert mount and falls back
-            # to the baked-in self-signed placeholder.
+            # (host-specific bind mounts or service overrides). Caddy
+            # handles TLS termination from a separate compose project
+            # in /srv/kontrollzentrale, so this no longer carries the
+            # nginx cert mount the previous setup needed.
             COMPOSE_FILES="-f docker-compose.prod.yml"
             if [ -f docker-compose.override.yml ]; then
                 COMPOSE_FILES="\$COMPOSE_FILES -f docker-compose.override.yml"
@@ -163,7 +178,7 @@ jobs:
             docker compose \$COMPOSE_FILES \
                 --env-file .env.${ENV_NAME} \
                 -p ${PROJECT} \
-                pull api nginx worker scheduler
+                pull api spa worker scheduler
 
             echo ">>> Bringing up services..."
             docker compose \$COMPOSE_FILES \
