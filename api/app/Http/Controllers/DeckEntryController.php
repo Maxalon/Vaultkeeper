@@ -6,7 +6,9 @@ use App\Models\CardOracleTag;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
+use App\Models\Location;
 use App\Models\ScryfallCard;
+use App\Services\PendingRelocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -19,7 +21,10 @@ class DeckEntryController extends Controller
         'Battle', 'Planeswalker', 'Creature', 'Land', 'Instant', 'Sorcery', 'Artifact', 'Enchantment',
     ];
 
-    public function __construct(private DeckController $deckCtrl) {}
+    public function __construct(
+        private DeckController $deckCtrl,
+        private PendingRelocationService $pendingRelocations,
+    ) {}
 
     public function index(Request $request, Deck $deck): JsonResponse
     {
@@ -128,7 +133,19 @@ class DeckEntryController extends Controller
             ],
         ]);
 
+        $previousCopyId = $entry->getOriginal('physical_copy_id');
+
         $entry->update($data);
+
+        // If the user just unlinked (or swapped) the physical copy, the now-
+        // detached copy is "homeless" — if it was sitting in this deck's
+        // deck-location, move it to the pending bucket so the user is
+        // prompted to re-shelf it.
+        if (array_key_exists('physical_copy_id', $data)
+            && $previousCopyId !== null
+            && $previousCopyId !== $entry->physical_copy_id) {
+            $this->relocateDetachedCopyIfInDeckLocation($previousCopyId, $deck);
+        }
 
         return response()->json($this->presentEntryBare($entry->fresh('card')));
     }
@@ -141,8 +158,13 @@ class DeckEntryController extends Controller
         DB::transaction(function () use ($deck, $entry) {
             $wasCommander = (bool) $entry->is_commander;
             $commanderId  = $entry->scryfall_id;
+            $physicalCopyId = $entry->physical_copy_id;
 
             $entry->delete();
+
+            if ($physicalCopyId !== null) {
+                $this->relocateDetachedCopyIfInDeckLocation($physicalCopyId, $deck);
+            }
 
             if ($wasCommander) {
                 if ($deck->commander_1_scryfall_id === $commanderId) {
@@ -157,6 +179,31 @@ class DeckEntryController extends Controller
         });
 
         return response()->noContent();
+    }
+
+    /**
+     * If the given collection_entry currently lives in `$deck`'s
+     * deck-location, move it to the user's pending bucket and stamp it with
+     * the source deck. Other source locations are left alone — the user
+     * already chose where to keep that copy.
+     */
+    private function relocateDetachedCopyIfInDeckLocation(int $copyId, Deck $deck): void
+    {
+        $copy = CollectionEntry::find($copyId);
+        if ($copy === null || $copy->user_id !== $deck->user_id) {
+            return;
+        }
+
+        $deckLocationId = Location::query()
+            ->where('deck_id', $deck->id)
+            ->where('role', Location::ROLE_DECK)
+            ->value('id');
+
+        if ($copy->location_id !== $deckLocationId) {
+            return;
+        }
+
+        $this->pendingRelocations->moveCopyToPending($copy, $deck);
     }
 
     // ─────────────────────────────────────────────────────────────────────

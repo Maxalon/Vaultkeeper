@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Deck extends Model
 {
@@ -65,5 +66,15 @@ class Deck extends Model
     public function group(): BelongsTo
     {
         return $this->belongsTo(LocationGroup::class, 'group_id');
+    }
+
+    /**
+     * The auto-managed Location row that physically backs this deck. Created
+     * by DeckObserver on deck create, renamed on deck rename, removed via FK
+     * cascade on deck delete.
+     */
+    public function deckLocation(): HasOne
+    {
+        return $this->hasOne(Location::class)->where('role', Location::ROLE_DECK);
     }
 }

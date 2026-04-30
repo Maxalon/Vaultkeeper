@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import ManaCost from './ManaCost.vue'
 import ManaSymbol from './ManaSymbol.vue'
+import { assetUrl } from '../lib/assets.js'
 
 /**
  * Pure card-display body. Shared between the collection DetailSidebar
@@ -19,6 +20,8 @@ const flipped = ref(false)
 
 const isDfc = computed(() => !!props.card?.is_dfc)
 const showBack = computed(() => isDfc.value && flipped.value)
+
+const cardBackUrl = computed(() => assetUrl('/card-back.jpg'))
 
 const displayedImage = computed(() => {
   const c = props.card
@@ -88,7 +91,7 @@ const ptOrLoyalty = computed(() => {
   <div class="card-detail-body">
     <div class="vk-detail-art">
       <img
-        :src="displayedImage || '/storage/card-back.jpg'"
+        :src="displayedImage || cardBackUrl"
         :alt="card.name"
         :class="{ flipping: showBack }"
       />

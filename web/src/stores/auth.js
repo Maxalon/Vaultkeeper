@@ -9,6 +9,7 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isAuthenticated: (state) => !!state.token,
+    needsOnboarding: (state) => !!state.user && !state.user.onboarding_completed_at,
   },
 
   actions: {
@@ -30,6 +31,12 @@ export const useAuthStore = defineStore('auth', {
 
     async fetchMe() {
       const { data } = await api.get('/auth/me')
+      this.user = data
+      return data
+    },
+
+    async completeOnboarding() {
+      const { data } = await api.post('/auth/onboarding/complete')
       this.user = data
       return data
     },

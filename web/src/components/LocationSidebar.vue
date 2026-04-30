@@ -272,6 +272,21 @@ function innerOptions(group) {
         <span class="num">{{ collection.totalCount }}</span>
       </button>
 
+      <button
+        v-if="collection.pending"
+        type="button"
+        class="pending-row sidebar-item top"
+        :class="{ active: route.name === 'collection' && collection.activeLocationId === collection.pending.id }"
+        @click="activate({ id: collection.pending.id })"
+        :title="`${collection.pending.card_count} card(s) awaiting re-shelving`"
+      >
+        <span class="set-sym all-cards-icon" aria-hidden="true">
+          <IconDrawer />
+        </span>
+        <span class="label">{{ collection.pending.name }}</span>
+        <span class="num">{{ collection.pending.card_count }}</span>
+      </button>
+
       <div
         class="sidebar-dropzone"
         v-draggable="[mergedItems, outerOptions]"

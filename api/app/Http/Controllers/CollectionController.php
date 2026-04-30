@@ -91,11 +91,15 @@ class CollectionController extends Controller
                 'sometimes',
                 'nullable',
                 'integer',
-                // Must belong to the same user
+                // Must belong to the same user AND be a user-managed location.
+                // Auto-managed rows (deck/pending) are off-limits to direct
+                // user moves — they're written exclusively by their owning
+                // model so the invariants stay coherent.
                 function ($attr, $value, $fail) {
                     if ($value === null) return;
-                    $exists = \App\Models\Location::where('id', $value)
+                    $exists = Location::where('id', $value)
                         ->where('user_id', auth()->id())
+                        ->where('role', Location::ROLE_USER)
                         ->exists();
                     if (! $exists) {
                         $fail('The selected location is invalid.');
@@ -107,10 +111,20 @@ class CollectionController extends Controller
             'foil'     => 'sometimes|boolean',
         ]);
 
+        // The user re-shelving this copy means the "from <deck>" stamp from
+        // the last shrink is no longer relevant. Clear it in the same write
+        // as the location move so the pill disappears.
+        if (array_key_exists('location_id', $data)) {
+            $data['source_deck_id'] = null;
+            $data['source_deck_name_snapshot'] = null;
+            $data['source_deck_deleted'] = false;
+        }
+
+        $previousLocationId = $entry->getOriginal('location_id');
         $entry->update($data);
 
         if (array_key_exists('location_id', $data)) {
-            $affected = array_filter([$entry->getOriginal('location_id'), $entry->location_id]);
+            $affected = array_filter([$previousLocationId, $entry->location_id]);
             foreach (Location::whereIn('id', $affected)->get() as $loc) {
                 $loc->refreshSetCodes();
             }
@@ -139,8 +153,9 @@ class CollectionController extends Controller
                 'integer',
                 function ($attr, $value, $fail) {
                     if ($value === null) return;
-                    $exists = \App\Models\Location::where('id', $value)
+                    $exists = Location::where('id', $value)
                         ->where('user_id', auth()->id())
+                        ->where('role', Location::ROLE_USER)
                         ->exists();
                     if (! $exists) {
                         $fail('The selected location is invalid.');
@@ -220,6 +235,26 @@ class CollectionController extends Controller
     }
 
     /**
+     * Pending-bucket label for a copy, or null when there's no source deck
+     * to display. Prefers the live deck record (so renames track), falls
+     * back to the snapshot once the deck is gone.
+     *
+     * @return array{deck_id: ?int, deck_name: string, deleted: bool}|null
+     */
+    private function presentSourceDeck(CollectionEntry $entry): ?array
+    {
+        if ($entry->source_deck_id === null && $entry->source_deck_name_snapshot === null) {
+            return null;
+        }
+
+        return [
+            'deck_id'   => $entry->source_deck_id,
+            'deck_name' => $entry->source_deck_name_snapshot ?? '',
+            'deleted'   => (bool) $entry->source_deck_deleted,
+        ];
+    }
+
+    /**
      * Build a map [scryfall_id => [{deck_id, deck_name, zone}, ...]] of
      * cards the authenticated user has marked "wanted" (in any zone) in a
      * deck without a physical_copy_id assigned. Each entry carries the
@@ -271,6 +306,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'source_deck' => $this->presentSourceDeck($entry),
             'created_at'  => $entry->created_at?->toIso8601String(),
             'card'        => $card ? [
                 'scryfall_id'      => $card->scryfall_id,
@@ -310,6 +346,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'source_deck' => $this->presentSourceDeck($entry),
             'card'        => $card ? [
                 'scryfall_id'      => $card->scryfall_id,
                 'name'             => $card->name,

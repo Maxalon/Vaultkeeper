@@ -87,6 +87,14 @@ const realLocations = computed(() => collection.locations)
         </div>
       </section>
 
+      <section v-if="entry.source_deck" class="source-deck">
+        <span class="source-deck-label">From</span>
+        <span class="source-deck-name">
+          {{ entry.source_deck.deck_name || 'a deleted deck' }}
+          <span v-if="entry.source_deck.deleted" class="source-deck-deleted">(deleted)</span>
+        </span>
+      </section>
+
       <section v-if="entry.wanted_by_decks?.length" class="wanted">
         <span class="warn">⚠</span>
         <div>
@@ -238,5 +246,30 @@ select.vk-field-input {
   padding-left: 16px;
   font-size: 12px;
   color: var(--ink-100);
+}
+
+.source-deck {
+  margin-top: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-2, #1d1c1a);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.source-deck-label {
+  color: var(--ink-50);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.source-deck-name { color: var(--ink-100); }
+.source-deck-deleted {
+  color: var(--ink-50);
+  margin-left: 4px;
+  font-style: italic;
 }
 </style>

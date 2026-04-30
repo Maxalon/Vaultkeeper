@@ -32,6 +32,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('logout',  [AuthController::class, 'logout']);
         Route::post('refresh', [AuthController::class, 'refresh']);
         Route::get('me',       [AuthController::class, 'me']);
+        Route::post('onboarding/complete', [AuthController::class, 'completeOnboarding']);
     });
 
     // Read-only Scryfall reference DB. Defined before apiResource('cards', ...)
