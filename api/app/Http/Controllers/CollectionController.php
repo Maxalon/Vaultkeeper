@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\Location;
+use App\Services\CardSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -12,6 +13,8 @@ use Illuminate\Support\Collection;
 
 class CollectionController extends Controller
 {
+    public function __construct(private CardSearchService $search) {}
+
     /** Sortable columns. cmc is intentionally absent — no column to back it yet. */
     private const SORT_FIELDS = [
         'name'             => 'scryfall_cards.name',
@@ -26,7 +29,8 @@ class CollectionController extends Controller
      *
      * Query params:
      *   - location_id: integer | "unassigned" | omitted
-     *   - search: name substring (case insensitive)
+     *   - q:      Scryfall-syntax search (matches catalog). Falls back to
+     *             `search` (legacy name-substring) when q is absent.
      *   - sort:   one of SORT_FIELDS (default: name)
      *   - order:  asc|desc (default: asc)
      */
@@ -57,7 +61,21 @@ class CollectionController extends Controller
             }
         }
 
-        if ($search = trim((string) $request->query('search', ''))) {
+        // Full Scryfall-syntax search: route through CardSearchService and
+        // intersect via oracle_id. `disable_defaults` because the user is
+        // filtering their own collection — hidden-type / playtest defaults
+        // would mask cards they actually own.
+        $warnings = [];
+        $q = trim((string) $request->query('q', ''));
+        if ($q !== '') {
+            $parsed = $this->search->search($q, ['disable_defaults' => true]);
+            $warnings = $parsed['warnings'];
+            $query->whereIn(
+                'scryfall_cards.oracle_id',
+                $parsed['builder']->select('oracle_id')
+            );
+        } elseif ($search = trim((string) $request->query('search', ''))) {
+            // Legacy fallback for callers still passing `search=` (name-only).
             $query->where('scryfall_cards.name', 'like', "%{$search}%");
         }
 
@@ -65,9 +83,10 @@ class CollectionController extends Controller
 
         $wantedMap = $this->wantedByDecksMap($entries->pluck('scryfall_id')->unique()->all(), $userId);
 
-        return response()->json(
-            $entries->map(fn (CollectionEntry $e) => $this->presentList($e, $wantedMap))->values()
-        );
+        return response()->json([
+            'data'     => $entries->map(fn (CollectionEntry $e) => $this->presentList($e, $wantedMap))->values(),
+            'warnings' => $warnings,
+        ]);
     }
 
     public function show(CollectionEntry $entry): JsonResponse
