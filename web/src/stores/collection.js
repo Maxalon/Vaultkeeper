@@ -5,20 +5,21 @@ import {
   serializeQuery as serializeQueryGeneric,
 } from '../lib/searchQuery'
 
+/**
+ * Chip keys drive the topbar dropdowns; aliases let the long forms
+ * (`type:`, `color:`, `rarity:`, `set:`) round-trip through the chips.
+ * Filtering itself runs on the backend through CardSearchService, so the
+ * full Scryfall syntax (is:, o:, ci:, etc.) is supported regardless of
+ * what's listed here — these only matter for chip recognition.
+ */
 export const COLLECTION_SCHEMA = {
   chipKeys: ['c', 't', 'r', 's'],
   directiveKeys: ['sort', 'order'],
-  aliases: { set: 's' },
+  aliases: { set: 's', type: 't', color: 'c', rarity: 'r' },
 }
 
 const COLLECTION_DEFAULTS = { sort: 'name' }
 
-/**
- * Collection-schema-bound parser. The existing callers (AppTopBar,
- * filteredEntries getter, fetchEntries) expect the pre-refactor shape:
- *   { tokens, nameQuery, sort, chips }
- * We adapt the generic parser output to that shape for backwards compat.
- */
 export function parseSearch(search) {
   const parsed = parseSearchGeneric(search, COLLECTION_SCHEMA)
   return {
@@ -41,14 +42,6 @@ export function serializeQuery(state) {
 }
 
 /**
- * Each token type independently AND'd against the card. Within a type the
- * semantics are intuitive for the dropdowns:
- *   c:w → card.colors includes 'W' (multiple c: tokens => all required)
- *   r:rare → card.rarity == 'rare'
- *   t:creature → type_line contains 'creature'
- *   s:fdn → card.set_code == 'FDN'
- */
-/**
  * Color sort key for WUBRG ordering. Mono colors first (W, U, B, R, G),
  * then multicolor by count, then colorless last.
  */
@@ -58,27 +51,6 @@ function colorSortKey(colors) {
   if (colors.length === 1) return '0' + WUBRG[colors[0]]
   // Multi: prefix with count so 2-color < 3-color, then WUBRG positions
   return '' + colors.length + [...colors].sort((a, b) => WUBRG[a] - WUBRG[b]).map(c => WUBRG[c]).join('')
-}
-
-function entryMatchesTokens(entry, tokens) {
-  if (tokens.length === 0) return true
-  const card = entry.card || {}
-  return tokens.every((tok) => {
-    switch (tok.type) {
-      case 'c': {
-        const colors = (card.colors || []).map((c) => c.toLowerCase())
-        return colors.includes(tok.value)
-      }
-      case 'r':
-        return (card.rarity || '').toLowerCase() === tok.value
-      case 't':
-        return (card.type_line || '').toLowerCase().includes(tok.value)
-      case 's':
-        return (card.set_code || '').toLowerCase() === tok.value
-      default:
-        return true
-    }
-  })
 }
 
 function loadCollapsedGroups() {
@@ -121,6 +93,8 @@ export const useCollectionStore = defineStore('collection', {
       order: 'asc',
       search: '',
     },
+    /** Warnings emitted by the backend search parser (unsupported ops, etc.). */
+    searchWarnings: [],
   }),
 
   getters: {
@@ -177,30 +151,22 @@ export const useCollectionStore = defineStore('collection', {
       return parseSearch(state.filters.search)
     },
     /**
-     * Entries with the parsed-out client-side filter tokens applied. The
-     * card list panel iterates this instead of `entries` so dropdown
-     * filters apply instantly without a backend round-trip.
+     * Backend handles all token filtering now (full Scryfall syntax via
+     * CardSearchService). This getter only adds the client-side `color`
+     * sort, which has no SQL-side equivalent — every other sort field
+     * is handled in the SQL ORDER BY.
      */
     filteredEntries(state) {
-      const { tokens } = parseSearch(state.filters.search)
-      let result = tokens.length === 0
-        ? state.entries
-        : state.entries.filter((e) => entryMatchesTokens(e, tokens))
-
-      if (state.filters.sort === 'color') {
-        const dir = state.filters.order === 'desc' ? -1 : 1
-        result = [...result].sort((a, b) => {
-          const ka = colorSortKey(a.card?.colors)
-          const kb = colorSortKey(b.card?.colors)
-          if (ka !== kb) return ka < kb ? -dir : dir
-          // Secondary: alphabetical by name
-          const na = (a.card?.name || '').toLowerCase()
-          const nb = (b.card?.name || '').toLowerCase()
-          return na < nb ? -1 : na > nb ? 1 : 0
-        })
-      }
-
-      return result
+      if (state.filters.sort !== 'color') return state.entries
+      const dir = state.filters.order === 'desc' ? -1 : 1
+      return [...state.entries].sort((a, b) => {
+        const ka = colorSortKey(a.card?.colors)
+        const kb = colorSortKey(b.card?.colors)
+        if (ka !== kb) return ka < kb ? -dir : dir
+        const na = (a.card?.name || '').toLowerCase()
+        const nb = (b.card?.name || '').toLowerCase()
+        return na < nb ? -1 : na > nb ? 1 : 0
+      })
     },
   },
 
@@ -339,15 +305,16 @@ export const useCollectionStore = defineStore('collection', {
           sort: this.filters.sort,
           order: this.filters.order,
         }
-        // Only the bare-name remainder hits the backend; client-side
-        // filtering handles the dropdown tokens (see filteredEntries).
-        const { nameQuery } = parseSearch(this.filters.search)
-        if (nameQuery) params.search = nameQuery
+        // Full search string goes to the backend — CardSearchService parses
+        // the Scryfall syntax there, same pipeline as the catalog.
+        const q = (this.filters.search || '').trim()
+        if (q) params.q = q
         if (typeof this.activeLocationId === 'number') {
           params.location_id = this.activeLocationId
         }
         const { data } = await api.get('/collection', { params })
-        this.entries = data
+        this.entries = data.data || []
+        this.searchWarnings = data.warnings || []
       } finally {
         this.loading = false
       }

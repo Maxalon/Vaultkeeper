@@ -39,9 +39,9 @@ class CollectionControllerTest extends TestCase
         $response = $this->withHeaders($this->authHeaders())
             ->getJson('/api/collection')
             ->assertOk()
-            ->assertJsonCount(1);
+            ->assertJsonCount(1, 'data');
 
-        $this->assertSame($mine->id, $response->json('0.id'));
+        $this->assertSame($mine->id, $response->json('data.0.id'));
     }
 
     public function test_index_filters_by_location_id(): void
@@ -60,8 +60,8 @@ class CollectionControllerTest extends TestCase
         $this->withHeaders($this->authHeaders())
             ->getJson("/api/collection?location_id={$location->id}")
             ->assertOk()
-            ->assertJsonCount(1)
-            ->assertJsonPath('0.id', $inLocation->id);
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $inLocation->id);
     }
 
     public function test_index_filters_by_unassigned_location(): void
@@ -79,8 +79,8 @@ class CollectionControllerTest extends TestCase
         $this->withHeaders($this->authHeaders())
             ->getJson('/api/collection?location_id=unassigned')
             ->assertOk()
-            ->assertJsonCount(1)
-            ->assertJsonPath('0.id', $unassigned->id);
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $unassigned->id);
     }
 
     public function test_index_search_matches_card_name_substring(): void
@@ -100,8 +100,8 @@ class CollectionControllerTest extends TestCase
         $this->withHeaders($this->authHeaders())
             ->getJson('/api/collection?search=bolt')
             ->assertOk()
-            ->assertJsonCount(1)
-            ->assertJsonPath('0.id', $hit->id);
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $hit->id);
     }
 
     public function test_show_returns_entry_for_owner(): void
