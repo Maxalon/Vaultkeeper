@@ -10,6 +10,14 @@ const state = useConfirmState()
       <div class="confirm-modal" role="dialog" aria-modal="true">
         <h3 v-if="state.title" class="confirm-title">{{ state.title }}</h3>
         <p class="confirm-message">{{ state.message }}</p>
+        <label
+          v-if="state.checkbox"
+          class="confirm-checkbox"
+          :class="{ 'confirm-checkbox--danger': state.checkbox.dangerous }"
+        >
+          <input type="checkbox" v-model="state.checkboxChecked" />
+          <span>{{ state.checkbox.label }}</span>
+        </label>
         <div class="confirm-actions">
           <button type="button" class="confirm-btn" @click="_resolveConfirm(false)">
             {{ state.cancelText }}
@@ -64,4 +72,22 @@ const state = useConfirmState()
   color: #f5eadf;
 }
 .confirm-btn--danger:hover { background: #a14739; }
+.confirm-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: -0.5rem 0 1rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--ink-90, #e9e4d6);
+  cursor: pointer;
+  user-select: none;
+}
+.confirm-checkbox input { cursor: pointer; }
+.confirm-checkbox--danger {
+  border: 1px solid #a14739;
+  background: rgba(142, 60, 49, 0.12);
+  color: #f3b6a8;
+}
 </style>
