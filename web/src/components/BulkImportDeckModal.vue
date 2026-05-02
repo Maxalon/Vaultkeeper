@@ -112,8 +112,8 @@ async function submit() {
 }
 .modal-card {
   background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--gold);
+  border: 1px solid var(--hairline);
+  border-top: 2px solid var(--amber);
   border-radius: 6px;
   width: 460px;
   max-width: calc(100vw - 32px);

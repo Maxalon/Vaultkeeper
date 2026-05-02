@@ -344,8 +344,8 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 }
 .modal-card {
   background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--gold);
+  border: 1px solid var(--hairline);
+  border-top: 2px solid var(--amber);
   border-radius: 6px;
   width: 420px;
   max-width: calc(100vw - 32px);
@@ -369,7 +369,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 .hint { text-transform: none; letter-spacing: 0; color: var(--text-faint); font-size: 10px; }
 .segmented {
   display: flex;
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -382,7 +382,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
   font-size: 13px;
 }
 .seg.active {
-  background: var(--gold);
+  background: var(--amber);
   color: var(--bg-0);
   font-weight: 600;
 }
@@ -392,7 +392,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
   right: 0;
   top: 100%;
   background: var(--bg-0);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: 4px;
   margin: 2px 0 0;
   padding: 0;
