@@ -109,14 +109,6 @@ function onOpenCatalog(panelId) {
   tabs.openTab('catalog', {}, panelId || props.node.id)
 }
 
-function onAddToDeck(payload) {
-  if (!deck.deck || !payload?.scryfall_id) return
-  deck.addEntry(deck.deck.id, {
-    scryfall_id: payload.scryfall_id,
-    zone: payload.zone || 'main',
-  })
-}
-
 // Mark undock state so DeckTabContent hides its side/maybe sections.
 // (Also visible as tab presence — this is a small UX hint.)
 function syncUndocked() {
@@ -144,7 +136,6 @@ syncUndocked()
         v-if="activeTab && activeEntry"
         :is="activeEntry.component"
         v-bind="activeEntry.props(activeTab, { deckId: deck.deck?.id ?? null })"
-        @add-to-deck="onAddToDeck"
       />
       <div v-else class="leaf-empty">
         No active tab

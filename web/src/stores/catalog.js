@@ -125,6 +125,12 @@ export const useCatalogStore = defineStore('catalog', {
       if (typeof query === 'string') this.query = query
       this.page = 1
       this.warningsDismissed = false
+      // Per-search printing picks are temporary by design — the user picks
+      // a printing while exploring this result set, and a fresh search
+      // means a fresh slate. Reset both the per-row selection and the open
+      // sidebar so stale state doesn't leak across queries.
+      this.activePrintings = {}
+      this.activeCardOracleId = null
 
       // Cancel any still-running search. PHP-FPM has a tight worker pool;
       // letting a cascade of typed searches all hit the backend will saturate

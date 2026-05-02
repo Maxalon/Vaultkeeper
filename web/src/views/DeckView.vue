@@ -1,19 +1,38 @@
 <script setup>
-import { onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useCatalogStore } from '../stores/catalog'
 import { useCollectionStore } from '../stores/collection'
 import { useDeckStore } from '../stores/deck'
 import { useSettingsStore } from '../stores/settings'
 import AppTopBar from '../components/AppTopBar.vue'
 import LocationSidebar from '../components/LocationSidebar.vue'
 import TabSystem from '../components/tabs/TabSystem.vue'
+import CatalogDetailSidebar from '../components/CatalogDetailSidebar.vue'
 import DeckDetailSidebar from '../components/deck/DeckDetailSidebar.vue'
 import DeckRemoveDropZone from '../components/deck/DeckRemoveDropZone.vue'
 import DeckCreateCategoryDropZone from '../components/deck/DeckCreateCategoryDropZone.vue'
 
+const catalog = useCatalogStore()
 const collection = useCollectionStore()
 const deck = useDeckStore()
 const settings = useSettingsStore()
+
+// Right-rail arbitration. Catalog and deck-entry detail sidebars share the
+// slot — opening one closes the other. Catalog wins when both are set
+// because the user's most recent action selected a catalog row.
+const catalogDetailOpen = computed(() => !!catalog.activeCardOracleId)
+const deckDetailOpen = computed(
+  () => deck.activeEntryId !== null && !catalogDetailOpen.value,
+)
+const detailOpen = computed(() => catalogDetailOpen.value || deckDetailOpen.value)
+
+watch(catalogDetailOpen, (open) => {
+  if (open && deck.activeEntryId !== null) deck.activeEntryId = null
+})
+watch(() => deck.activeEntryId, (id) => {
+  if (id !== null && catalog.activeCardOracleId) catalog.clearActive()
+})
 const route = useRoute()
 const router = useRouter()
 
@@ -56,7 +75,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="deck-shell"
-    :class="{ 'detail-open': deck.activeEntryId !== null }"
+    :class="{ 'detail-open': detailOpen }"
     :data-sidebar="settings.sidebarCollapsed ? 'collapsed' : 'expanded'"
   >
     <AppTopBar
@@ -69,7 +88,8 @@ onBeforeUnmount(() => {
       <div v-if="deck.loading && !deck.deck" class="deck-skeleton">Loading deck…</div>
       <template v-else>
         <TabSystem class="deck-tabs" />
-        <DeckDetailSidebar v-if="deck.activeEntryId !== null" />
+        <CatalogDetailSidebar v-if="catalogDetailOpen" />
+        <DeckDetailSidebar v-else-if="deckDetailOpen" />
       </template>
     </main>
     <DeckRemoveDropZone />
