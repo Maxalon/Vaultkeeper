@@ -50,11 +50,11 @@ async function onEditClosed() {
 </script>
 
 <template>
-  <div v-if="deck.deck" class="deck-tab-content">
+  <div v-if="deck.deck" class="deck-tab-content" :class="{ 'zone-only': !!zone }">
     <!-- Zone-scoped undocked view -->
     <template v-if="zone">
       <DeckFilterBar />
-      <DeckGrid :zone="zone" />
+      <DeckGrid :zone="zone" fill />
     </template>
 
     <!-- Full deck layout -->
@@ -87,5 +87,13 @@ async function onEditClosed() {
 .deck-tab-content {
   height: 100%;
   overflow-y: auto;
+}
+/* Make the filter bar + grid a flex column so the grid (with its `fill`
+   class) can flex-grow into all leftover height. Drops anywhere in the
+   tab — including the empty area below the last card — then land in
+   this zone. */
+.deck-tab-content.zone-only {
+  display: flex;
+  flex-direction: column;
 }
 </style>
