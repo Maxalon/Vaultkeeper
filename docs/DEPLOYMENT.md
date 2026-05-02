@@ -454,15 +454,34 @@ docker compose -p vaultkeeper_prod --env-file .env.prod up -d api
 That's a one-second no-downtime recreate because it only touches the
 api service.
 
-### MinIO console
+### MinIO ops
 
-Reachable at `http://<host>.<tailnet>.ts.net:9001` (or whatever port
-`MINIO_CONSOLE_PORT` is set to). Log in with `MINIO_ROOT_USER` /
-`MINIO_ROOT_PASSWORD` from `.env.prod`. Useful for:
+The bundled web console UI no longer exists — it was removed from the
+open-source MinIO build in mid-2025 (newer images ship a stub redirect
+to the paid AIStor product), so the previous `:9001` workflow is gone.
+Use `mc` for everything that used to live behind the UI. The simplest
+way is a one-shot `mc` container against the running MinIO:
 
-- Inspecting the `vaultkeeper-assets` bucket contents
-- Verifying the bucket policy is `public` download after minio-init ran
-- Manually uploading a hotfix asset
+```bash
+docker run --rm -it --network vaultkeeper_prod_vaultkeeper \
+    -e MC_HOST_local="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@minio:9000" \
+    minio/mc:RELEASE.2025-08-13T08-35-41Z sh
+```
+
+(Use `vaultkeeper_staging_vaultkeeper` for the staging stack — the
+network is namespaced by compose project name.) From inside the
+container:
+
+```sh
+mc ls       local/vaultkeeper-assets         # inspect bucket contents
+mc anonymous get local/vaultkeeper-assets    # confirm public-download policy
+mc cp ./fixed.svg local/vaultkeeper-assets/sets/foo.svg   # upload a hotfix
+mc du       local/vaultkeeper-assets         # disk usage
+```
+
+`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` come from the relevant
+`.env.<env>` file. Source the env file in your shell before running
+the `docker run` so the variables expand.
 
 ### Backups
 

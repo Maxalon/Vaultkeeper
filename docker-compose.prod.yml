@@ -67,7 +67,7 @@ services:
 
   # ─── MinIO (S3-compatible object storage for set symbols / assets) ────────
   minio:
-    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    image: minio/minio:RELEASE.2025-10-15T17-29-55Z
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -117,7 +117,7 @@ services:
 
   # ─── MinIO bucket bootstrap (one-shot) ─────────────────────────────────────
   minio-init:
-    image: minio/mc:RELEASE.2025-04-03T17-07-56Z
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy
