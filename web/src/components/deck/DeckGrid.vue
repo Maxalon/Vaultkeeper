@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDeckStore } from '../../stores/deck'
+import CardPeek from '../CardPeek.vue'
 import DeckCardTile from './DeckCardTile.vue'
 import DeckCardStrip from './DeckCardStrip.vue'
 
@@ -282,6 +283,11 @@ function applyDrop(payload, groupKey) {
     return
   }
   if (payload.source === 'deck' && payload.deckEntryId) {
+    // Cross-zone moves rebuild the source list, which can unmount the
+    // dragged strip before its dragend fires — leaving dragEntryId set
+    // and the floating remove/new-category drop zones stuck on screen.
+    // Clear here so the popups always close on a successful drop.
+    deck.setDragEntry(null)
     const patch = {}
     if (props.zone && payload.zone !== props.zone) {
       patch.zone = props.zone
@@ -332,6 +338,40 @@ function onEntryClick(entry) {
   deck.setActiveEntry(entry.id)
 }
 
+// ── Peek (popover hover) state ──────────────────────────────────────────
+// Mirrors CardListPanel: when settings.hoverMode === 'peek', strips stay
+// compact and emit peek-show/peek-hide; we render a CardPeek popover next
+// to the hovered row. Adapter maps deck-entry shape (scryfall_card) to the
+// CardPeek expected shape (entry.card).
+const peek = ref({ entry: null, x: 0, y: 0, visible: false })
+
+function onPeekShow({ entry, rect }) {
+  const card = entry?.scryfall_card || {}
+  const isDfc = !!(card.is_dfc && card.image_normal_back)
+  const cardW = readCssPx('--card-width', 146)
+  const peekW = isDfc ? cardW * 2 + 8 : cardW
+  const peekH = Math.round(cardW * 88 / 63)
+  const gap = 10
+
+  let x = rect.right + gap
+  if (x + peekW > window.innerWidth - 12) {
+    x = rect.left - peekW - gap
+  }
+  let y = rect.top + rect.height / 2 - peekH / 2
+  y = Math.max(12, Math.min(y, window.innerHeight - peekH - 12))
+
+  peek.value = {
+    entry: { card, quantity: entry.quantity },
+    x,
+    y,
+    visible: true,
+  }
+}
+
+function onPeekHide() {
+  peek.value = { ...peek.value, visible: false }
+}
+
 function isIllegal(entry) {
   return !!cardIllegalityMap.value[entry.scryfall_id]
 }
@@ -380,6 +420,8 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
               :illegal="isIllegal(entry)"
               :show-game-changer="gcFormat"
               @click="onEntryClick(entry)"
+              @peek-show="onPeekShow"
+              @peek-hide="onPeekHide"
             />
           </template>
         </div>
@@ -389,6 +431,12 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
       No cards in this zone. Drop cards here from the catalog.
     </div>
   </div>
+  <CardPeek
+    :entry="peek.entry"
+    :x="peek.x"
+    :y="peek.y"
+    :visible="peek.visible"
+  />
 </template>
 
 <style scoped>

@@ -19,7 +19,7 @@ const props = defineProps({
   illegal: { type: Boolean, default: false },
   showGameChanger: { type: Boolean, default: false },
 })
-const emit = defineEmits(['click'])
+const emit = defineEmits(['click', 'peek-show', 'peek-hide'])
 
 const settings = useSettingsStore()
 const deckStore = useDeckStore()
@@ -48,6 +48,10 @@ function onContextMenu(e) {
   menuPos.value = { x: e.clientX, y: e.clientY }
 }
 function closeMenu() { menuPos.value = null }
+
+function onPeekShow({ rect }) {
+  emit('peek-show', { entry: props.entry, rect })
+}
 </script>
 
 <template>
@@ -57,6 +61,7 @@ function closeMenu() { menuPos.value = null }
     :show-qty-in-bar="false"
     :show-skeleton="false"
     :mode-b="settings.displayMode === 'B'"
+    :hover-mode="settings.hoverMode"
     :draggable="true"
     :loading-lazy="true"
     :class="{ 'illegal-glow': illegal }"
@@ -64,6 +69,8 @@ function closeMenu() { menuPos.value = null }
     @contextmenu="onContextMenu"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
+    @peek-show="onPeekShow"
+    @peek-hide="emit('peek-hide')"
   >
     <template #badges>
       <!-- Mode A keeps the square pill in the top-right. Mode B replaces
