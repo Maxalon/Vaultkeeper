@@ -257,7 +257,7 @@ function openDeck() {
 }
 .modal-card h2 {
   font-size: 20px;
-  color: var(--gold);
+  color: var(--amber);
   margin-bottom: 14px;
 }
 .tabs {
@@ -270,14 +270,14 @@ function openDeck() {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--text-dim);
+  color: var(--ink-50);
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
 }
 .tab.active {
-  color: var(--gold);
-  border-bottom-color: var(--gold);
+  color: var(--amber);
+  border-bottom-color: var(--amber);
 }
 .field { display: block; margin-bottom: 14px; position: relative; }
 .label {
@@ -285,7 +285,7 @@ function openDeck() {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  color: var(--ink-50);
   margin-bottom: 5px;
 }
 .decklist {
@@ -302,7 +302,7 @@ function openDeck() {
   letter-spacing: 0.04em;
   border-radius: 999px;
   background: rgba(201, 157, 61, 0.12);
-  color: var(--gold);
+  color: var(--amber);
 }
 .source-chip.warn { background: rgba(200, 80, 80, 0.15); color: #e88; }
 .error { color: var(--cond-dmg); margin: 4px 0 12px; font-size: 12px; }
@@ -325,7 +325,7 @@ function openDeck() {
   display: block;
   font-size: 24px;
   font-weight: 700;
-  color: var(--gold);
+  color: var(--amber);
   font-family: var(--font-display), serif;
 }
 .stat-lbl {
@@ -333,7 +333,7 @@ function openDeck() {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  color: var(--ink-50);
   margin-top: 4px;
 }
 .warnings {
@@ -343,7 +343,7 @@ function openDeck() {
   max-height: 160px;
   overflow-y: auto;
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--ink-50);
 }
 .warnings li {
   padding: 4px 0;
@@ -363,7 +363,7 @@ function openDeck() {
   text-transform: uppercase;
   font-size: 10px;
   letter-spacing: 0.05em;
-  color: var(--text-dim);
+  color: var(--ink-50);
   background: var(--bg-1);
   padding: 2px 8px;
   border-radius: 999px;
@@ -383,7 +383,7 @@ function openDeck() {
   margin: 0 0 16px;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--text-dim);
+  color: var(--ink-50);
 }
-.conflict-hint strong { color: var(--gold); }
+.conflict-hint strong { color: var(--amber); }
 </style>

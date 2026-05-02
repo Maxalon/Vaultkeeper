@@ -49,7 +49,7 @@ function onPeekShow({ rect }) {
    and overrides the colour on hover / Mode B; these rules layer on top
    for the selection and active states unique to the collection panel. */
 .strip.active {
-  outline-color: var(--gold-bright);
+  outline-color: var(--amber-hi);
 }
 .strip.selected {
   outline-color: var(--amber);

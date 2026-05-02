@@ -223,7 +223,7 @@ async function submit() {
 }
 .modal-card h2 {
   font-size: 20px;
-  color: var(--gold);
+  color: var(--amber);
   margin-bottom: 18px;
 }
 .drop-zone {
@@ -240,29 +240,29 @@ async function submit() {
   gap: 4px;
 }
 .drop-zone:hover {
-  border-color: var(--gold-dim);
+  border-color: var(--amber-lo);
   background: rgba(201, 162, 39, 0.04);
 }
 .drop-zone.has-file {
-  border-color: var(--gold);
+  border-color: var(--amber);
   background: rgba(201, 162, 39, 0.07);
 }
 .drop-label {
   font-size: 13px;
-  color: var(--text-dim);
+  color: var(--ink-50);
 }
 .drop-hint {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--ink-30);
 }
 .file-name {
   font-size: 13px;
-  color: var(--text);
+  color: var(--ink-100);
   font-weight: 600;
 }
 .file-size {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--ink-50);
 }
 .field {
   display: block;
@@ -273,13 +273,13 @@ async function submit() {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  color: var(--ink-50);
   margin-bottom: 5px;
 }
 .hint {
   text-transform: none;
   letter-spacing: 0;
-  color: var(--text-faint);
+  color: var(--ink-30);
   font-size: 10px;
 }
 .error {
@@ -312,7 +312,7 @@ async function submit() {
   display: block;
   font-size: 24px;
   font-weight: 700;
-  color: var(--gold);
+  color: var(--amber);
   font-family: var(--font-display), serif;
 }
 .stat-lbl {
@@ -320,7 +320,7 @@ async function submit() {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  color: var(--ink-50);
   margin-top: 4px;
 }
 .warnings {
@@ -330,7 +330,7 @@ async function submit() {
   max-height: 120px;
   overflow-y: auto;
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--ink-50);
 }
 .warnings li {
   padding: 3px 0;

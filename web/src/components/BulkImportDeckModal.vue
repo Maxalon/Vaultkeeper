@@ -122,11 +122,11 @@ async function submit() {
 }
 .modal-card h2 {
   font-size: 20px;
-  color: var(--gold);
+  color: var(--amber);
   margin-bottom: 8px;
 }
 .hint {
-  color: var(--text-dim, var(--ink-50));
+  color: var(--ink-50);
   font-size: 12px;
   margin: 0 0 16px;
   line-height: 1.5;
@@ -137,21 +137,21 @@ async function submit() {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim, var(--ink-50));
+  color: var(--ink-50);
   margin-bottom: 5px;
 }
 .note {
   margin: 4px 0 0;
   padding: 10px 12px;
   background: var(--bg-2);
-  border-left: 2px solid var(--ink-30, var(--text-dim));
+  border-left: 2px solid var(--ink-30);
   border-radius: 0 4px 4px 0;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--text-dim, var(--ink-50));
+  color: var(--ink-50);
 }
 .dup-choice {
-  border: 1px solid var(--hairline, var(--border));
+  border: 1px solid var(--hairline);
   border-radius: 6px;
   padding: 10px 12px 4px;
 }
@@ -170,11 +170,11 @@ async function submit() {
 .dup-opt-body { display: flex; flex-direction: column; gap: 2px; }
 .dup-opt-title {
   font-size: 12px;
-  color: var(--ink-90, var(--ink-100));
+  color: var(--ink-90);
 }
 .dup-opt-hint {
   font-size: 11px;
-  color: var(--text-dim, var(--ink-50));
+  color: var(--ink-50);
   line-height: 1.4;
 }
 .actions {
