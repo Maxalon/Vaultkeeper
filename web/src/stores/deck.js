@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import api from '../lib/api'
 import { useToast } from '../composables/useToast'
+import { useCollectionStore } from './collection'
 import {
   parseSearch as parseSearchGeneric,
   serializeQuery as serializeQueryGeneric,
@@ -165,7 +166,10 @@ export const useDeckStore = defineStore('deck', {
       try {
         const { data } = await api.post(`/decks/${deckId}/entries`, payload)
         this.entries.push(data)
-        await this.loadIllegalities(deckId)
+        await Promise.all([
+          this.loadIllegalities(deckId),
+          useCollectionStore().fetchDecks(),
+        ])
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Failed to add card')
@@ -180,6 +184,8 @@ export const useDeckStore = defineStore('deck', {
       const prev = { ...this.entries[idx] }
       this.entries[idx] = { ...prev, ...patch }
       this.saving.add(entryId)
+      // Quantity / zone edits change the mainboard size shown in the sidebar.
+      const countChanged = 'quantity' in patch || 'zone' in patch
       try {
         const { data } = await api.patch(
           `/decks/${deckId}/entries/${entryId}`,
@@ -187,7 +193,10 @@ export const useDeckStore = defineStore('deck', {
         )
         // Reconcile with server-authoritative response (keep derived fields)
         this.entries[idx] = { ...this.entries[idx], ...data }
-        await this.loadIllegalities(deckId)
+        await Promise.all([
+          this.loadIllegalities(deckId),
+          countChanged ? useCollectionStore().fetchDecks() : null,
+        ])
         return data
       } catch (e) {
         this.entries[idx] = prev
@@ -210,7 +219,10 @@ export const useDeckStore = defineStore('deck', {
       if (this.activeEntryId === entryId) this.activeEntryId = null
       try {
         await api.delete(`/decks/${deckId}/entries/${entryId}`)
-        await this.loadIllegalities(deckId)
+        await Promise.all([
+          this.loadIllegalities(deckId),
+          useCollectionStore().fetchDecks(),
+        ])
       } catch (e) {
         this.entries.splice(idx, 0, removed)
         toast.error(e.response?.data?.message || 'Delete failed')
