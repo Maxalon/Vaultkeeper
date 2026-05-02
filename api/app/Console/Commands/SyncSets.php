@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\UnableToCheckFileExistence;
 use Throwable;
 
 class SyncSets extends Command
@@ -47,7 +48,7 @@ class SyncSets extends Command
         $release = $vectors->fetchLatestRelease();
         $this->info("mtg-vectors latest release: {$release['tag']}");
 
-        $storedVersion  = $disk->exists(self::VERSION_KEY) ? trim((string) $disk->get(self::VERSION_KEY)) : '';
+        $storedVersion  = $this->safeExists($disk, self::VERSION_KEY) ? trim((string) $disk->get(self::VERSION_KEY)) : '';
         $forceOverwrite = ($storedVersion !== $release['tag']);
         if ($forceOverwrite) {
             $this->info($storedVersion === ''
@@ -80,7 +81,7 @@ class SyncSets extends Command
 
     private function syncCardBack(ScryfallService $scryfall, Filesystem $disk): void
     {
-        if ($disk->exists('card-back.jpg')) {
+        if ($this->safeExists($disk, 'card-back.jpg')) {
             $this->info('Card back already exists, skipping.');
 
             return;
@@ -300,7 +301,7 @@ class SyncSets extends Command
 
             $dest = "symbols/{$clean}.svg";
 
-            if ($disk->exists($dest)) {
+            if ($this->safeExists($disk, $dest)) {
                 $skipped++;
 
                 continue;
@@ -315,5 +316,22 @@ class SyncSets extends Command
         }
 
         $this->info("Symbols sync complete. Downloaded: {$downloaded}, Skipped: {$skipped}, Failed: {$failed}");
+    }
+
+    /**
+     * MinIO answers HEAD on a missing object with 403 instead of 404, and
+     * the S3 SDK's doesObjectExistV2 propagates that as
+     * UnableToCheckFileExistence rather than swallowing it like the older
+     * doesObjectExist used to. For a write-heavy sync command, "can't tell
+     * if it exists" is safe to treat as "not present" — worst case we
+     * re-upload a file that was already there.
+     */
+    private function safeExists(Filesystem $disk, string $path): bool
+    {
+        try {
+            return $disk->exists($path);
+        } catch (UnableToCheckFileExistence) {
+            return false;
+        }
     }
 }
