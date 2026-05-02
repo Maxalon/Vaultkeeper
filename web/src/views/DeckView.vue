@@ -31,6 +31,14 @@ async function loadAll(id) {
   }
 }
 
+// Belt-and-suspenders: clear the deck drag state on any dragend or drop
+// at the document level. Cross-zone drops can rebuild the source list and
+// unmount the dragged strip before its own dragend fires, leaving the
+// floating remove / new-category drop zones stuck on screen.
+function clearDragState() {
+  if (deck.dragEntryId !== null) deck.setDragEntry(null)
+}
+
 onMounted(async () => {
   await collection.fetchLocations()
   // fetchDecks runs inside the collection store (see Part 8). Guard in case
@@ -39,6 +47,8 @@ onMounted(async () => {
     await collection.fetchDecks()
   }
   await loadAll(route.params.id)
+  document.addEventListener('dragend', clearDragState)
+  document.addEventListener('drop', clearDragState)
 })
 
 watch(
@@ -49,6 +59,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  document.removeEventListener('dragend', clearDragState)
+  document.removeEventListener('drop', clearDragState)
   deck.reset()
 })
 </script>
