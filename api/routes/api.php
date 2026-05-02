@@ -54,6 +54,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get   ('decks',                                 [DeckController::class, 'index']);
     Route::post  ('decks',                                 [DeckController::class, 'store']);
     Route::post  ('decks/import',                          [DeckImportController::class, 'store']);
+    Route::post  ('decks/import/csv',                      [DeckImportController::class, 'csv']);
     Route::post  ('decks/import/bulk',                     [DeckImportController::class, 'bulk']);
     Route::get   ('decks/import/bulk/{key}',               [DeckImportController::class, 'bulkStatus']);
     Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);

@@ -72,6 +72,39 @@ class DeckImportController extends Controller
     }
 
     /**
+     * POST /api/decks/import/csv
+     *
+     * Upload a ManaBox-style CSV as a deck. Same parser as the collection
+     * import; an optional `Zone` column splits rows across main / side /
+     * maybe.
+     */
+    public function csv(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:5120',
+            'name'     => 'required|string|max:100',
+            'format'   => ['required', 'string', 'in:'.implode(',', self::FORMATS)],
+            'group_id' => 'sometimes|nullable|integer',
+        ]);
+
+        $result = $this->importer->importFromCsv(
+            file:    $request->file('csv_file'),
+            user:    $request->user(),
+            name:    (string) $data['name'],
+            format:  (string) $data['format'],
+            groupId: $data['group_id'] ?? null,
+        );
+
+        return response()->json([
+            'deck'     => $this->presentDeck($result['deck']),
+            'imported' => $result['imported'],
+            'skipped'  => $result['skipped'],
+            'warnings' => $result['warnings'],
+            'action'   => $result['action'] ?? 'created',
+        ], 201);
+    }
+
+    /**
      * POST /api/decks/import/bulk
      *
      * Kicks off a queued job that imports every public deck for an
