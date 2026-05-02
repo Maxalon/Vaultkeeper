@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
   height: var(--strip-expanded);
   margin-bottom: calc(4px + var(--strip-gap));
   z-index: 2;
-  outline-color: var(--gold);
+  outline-color: var(--amber);
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.7);
 }
 /* Last card in Mode B stays expanded but shouldn't look "selected". */
@@ -214,7 +214,7 @@ onBeforeUnmount(() => {
 }
 .strip.peek-mode:hover {
   z-index: 2;
-  outline-color: var(--gold);
+  outline-color: var(--amber);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   transform: scale(1.02);
 }
@@ -302,7 +302,7 @@ onBeforeUnmount(() => {
     rgba(13, 15, 20, 0.65) 35%,
     rgba(13, 15, 20, 0.92) 100%
   );
-  color: var(--text);
+  color: var(--ink-100);
   transition: top 200ms ease-out;
 }
 .strip.loaded .overlay {
@@ -311,7 +311,7 @@ onBeforeUnmount(() => {
 
 .qty {
   font-variant-numeric: tabular-nums;
-  color: var(--gold);
+  color: var(--amber);
   font-weight: 700;
   font-size: 13px;
   flex-shrink: 0;

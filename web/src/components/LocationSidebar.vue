@@ -1017,7 +1017,7 @@ footer::before {
   right: 0;
   min-width: 200px;
   background: var(--bg-1);
-  border: 1px solid var(--hairline, var(--border));
+  border: 1px solid var(--hairline);
   border-radius: var(--radius-sm, 4px);
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   padding: 4px;
