@@ -319,6 +319,38 @@ class CardSearchServiceTest extends TestCase
         $this->assertContains('tdm', $out['builder']->getBindings());
     }
 
+    public function test_set_operator_surfaces_printing_filter(): void
+    {
+        // The collection / catalog controllers consume printing_filters to
+        // narrow on the specific printing (set_code on the joined
+        // scryfall_cards row, or to overlay the matched printing in the
+        // catalog response). Lowercased, top-level AND scope only.
+        $out = $this->svc()->search('s:SOA');
+        $this->assertSame('soa', $out['printing_filters']['set']);
+        $this->assertNull($out['printing_filters']['collector_number']);
+    }
+
+    public function test_set_in_or_group_does_not_surface_printing_filter(): void
+    {
+        // OR groups have ambiguous "which printing did the user ask for"
+        // semantics — skip the printing-scope narrowing.
+        $out = $this->svc()->search('s:SOA OR s:FDN');
+        $this->assertNull($out['printing_filters']['set']);
+    }
+
+    public function test_negated_set_does_not_surface_printing_filter(): void
+    {
+        $out = $this->svc()->search('-s:SOA');
+        $this->assertNull($out['printing_filters']['set']);
+    }
+
+    public function test_collector_number_surfaces_printing_filter(): void
+    {
+        $out = $this->svc()->search('s:SOA cn:42');
+        $this->assertSame('soa', $out['printing_filters']['set']);
+        $this->assertSame('42', $out['printing_filters']['collector_number']);
+    }
+
     public function test_banned_operator(): void
     {
         $out = $this->svc()->search('banned:modern');

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { vDraggable } from 'vue-draggable-plus'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
+import { confirm as confirmDialog } from '../composables/useConfirm'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
 import ImportDeckModal from './ImportDeckModal.vue'
@@ -147,12 +148,36 @@ function shouldShowLocCount(loc) {
 }
 async function deleteLocation(loc) {
   if (loc.kind === 'deck') {
-    if (!confirm(`Delete deck "${loc.name}"?`)) return
+    const ok = await confirmDialog({
+      title: 'Delete deck?',
+      message: `Remove "${loc.name}" permanently?`,
+      confirmText: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     await collection.deleteDeck(loc.id)
     return
   }
-  if (!confirm(`Delete "${loc.name}"? Cards in it will be unassigned.`)) return
-  await collection.deleteLocation(loc.id)
+  const cardCount = loc.card_count ?? 0
+  const result = await confirmDialog({
+    title: 'Delete location?',
+    message:
+      cardCount > 0
+        ? `Remove "${loc.name}" permanently? Its ${cardCount} card${cardCount === 1 ? '' : 's'} will be unassigned.`
+        : `Remove "${loc.name}" permanently?`,
+    confirmText: 'Delete',
+    destructive: true,
+    checkbox: cardCount > 0
+      ? {
+          label: `Also delete ${cardCount} entr${cardCount === 1 ? 'y' : 'ies'} in this location (permanent)`,
+          dangerous: true,
+        }
+      : null,
+  })
+  const confirmed = typeof result === 'object' ? result.confirmed : result
+  const deleteEntries = typeof result === 'object' ? result.checkboxChecked : false
+  if (!confirmed) return
+  await collection.deleteLocation(loc.id, { deleteEntries })
 }
 
 async function startCreateGroup() {

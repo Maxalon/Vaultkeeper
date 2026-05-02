@@ -8,6 +8,11 @@ import DeckCardStrip from './DeckCardStrip.vue'
 
 const props = defineProps({
   zone: { type: String, required: true },
+  // When true, the grid expands to fill its parent's height so the empty
+  // area below the cards is still a valid drop target. Used in the
+  // zone-only tab view (undocked sideboard / maybeboard) where there is
+  // nothing else competing for vertical space.
+  fill: { type: Boolean, default: false },
 })
 
 const deck = useDeckStore()
@@ -234,6 +239,18 @@ function acceptsDrop(e) {
   return (e.dataTransfer?.types || []).includes('application/json')
 }
 
+// Catalog drags use effectAllowed='copy' (adding a new entry); deck-internal
+// drags use effectAllowed='move' (reassigning zone/category). The browser
+// drops the event when dropEffect isn't in effectAllowed, so we have to set
+// the right one — a unilateral 'move' silently kills catalog→deck drops.
+// During dragover we can read .types but not .getData, so we tag catalog
+// drags with a sentinel MIME type the dragstart adds alongside the JSON.
+function dropEffectFor(e) {
+  return (e.dataTransfer?.types || []).includes('application/x-vk-catalog')
+    ? 'copy'
+    : 'move'
+}
+
 function onGridDragEnter(e) {
   if (!acceptsDrop(e)) return
   cancelHide()
@@ -245,7 +262,7 @@ function onGridDragLeave() {
 function onGridDragOver(e) {
   if (!acceptsDrop(e)) return
   e.preventDefault()
-  e.dataTransfer.dropEffect = 'move'
+  e.dataTransfer.dropEffect = dropEffectFor(e)
   // Also catches child→parent transitions where dragenter didn't bubble:
   // as long as dragover keeps firing we're still over the grid.
   cancelHide()
@@ -260,7 +277,7 @@ function onGroupDragEnter(e, groupKey) {
 function onGroupDragOver(e, groupKey) {
   if (!acceptsDrop(e)) return
   e.preventDefault()
-  e.dataTransfer.dropEffect = 'move'
+  e.dataTransfer.dropEffect = dropEffectFor(e)
   cancelHide()
   dropTargetGroup.value = groupKey
 }
@@ -383,7 +400,7 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
   <div
     ref="gridRef"
     class="deck-grid"
-    :class="{ 'drag-active': gridDragActive }"
+    :class="{ 'drag-active': gridDragActive, fill }"
     @dragenter="onGridDragEnter"
     @dragleave="onGridDragLeave"
     @dragover="onGridDragOver"
@@ -454,6 +471,15 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 1rem 1.25rem;
+}
+/* Zone-only tab view: stretch to fill the leftover tab height so empty
+   space below the cards still accepts drops. align-items: flex-start
+   keeps the cards anchored to the top; the grid scrolls itself when
+   contents exceed the visible area. */
+.deck-grid.fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .deck-column {
   flex: 0 0 auto;

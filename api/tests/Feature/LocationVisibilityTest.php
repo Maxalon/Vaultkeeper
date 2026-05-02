@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\Location;
 use App\Models\User;
@@ -104,5 +105,40 @@ class LocationVisibilityTest extends TestCase
             ->assertForbidden();
 
         $this->assertDatabaseHas('locations', ['id' => $deckLocation->id]);
+    }
+
+    public function test_destroy_location_detaches_entries_by_default(): void
+    {
+        $location = Location::factory()->create(['user_id' => $this->user->id]);
+        $entry = CollectionEntry::factory()->create([
+            'user_id'     => $this->user->id,
+            'location_id' => $location->id,
+        ]);
+
+        $this->withHeaders($this->headers())
+            ->deleteJson("/api/locations/{$location->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('locations', ['id' => $location->id]);
+        $this->assertDatabaseHas('collection_entries', [
+            'id'          => $entry->id,
+            'location_id' => null,
+        ]);
+    }
+
+    public function test_destroy_location_with_delete_entries_flag_drops_entries(): void
+    {
+        $location = Location::factory()->create(['user_id' => $this->user->id]);
+        $entry = CollectionEntry::factory()->create([
+            'user_id'     => $this->user->id,
+            'location_id' => $location->id,
+        ]);
+
+        $this->withHeaders($this->headers())
+            ->deleteJson("/api/locations/{$location->id}?delete_entries=1")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('locations', ['id' => $location->id]);
+        $this->assertDatabaseMissing('collection_entries', ['id' => $entry->id]);
     }
 }

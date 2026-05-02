@@ -217,6 +217,15 @@ class ScryfallCardController extends Controller
         $oracleIds = array_values(array_filter(array_map(fn ($r) => $r->oracle_id, $rows)));
         $ownership = $this->ownershipMap($oracleIds, $userId, $excludeDeckId);
 
+        // When the user filtered by `set:`, swap the displayed printing
+        // from the oracle's default printing to the matching set's printing.
+        // Otherwise `set:SOA` would still show e.g. the FDN reprint of
+        // Burst Lightning because that's the oracle's default printing.
+        $printingFilters = $parsed['printing_filters'] ?? [];
+        if (! empty($printingFilters['set']) && ! empty($oracleIds)) {
+            $this->overlayPrintingForSet($rows, $oracleIds, $printingFilters['set']);
+        }
+
         // 7. Reshape to match the existing present() output, then attach
         //    ownership fields plus grouping metadata.
         $data = array_map(function ($r) use ($ownership) {
@@ -419,6 +428,61 @@ class ScryfallCardController extends Controller
             ];
         }
         return $out;
+    }
+
+    /**
+     * Overwrite the default-printing identifiers / images on each row
+     * with the matching `set:` printing. Mutates $rows in place. When a
+     * row has no printing in the set (shouldn't happen since the WHERE
+     * already constrained on EXISTS, but defended against here), the
+     * default printing is left intact.
+     *
+     * @param  array<int, object>  $rows
+     * @param  array<int, string>  $oracleIds
+     */
+    private function overlayPrintingForSet(array $rows, array $oracleIds, string $setCode): void
+    {
+        // One representative printing per oracle within the set: pick the
+        // lowest natural-numeric collector_number, then the lowest
+        // collector_number string for ties (handles "1" vs "1a" etc.).
+        $printings = DB::table('scryfall_cards')
+            ->whereIn('oracle_id', $oracleIds)
+            ->where('set_code', $setCode)
+            ->orderByRaw("CAST(REGEXP_REPLACE(collector_number, '[^0-9]', '') AS UNSIGNED) ASC")
+            ->orderBy('collector_number')
+            ->get([
+                'oracle_id', 'scryfall_id', 'set_code', 'collector_number',
+                'released_at', 'rarity',
+                'image_small', 'image_normal', 'image_large',
+                'image_small_back', 'image_normal_back', 'image_large_back',
+            ]);
+
+        $byOracle = [];
+        foreach ($printings as $p) {
+            // First match wins thanks to the ORDER BY above.
+            if (! isset($byOracle[$p->oracle_id])) {
+                $byOracle[$p->oracle_id] = $p;
+            }
+        }
+
+        foreach ($rows as $r) {
+            $p = $byOracle[$r->oracle_id] ?? null;
+            if ($p === null) continue;
+            $r->default_scryfall_id      = $p->scryfall_id;
+            $r->default_set_code         = $p->set_code;
+            $r->default_collector_number = $p->collector_number;
+            $r->default_released_at      = $p->released_at;
+            $r->default_rarity           = $p->rarity;
+            $r->default_image_small      = $p->image_small;
+            $r->default_image_normal     = $p->image_normal;
+            $r->default_image_large      = $p->image_large;
+            // DFC back-face images are per-printing; keep them in sync.
+            if (! empty($r->is_dfc)) {
+                $r->image_small_back  = $p->image_small_back;
+                $r->image_normal_back = $p->image_normal_back;
+                $r->image_large_back  = $p->image_large_back;
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────

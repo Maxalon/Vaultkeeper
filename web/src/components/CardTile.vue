@@ -5,41 +5,68 @@ import CornerCountBadge from './CornerCountBadge.vue'
 import DfcPopover from './DfcPopover.vue'
 
 /**
- * Grid tile for a catalog search result row. Click behaviour:
- *   - no deckId → opens the catalog sidebar for this oracle
- *   - deckId set → shows an inline add menu (Main / Side / Maybe),
- *     emits `add-to-deck` with { scryfall_id, zone }
+ * Grid tile for a catalog search result row. Click opens the catalog
+ * detail sidebar; the sidebar hosts the printing picker and the
+ * Main/Side/Maybe add-to-deck buttons.
  *
  * Hovering a DFC card teleports a DfcPopover showing the back face.
  * The tile is draggable; its dataTransfer payload is consumed by the
- * DB-3 deck view's drop target.
+ * deck view's drop target.
  */
 const props = defineProps({
   card: { type: Object, required: true },
   size: { type: String, default: 'medium' }, // 'small' | 'medium' | 'large'
   deckId: { type: Number, default: null },
 })
-const emit = defineEmits(['click', 'add-to-deck'])
+const emit = defineEmits(['click'])
 
 const catalog = useCatalogStore()
 
 const rootRef = ref(null)
 const hovered = ref(false)
 const hoverTimer = ref(null)
-const addMenuOpen = ref(false)
 
 const effectiveScryfallId = computed(
   () => catalog.activePrintings[props.card.oracle_id] || props.card.scryfall_id,
 )
 
+// When the user has picked a non-default printing, swap the tile's image
+// (and DFC back face) to that printing so the catalog visibly reflects
+// the choice. The selection lives in catalog.activePrintings and is wiped
+// on the next search, so this is purely temporary state.
+const selectedPrinting = computed(() => {
+  const sid = catalog.activePrintings[props.card.oracle_id]
+  if (!sid || sid === props.card.scryfall_id) return null
+  const list = catalog.printingsByOracle[props.card.oracle_id] || []
+  return list.find((p) => p.scryfall_id === sid) || null
+})
+
+const displayCard = computed(() => {
+  const p = selectedPrinting.value
+  if (!p) return props.card
+  return {
+    ...props.card,
+    scryfall_id: p.scryfall_id,
+    set_code: p.set_code,
+    collector_number: p.collector_number,
+    rarity: p.rarity,
+    image_small: p.image_small,
+    image_normal: p.image_normal,
+    image_large: p.image_large,
+    image_small_back: p.image_small_back,
+    image_normal_back: p.image_normal_back,
+    image_large_back: p.image_large_back,
+  }
+})
+
 const imageSrc = computed(() => {
-  const c = props.card
+  const c = displayCard.value
   if (props.size === 'small') return c.image_small || c.image_normal
   if (props.size === 'large') return c.image_large || c.image_normal
   return c.image_normal || c.image_large || c.image_small
 })
 const imageSrcset = computed(() => {
-  const c = props.card
+  const c = displayCard.value
   return [
     c.image_small  ? `${c.image_small} 146w`  : null,
     c.image_normal ? `${c.image_normal} 488w` : null,
@@ -63,21 +90,12 @@ const shineClass = computed(() => {
 const sizeClass = computed(() => `size-${props.size}`)
 
 function onClick() {
-  if (props.deckId !== null) {
-    addMenuOpen.value = !addMenuOpen.value
-    return
-  }
   catalog.setActiveCard(props.card.oracle_id)
   emit('click')
 }
 
-function emitAdd(zone) {
-  emit('add-to-deck', { scryfall_id: effectiveScryfallId.value, zone })
-  addMenuOpen.value = false
-}
-
 function onHoverEnter() {
-  if (!props.card.is_dfc) return
+  if (!displayCard.value.is_dfc) return
   hoverTimer.value = setTimeout(() => { hovered.value = true }, 300)
 }
 function onHoverLeave() {
@@ -91,6 +109,10 @@ function onDragStart(e) {
     scryfall_id: effectiveScryfallId.value,
     source: 'catalog',
   }))
+  // Sentinel MIME — DeckGrid reads .types during dragover (.getData isn't
+  // available there) to set dropEffect='copy'. Without this the browser
+  // refuses the drop because effectAllowed='copy' doesn't match 'move'.
+  e.dataTransfer.setData('application/x-vk-catalog', '1')
   e.dataTransfer.effectAllowed = 'copy'
 }
 </script>
@@ -121,16 +143,10 @@ function onDragStart(e) {
     <span v-if="card.wanted_by_others > 0" class="badge badge-wanted">{{ card.wanted_by_others }}</span>
 
     <DfcPopover
-      v-if="card.is_dfc && hovered && card.image_normal_back"
-      :back-image="card.image_normal_back"
+      v-if="displayCard.is_dfc && hovered && displayCard.image_normal_back"
+      :back-image="displayCard.image_normal_back"
       :anchor="rootRef"
     />
-
-    <div v-if="deckId && addMenuOpen" class="add-menu" @click.stop>
-      <button type="button" @click="emitAdd('main')">+ Main</button>
-      <button type="button" @click="emitAdd('side')">+ Side</button>
-      <button type="button" @click="emitAdd('maybe')">+ Maybe</button>
-    </div>
   </div>
 </template>
 
@@ -243,28 +259,4 @@ function onDragStart(e) {
   color: #fff;
 }
 
-.add-menu {
-  position: absolute;
-  left: 50%;
-  bottom: 10px;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  background: rgba(0, 0, 0, 0.82);
-  border: 1px solid var(--amber-lo, #8a7436);
-  border-radius: 6px;
-  padding: 4px;
-  z-index: 5;
-}
-.add-menu button {
-  background: transparent;
-  border: 0;
-  color: var(--amber, #c9a552);
-  font-size: 11px;
-  font-family: var(--font-mono), monospace;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 3px;
-}
-.add-menu button:hover { background: rgba(201, 165, 82, 0.18); }
 </style>

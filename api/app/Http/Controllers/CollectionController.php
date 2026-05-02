@@ -65,6 +65,14 @@ class CollectionController extends Controller
         // intersect via oracle_id. `disable_defaults` because the user is
         // filtering their own collection — hidden-type / playtest defaults
         // would mask cards they actually own.
+        //
+        // Per-printing operators (set:, cn:) also constrain the joined
+        // scryfall_cards row directly. The oracle filter alone would let
+        // through any printing the user owns once the oracle has *some*
+        // matching printing — e.g. set:SOA would surface an FDN-printed
+        // Burst Lightning the user happens to have, which isn't what they
+        // asked for. Narrowing on scryfall_cards.set_code restricts the
+        // result to entries whose specific printing is in the queried set.
         $warnings = [];
         $q = trim((string) $request->query('q', ''));
         if ($q !== '') {
@@ -74,6 +82,13 @@ class CollectionController extends Controller
                 'scryfall_cards.oracle_id',
                 $parsed['builder']->select('oracle_id')
             );
+            $printingFilters = $parsed['printing_filters'] ?? [];
+            if (! empty($printingFilters['set'])) {
+                $query->where('scryfall_cards.set_code', $printingFilters['set']);
+            }
+            if (! empty($printingFilters['collector_number'])) {
+                $query->where('scryfall_cards.collector_number', $printingFilters['collector_number']);
+            }
         } elseif ($search = trim((string) $request->query('search', ''))) {
             // Legacy fallback for callers still passing `search=` (name-only).
             $query->where('scryfall_cards.name', 'like', "%{$search}%");
