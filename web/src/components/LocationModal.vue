@@ -104,20 +104,48 @@ async function submit() {
 }
 
 async function doDelete() {
-  const ok = await confirm({
-    title: isEditDeck.value ? 'Delete deck?' : 'Delete location?',
-    message: `Remove "${props.location.name}" permanently?`,
+  if (isEditDeck.value) {
+    const ok = await confirm({
+      title: 'Delete deck?',
+      message: `Remove "${props.location.name}" permanently?`,
+      confirmText: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    submitting.value = true
+    try {
+      await collection.deleteDeck(props.location.id)
+      emit('close')
+    } catch (e) {
+      error.value = e.response?.data?.message || 'Failed to delete'
+    } finally {
+      submitting.value = false
+    }
+    return
+  }
+
+  const cardCount = props.location.card_count ?? 0
+  const result = await confirm({
+    title: 'Delete location?',
+    message:
+      cardCount > 0
+        ? `Remove "${props.location.name}" permanently? Its ${cardCount} card${cardCount === 1 ? '' : 's'} will be unassigned.`
+        : `Remove "${props.location.name}" permanently?`,
     confirmText: 'Delete',
     destructive: true,
+    checkbox: cardCount > 0
+      ? {
+          label: `Also delete ${cardCount} entr${cardCount === 1 ? 'y' : 'ies'} in this location (permanent)`,
+          dangerous: true,
+        }
+      : null,
   })
-  if (!ok) return
+  const confirmed = typeof result === 'object' ? result.confirmed : result
+  const deleteEntries = typeof result === 'object' ? result.checkboxChecked : false
+  if (!confirmed) return
   submitting.value = true
   try {
-    if (isEditDeck.value) {
-      await collection.deleteDeck(props.location.id)
-    } else {
-      await collection.deleteLocation(props.location.id)
-    }
+    await collection.deleteLocation(props.location.id, { deleteEntries })
     emit('close')
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to delete'

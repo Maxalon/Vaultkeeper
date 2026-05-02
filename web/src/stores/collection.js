@@ -359,11 +359,18 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchLocations()
     },
 
-    async deleteLocation(id) {
-      await api.delete(`/locations/${id}`)
+    async deleteLocation(id, { deleteEntries = false } = {}) {
+      await api.delete(`/locations/${id}`, {
+        params: deleteEntries ? { delete_entries: 1 } : {},
+      })
       if (this.activeLocationId === id) {
         this.activeLocationId = null
         this.entries = []
+      }
+      // Re-pull cards too when entries were dropped, so the All Cards view
+      // and totals reflect the deletion.
+      if (deleteEntries) {
+        await this.fetchEntries()
       }
       await this.fetchLocations()
     },

@@ -86,16 +86,23 @@ class LocationController extends Controller
         return response()->json($this->present($location, $count));
     }
 
-    public function destroy(Location $location): Response
+    public function destroy(Request $request, Location $location): Response
     {
         abort_if($location->user_id !== auth()->id(), 403);
         abort_if($location->role !== Location::ROLE_USER, 403, 'Cannot delete auto-managed location.');
 
-        // Detach entries before deleting so the user doesn't lose collection
-        // rows just because they removed a drawer.
-        DB::transaction(function () use ($location) {
-            CollectionEntry::where('location_id', $location->id)
-                ->update(['location_id' => null]);
+        $deleteEntries = $request->boolean('delete_entries');
+
+        // By default we detach entries so the user doesn't lose collection rows
+        // just because they removed a drawer. When the caller opts in we drop
+        // the entries themselves — destructive, so it's gated on a flag.
+        DB::transaction(function () use ($location, $deleteEntries) {
+            $entries = CollectionEntry::where('location_id', $location->id);
+            if ($deleteEntries) {
+                $entries->delete();
+            } else {
+                $entries->update(['location_id' => null]);
+            }
 
             $location->delete();
         });
