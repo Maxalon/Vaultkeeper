@@ -71,7 +71,7 @@ class CardSearchService
 
     /**
      * @param  array{disable_defaults?: bool}  $options
-     * @return array{builder: Builder, warnings: array<int, string>, sort: array{column: string, direction: string}, defaults_applied: bool}
+     * @return array{builder: Builder, warnings: array<int, string>, sort: array{column: string, direction: string}, defaults_applied: bool, printing_filters: array{set: ?string, collector_number: ?string}}
      *
      * `disable_defaults=true` skips the default-hidden-type and
      * default-playtest filters. Controller uses this as a second-pass
@@ -88,7 +88,13 @@ class CardSearchService
 
         $trimmed = trim($query);
         if ($trimmed === '') {
-            return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort, 'defaults_applied' => false];
+            return [
+                'builder'          => $builder,
+                'warnings'         => $warnings,
+                'sort'             => $sort,
+                'defaults_applied' => false,
+                'printing_filters' => ['set' => null, 'collector_number' => null],
+            ];
         }
 
         $tokens = $this->tokenize($trimmed);
@@ -102,6 +108,12 @@ class CardSearchService
         if (! $this->isEmpty($ast)) {
             $this->applyNode($builder, $ast, $warnings);
         }
+
+        // Pull out per-printing constraints (set / collector number) at the
+        // top-level AND scope. Callers that join scryfall_cards (collection
+        // listing, catalog set-aware printing swap) use these to narrow on
+        // the specific printing instead of just "any printing of this oracle".
+        $printingFilters = $this->extractPrintingFiltersFromAst($ast);
 
         // Default "hidden" categories the user didn't ask for. Skipped
         // entirely when the user bang-exact-matched a card name — if they
@@ -120,7 +132,61 @@ class CardSearchService
             }
         }
 
-        return ['builder' => $builder, 'warnings' => $warnings, 'sort' => $sort, 'defaults_applied' => $defaultsApplied];
+        return [
+            'builder'           => $builder,
+            'warnings'          => $warnings,
+            'sort'              => $sort,
+            'defaults_applied' => $defaultsApplied,
+            'printing_filters' => $printingFilters,
+        ];
+    }
+
+    /**
+     * Top-level AND-scoped, non-negated `set:` / `cn:` filters surfaced to
+     * the controller. OR groups and NOT prefixes get skipped: their
+     * "which printing did the user ask for" semantic is ambiguous, and
+     * we'd rather underapply the printing scope than guess wrong.
+     *
+     * @param  array<string, mixed>  $ast
+     * @return array{set: ?string, collector_number: ?string}
+     */
+    private function extractPrintingFiltersFromAst(array $ast): array
+    {
+        $out = ['set' => null, 'collector_number' => null];
+
+        // The root may be a single leaf (parser collapses single-child
+        // AND groups) or an AND group. OR groups at the root are skipped
+        // entirely — see method docblock.
+        $children = [];
+        if (($ast['kind'] ?? null) === 'group') {
+            if (($ast['op'] ?? 'AND') !== 'AND' || ($ast['negated'] ?? false)) {
+                return $out;
+            }
+            $children = $ast['children'];
+        } else {
+            $children = [$ast];
+        }
+
+        foreach ($children as $child) {
+            if (($child['kind'] ?? null) !== 'leaf') continue;
+            if (! empty($child['negated'])) continue;
+            $atom = $child['atom'] ?? null;
+            if ($atom === null) continue;
+            if (! empty($atom['negated'])) continue;
+            $op = $atom['op'] ?? null;
+            if ($op === null) continue;
+            $op = $this->resolveAlias($op);
+            $value = (string) ($atom['value'] ?? '');
+            if ($value === '') continue;
+
+            if ($op === 'set') {
+                $out['set'] = strtolower($value);
+            } elseif ($op === 'number') {
+                $out['collector_number'] = $value;
+            }
+        }
+
+        return $out;
     }
 
     // ─────────────────────────────────────────────────────────────────────
