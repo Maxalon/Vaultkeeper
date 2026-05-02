@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class CollectionController extends Controller
 {
@@ -49,6 +50,17 @@ class CollectionController extends Controller
             ->join('scryfall_cards', 'collection_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
             ->where('collection_entries.user_id', $userId)
             ->with('card')
+            // Deck-location copies are represented by their deck_entry on
+            // the deck page; surfacing them here too would double-count
+            // and let the user accidentally re-shelve a copy out from
+            // under its deck. Pending copies stay visible (the dedicated
+            // /pending UI lives elsewhere in the stack).
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('locations')
+                    ->whereColumn('locations.id', 'collection_entries.location_id')
+                    ->where('locations.role', Location::ROLE_DECK);
+            })
             ->select('collection_entries.*');
 
         // location_id filter — three possible shapes
@@ -237,6 +249,15 @@ class CollectionController extends Controller
         $rows = CollectionEntry::query()
             ->where('user_id', auth()->id())
             ->where('scryfall_id', $data['scryfall_id'])
+            // Same rationale as index(): a copy already living in a
+            // deck-location is owned by that deck, so don't offer it as
+            // a binding target for a different deck slot.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('locations')
+                    ->whereColumn('locations.id', 'collection_entries.location_id')
+                    ->where('locations.role', Location::ROLE_DECK);
+            })
             ->with('location:id,name,type')
             ->get();
 
