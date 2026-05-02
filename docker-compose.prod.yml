@@ -66,8 +66,12 @@ services:
           memory: 128M
 
   # ─── MinIO (S3-compatible object storage for set symbols / assets) ────────
+  # Tag is the latest stable release that MinIO Inc. actually published
+  # to Docker Hub. Newer git tags exist (e.g. RELEASE.2025-10-15…) but
+  # were never pushed to docker.io/minio/minio — pulling them fails
+  # with "not found". Stick to a tag that exists on Docker Hub.
   minio:
-    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -117,7 +121,7 @@ services:
 
   # ─── MinIO bucket bootstrap (one-shot) ─────────────────────────────────────
   minio-init:
-    image: minio/mc:RELEASE.2025-04-03T17-07-56Z
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_healthy

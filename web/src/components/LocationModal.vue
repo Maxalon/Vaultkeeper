@@ -344,8 +344,8 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 }
 .modal-card {
   background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--gold);
+  border: 1px solid var(--hairline);
+  border-top: 2px solid var(--amber);
   border-radius: 6px;
   width: 420px;
   max-width: calc(100vw - 32px);
@@ -354,7 +354,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
 }
 .modal-card h2 {
   font-size: 20px;
-  color: var(--gold);
+  color: var(--amber);
   margin-bottom: 18px;
 }
 .field { display: block; margin-bottom: 14px; position: relative; }
@@ -363,13 +363,13 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-dim);
+  color: var(--ink-50);
   margin-bottom: 5px;
 }
-.hint { text-transform: none; letter-spacing: 0; color: var(--text-faint); font-size: 10px; }
+.hint { text-transform: none; letter-spacing: 0; color: var(--ink-30); font-size: 10px; }
 .segmented {
   display: flex;
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -378,11 +378,11 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
   background: var(--bg-0);
   border: none;
   padding: 9px;
-  color: var(--text-dim);
+  color: var(--ink-50);
   font-size: 13px;
 }
 .seg.active {
-  background: var(--gold);
+  background: var(--amber);
   color: var(--bg-0);
   font-weight: 600;
 }
@@ -392,7 +392,7 @@ const showCompanion   = computed(() => deckForm.format === 'commander')
   right: 0;
   top: 100%;
   background: var(--bg-0);
-  border: 1px solid var(--border);
+  border: 1px solid var(--hairline);
   border-radius: 4px;
   margin: 2px 0 0;
   padding: 0;
