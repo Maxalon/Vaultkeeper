@@ -247,8 +247,8 @@ function openDeck() {
 }
 .modal-card {
   background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--gold);
+  border: 1px solid var(--hairline);
+  border-top: 2px solid var(--amber);
   border-radius: 6px;
   width: 520px;
   max-width: calc(100vw - 32px);
@@ -264,7 +264,7 @@ function openDeck() {
   display: flex;
   gap: 4px;
   margin-bottom: 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
 }
 .tab {
   background: transparent;
@@ -347,7 +347,7 @@ function openDeck() {
 }
 .warnings li {
   padding: 4px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
 }
 .warnings li::before { content: '\26A0\FE0F  '; }
 .deck-summary {
@@ -375,7 +375,7 @@ function openDeck() {
   margin: 0 0 10px;
   padding: 12px;
   background: var(--bg-0);
-  border-left: 2px solid var(--gold);
+  border-left: 2px solid var(--amber);
   border-radius: 0 4px 4px 0;
   font-size: 13px;
 }

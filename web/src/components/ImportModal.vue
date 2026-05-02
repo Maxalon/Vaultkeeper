@@ -207,8 +207,8 @@ async function submit() {
 }
 .modal-card {
   background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--gold);
+  border: 1px solid var(--hairline);
+  border-top: 2px solid var(--amber);
   border-radius: 6px;
   width: 400px;
   max-width: calc(100vw - 32px);
@@ -227,7 +227,7 @@ async function submit() {
   margin-bottom: 18px;
 }
 .drop-zone {
-  border: 2px dashed var(--border);
+  border: 2px dashed var(--hairline);
   border-radius: 6px;
   padding: 28px 16px;
   text-align: center;
@@ -334,7 +334,7 @@ async function submit() {
 }
 .warnings li {
   padding: 3px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
 }
 .warnings li::before {
   content: '\26A0\FE0F ';
