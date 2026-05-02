@@ -7,6 +7,11 @@ import DeckCardStrip from './DeckCardStrip.vue'
 
 const props = defineProps({
   zone: { type: String, required: true },
+  // When true, the grid expands to fill its parent's height so the empty
+  // area below the cards is still a valid drop target. Used in the
+  // zone-only tab view (undocked sideboard / maybeboard) where there is
+  // nothing else competing for vertical space.
+  fill: { type: Boolean, default: false },
 })
 
 const deck = useDeckStore()
@@ -343,7 +348,7 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
   <div
     ref="gridRef"
     class="deck-grid"
-    :class="{ 'drag-active': gridDragActive }"
+    :class="{ 'drag-active': gridDragActive, fill }"
     @dragenter="onGridDragEnter"
     @dragleave="onGridDragLeave"
     @dragover="onGridDragOver"
@@ -406,6 +411,15 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 1rem 1.25rem;
+}
+/* Zone-only tab view: stretch to fill the leftover tab height so empty
+   space below the cards still accepts drops. align-items: flex-start
+   keeps the cards anchored to the top; the grid scrolls itself when
+   contents exceed the visible area. */
+.deck-grid.fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .deck-column {
   flex: 0 0 auto;
