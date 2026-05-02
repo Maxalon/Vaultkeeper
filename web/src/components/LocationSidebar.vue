@@ -8,6 +8,7 @@ import { confirm as confirmDialog } from '../composables/useConfirm'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
 import ImportDeckModal from './ImportDeckModal.vue'
+import ImportDeckCsvModal from './ImportDeckCsvModal.vue'
 import BulkImportDeckModal from './BulkImportDeckModal.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
@@ -70,6 +71,7 @@ function formatShort(f) {
 }
 const importOpen = ref(false)
 const deckImportOpen = ref(false)
+const csvDeckImportOpen = ref(false)
 const bulkDeckImportOpen = ref(false)
 const deckImportMenuOpen = ref(false)
 const modalOpen = ref(false)
@@ -78,6 +80,10 @@ const editingLocation = ref(null)
 function openBulkDeckImport() {
   deckImportMenuOpen.value = false
   bulkDeckImportOpen.value = true
+}
+function openCsvDeckImport() {
+  deckImportMenuOpen.value = false
+  csvDeckImportOpen.value = true
 }
 function toggleDeckImportMenu() {
   deckImportMenuOpen.value = !deckImportMenuOpen.value
@@ -504,6 +510,9 @@ function innerOptions(group) {
           </svg>
         </button>
         <div v-if="deckImportMenuOpen" class="split-menu" role="menu">
+          <button type="button" class="split-menu-item" role="menuitem" @click="openCsvDeckImport">
+            Import from CSV…
+          </button>
           <button type="button" class="split-menu-item" role="menuitem" @click="openBulkDeckImport">
             Bulk import from user…
           </button>
@@ -513,6 +522,7 @@ function innerOptions(group) {
 
     <ImportModal v-if="importOpen" @close="importOpen = false" />
     <ImportDeckModal v-if="deckImportOpen" @close="deckImportOpen = false" />
+    <ImportDeckCsvModal v-if="csvDeckImportOpen" @close="csvDeckImportOpen = false" />
     <BulkImportDeckModal v-if="bulkDeckImportOpen" @close="bulkDeckImportOpen = false" />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
 

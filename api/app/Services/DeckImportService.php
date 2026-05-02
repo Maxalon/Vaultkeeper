@@ -10,10 +10,12 @@ use App\Models\DeckEntry;
 use App\Models\LocationGroup;
 use App\Models\ScryfallCard;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
+use League\Csv\Reader;
 use RuntimeException;
 
 /**
@@ -145,6 +147,30 @@ class DeckImportService
             throw ValidationException::withMessages(['format' => ['Unsupported format.']]);
         }
         $dto = $this->parseText($text);
+        $dto['name']   = $name;
+        $dto['format'] = $format;
+        return $this->materialize($user, $dto, $groupId, null, null, null);
+    }
+
+    /**
+     * Import a deck from a ManaBox-style CSV file. Same headers as the
+     * collection import (Scryfall ID, Quantity, Name, Set code, …) plus an
+     * optional Zone column (`main` / `side` / `maybe`, defaults to main) so
+     * one upload can populate all three boards.
+     *
+     * @return array{deck: Deck, imported: int, skipped: int, warnings: string[]}
+     */
+    public function importFromCsv(
+        UploadedFile $file,
+        User $user,
+        string $name,
+        string $format,
+        ?int $groupId,
+    ): array {
+        if (! in_array($format, self::ALLOWED_FORMATS, true)) {
+            throw ValidationException::withMessages(['format' => ['Unsupported format.']]);
+        }
+        $dto = $this->parseCsv($file);
         $dto['name']   = $name;
         $dto['format'] = $format;
         return $this->materialize($user, $dto, $groupId, null, null, null);
@@ -1293,6 +1319,76 @@ class DeckImportService
      * their names gobbled by a greedy tail matcher.
      */
     private const CARD_LINE = '/^(?<qty>\d+)x?\s+(?<name>[^\(\[\n]+?)(?:\s*[\(\[](?<set>[A-Za-z0-9]{2,6})[\)\]](?:\s*(?<cn>[A-Za-z0-9]+))?(?:\s+.*)?)?\s*$/';
+
+    /**
+     * Parse a ManaBox-style deck CSV into the same DTO shape parseText
+     * returns. Uses Scryfall ID when present (the precise-printing path
+     * through materialize); otherwise falls back to Name + Set code so the
+     * resolver can still find a match. Zone column drives main/side/maybe;
+     * blank or missing → main.
+     *
+     * @return array{
+     *   name: string, format: string, description: ?string,
+     *   commanders: array<int, array{name: string, set: ?string}>,
+     *   companion: ?array{name: string, set: ?string},
+     *   entries: array<int, array{scryfall_id: ?string, name: string, set: ?string, collector_number: ?string, quantity: int, zone: string}>
+     * }
+     */
+    private function parseCsv(UploadedFile $file): array
+    {
+        $reader = Reader::createFromPath($file->getRealPath(), 'r');
+        $reader->setHeaderOffset(0);
+
+        $entries = [];
+        foreach ($reader->getRecords() as $row) {
+            $isEmpty = true;
+            foreach ($row as $v) {
+                if (trim((string) $v) !== '') { $isEmpty = false; break; }
+            }
+            if ($isEmpty) continue;
+
+            $scryfallId = trim((string) ($row['Scryfall ID'] ?? ''));
+            $name       = trim((string) ($row['Name'] ?? ''));
+            // A row without either is unidentifiable; the materialize
+            // resolver will skip it anyway, but drop it here so we don't
+            // count it against the user.
+            if ($scryfallId === '' && $name === '') continue;
+
+            $entries[] = [
+                'scryfall_id'      => $scryfallId !== '' ? $scryfallId : null,
+                'name'             => $name,
+                'set'              => $this->csvNonEmpty($row['Set code'] ?? null),
+                'collector_number' => $this->csvNonEmpty($row['Collector number'] ?? null),
+                'quantity'         => max(1, (int) ($row['Quantity'] ?? 1)),
+                'zone'             => $this->csvZone((string) ($row['Zone'] ?? '')),
+            ];
+        }
+
+        return [
+            'name'        => '',    // filled by importFromCsv
+            'format'      => '',    // filled by importFromCsv
+            'description' => null,
+            'commanders'  => [],
+            'companion'   => null,
+            'entries'     => $entries,
+        ];
+    }
+
+    private function csvNonEmpty(mixed $raw): ?string
+    {
+        if ($raw === null) return null;
+        $v = trim((string) $raw);
+        return $v === '' ? null : $v;
+    }
+
+    private function csvZone(string $raw): string
+    {
+        return match (strtolower(trim($raw))) {
+            'side', 'sideboard'   => 'side',
+            'maybe', 'maybeboard' => 'maybe',
+            default               => 'main',
+        };
+    }
 
     /**
      * @return array{

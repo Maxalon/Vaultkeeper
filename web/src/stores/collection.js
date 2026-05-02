@@ -205,6 +205,12 @@ export const useCollectionStore = defineStore('collection', {
       return data
     },
 
+    async importDeckCsv(formData) {
+      const { data } = await api.post('/decks/import/csv', formData)
+      await this.fetchGroups()
+      return data
+    },
+
     async updateDeck(id, payload) {
       const { data } = await api.put(`/decks/${id}`, payload)
       await this.fetchGroups()
