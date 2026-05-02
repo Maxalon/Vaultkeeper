@@ -8,14 +8,13 @@ import CatalogStrip from './CatalogStrip.vue'
 import ManaSymbol from './ManaSymbol.vue'
 
 /**
- * Self-contained catalog panel. No collection-store coupling. Consumes
- * the catalog Pinia store and emits `add-to-deck` intents upward (only
- * when `deckId` is bound — DB-3 wires the receiver).
+ * Self-contained catalog panel. No collection-store coupling. The catalog
+ * detail sidebar (rendered by DeckView) hosts the add-to-deck buttons, so
+ * this panel just routes click→sidebar via the catalog store.
  */
 const props = defineProps({
   deckId: { type: Number, default: null },
 })
-const emit = defineEmits(['add-to-deck'])
 
 const catalog = useCatalogStore()
 const deckStore = useDeckStore()
@@ -191,10 +190,6 @@ const gridStyle = computed(() => {
     : 200
   return { '--card-min': `${min}px` }
 })
-
-function onAddToDeck(payload) {
-  emit('add-to-deck', payload)
-}
 </script>
 
 <template>
@@ -303,7 +298,6 @@ function onAddToDeck(payload) {
           :card="row"
           :size="catalog.cardSize"
           :deck-id="deckId"
-          @add-to-deck="onAddToDeck"
         />
       </div>
 
@@ -314,7 +308,6 @@ function onAddToDeck(payload) {
             :key="row.oracle_id"
             :card="row"
             :deck-id="deckId"
-            @add-to-deck="onAddToDeck"
           />
         </div>
       </div>

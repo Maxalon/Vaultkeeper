@@ -239,6 +239,18 @@ function acceptsDrop(e) {
   return (e.dataTransfer?.types || []).includes('application/json')
 }
 
+// Catalog drags use effectAllowed='copy' (adding a new entry); deck-internal
+// drags use effectAllowed='move' (reassigning zone/category). The browser
+// drops the event when dropEffect isn't in effectAllowed, so we have to set
+// the right one — a unilateral 'move' silently kills catalog→deck drops.
+// During dragover we can read .types but not .getData, so we tag catalog
+// drags with a sentinel MIME type the dragstart adds alongside the JSON.
+function dropEffectFor(e) {
+  return (e.dataTransfer?.types || []).includes('application/x-vk-catalog')
+    ? 'copy'
+    : 'move'
+}
+
 function onGridDragEnter(e) {
   if (!acceptsDrop(e)) return
   cancelHide()
@@ -250,7 +262,7 @@ function onGridDragLeave() {
 function onGridDragOver(e) {
   if (!acceptsDrop(e)) return
   e.preventDefault()
-  e.dataTransfer.dropEffect = 'move'
+  e.dataTransfer.dropEffect = dropEffectFor(e)
   // Also catches child→parent transitions where dragenter didn't bubble:
   // as long as dragover keeps firing we're still over the grid.
   cancelHide()
@@ -265,7 +277,7 @@ function onGroupDragEnter(e, groupKey) {
 function onGroupDragOver(e, groupKey) {
   if (!acceptsDrop(e)) return
   e.preventDefault()
-  e.dataTransfer.dropEffect = 'move'
+  e.dataTransfer.dropEffect = dropEffectFor(e)
   cancelHide()
   dropTargetGroup.value = groupKey
 }

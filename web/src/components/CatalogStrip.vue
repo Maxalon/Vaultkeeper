@@ -19,15 +19,40 @@ const props = defineProps({
   card:   { type: Object, required: true },
   deckId: { type: Number, default: null },
 })
-const emit = defineEmits(['click', 'add-to-deck'])
+const emit = defineEmits(['click'])
 
 const catalog = useCatalogStore()
-
-const addMenuOpen = ref(false)
 
 const effectiveScryfallId = computed(
   () => catalog.activePrintings[props.card.oracle_id] || props.card.scryfall_id,
 )
+
+// Mirror CardTile: swap to the selected printing's image when the user has
+// picked a non-default printing. Wipes on the next search.
+const selectedPrinting = computed(() => {
+  const sid = catalog.activePrintings[props.card.oracle_id]
+  if (!sid || sid === props.card.scryfall_id) return null
+  const list = catalog.printingsByOracle[props.card.oracle_id] || []
+  return list.find((p) => p.scryfall_id === sid) || null
+})
+
+const displayCard = computed(() => {
+  const p = selectedPrinting.value
+  if (!p) return props.card
+  return {
+    ...props.card,
+    scryfall_id: p.scryfall_id,
+    set_code: p.set_code,
+    collector_number: p.collector_number,
+    rarity: p.rarity,
+    image_small: p.image_small,
+    image_normal: p.image_normal,
+    image_large: p.image_large,
+    image_small_back: p.image_small_back,
+    image_normal_back: p.image_normal_back,
+    image_large_back: p.image_large_back,
+  }
+})
 
 const shineClass = computed(() => {
   const o = props.card?.owned_count ?? 0
@@ -38,10 +63,6 @@ const shineClass = computed(() => {
 })
 
 function onClick() {
-  if (props.deckId !== null) {
-    addMenuOpen.value = !addMenuOpen.value
-    return
-  }
   catalog.setActiveCard(props.card.oracle_id)
   emit('click')
 }
@@ -52,18 +73,16 @@ function onDragStart(e) {
     scryfall_id: effectiveScryfallId.value,
     source: 'catalog',
   }))
+  // See CardTile.onDragStart — sentinel MIME so the deck grid sets
+  // dropEffect='copy' and the browser actually fires the drop.
+  e.dataTransfer.setData('application/x-vk-catalog', '1')
   e.dataTransfer.effectAllowed = 'copy'
-}
-
-function emitAdd(zone) {
-  emit('add-to-deck', { scryfall_id: effectiveScryfallId.value, zone })
-  addMenuOpen.value = false
 }
 </script>
 
 <template>
   <BaseCardStrip
-    :card="card"
+    :card="displayCard"
     :show-qty-in-bar="false"
     :corner-count="card.owned_count || 0"
     :show-corner-badge="(card.owned_count || 0) > 0"
@@ -79,14 +98,6 @@ function emitAdd(zone) {
         v-if="card.wanted_by_others > 0"
         class="badge badge-wanted"
       >{{ card.wanted_by_others }}</span>
-    </template>
-
-    <template #menu>
-      <div v-if="deckId && addMenuOpen" class="add-menu" @click.stop>
-        <button type="button" @click="emitAdd('main')">+ Main</button>
-        <button type="button" @click="emitAdd('side')">+ Side</button>
-        <button type="button" @click="emitAdd('maybe')">+ Maybe</button>
-      </div>
     </template>
   </BaseCardStrip>
 </template>
@@ -165,29 +176,4 @@ function emitAdd(zone) {
   background: #d06a6a;
   color: #fff;
 }
-
-.add-menu {
-  position: absolute;
-  left: 50%;
-  bottom: 8px;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 4px;
-  background: rgba(0, 0, 0, 0.82);
-  border: 1px solid var(--amber-lo, #8a7436);
-  border-radius: 6px;
-  padding: 4px;
-  z-index: 5;
-}
-.add-menu button {
-  background: transparent;
-  border: 0;
-  color: var(--amber, #c9a552);
-  font-size: 11px;
-  font-family: var(--font-mono), monospace;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 3px;
-}
-.add-menu button:hover { background: rgba(201, 165, 82, 0.18); }
 </style>
