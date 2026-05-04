@@ -87,6 +87,13 @@ function pickInBrowser(scryfallId) {
   catalog.pickPrinting(catalog.activeCardOracleId, scryfallId)
   browserOpen.value = false
 }
+
+const browserGridStyle = computed(() => {
+  const min = catalog.cardSize === 'small' ? 140
+    : catalog.cardSize === 'large' ? 280
+    : 200
+  return { '--browser-card-min': `${min}px` }
+})
 </script>
 
 <template>
@@ -171,7 +178,7 @@ function pickInBrowser(scryfallId) {
             <button type="button" class="close" @click="closeBrowser" title="Close">✕</button>
           </header>
           <div v-if="loading" class="browser-loading">Loading printings…</div>
-          <div v-else class="browser-grid">
+          <div v-else class="browser-grid" :style="browserGridStyle">
             <button
               v-for="p in printings"
               :key="p.scryfall_id"
@@ -181,14 +188,16 @@ function pickInBrowser(scryfallId) {
               :title="`${p.set_name || p.set_code} · #${p.collector_number}`"
               @click="pickInBrowser(p.scryfall_id)"
             >
-              <img
-                v-if="p.image_normal || p.image_large"
-                :src="p.image_normal || p.image_large"
-                :alt="`${p.set_name} #${p.collector_number}`"
-                loading="lazy"
-                decoding="async"
-              />
-              <div v-else class="no-image">{{ p.set_code?.toUpperCase() }} #{{ p.collector_number }}</div>
+              <div class="browser-card-frame">
+                <img
+                  v-if="p.image_normal || p.image_large"
+                  :src="p.image_normal || p.image_large"
+                  :alt="`${p.set_name} #${p.collector_number}`"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <div v-else class="no-image">{{ p.set_code?.toUpperCase() }} #{{ p.collector_number }}</div>
+              </div>
               <footer class="browser-card-meta">
                 <img
                   v-if="p.icon_svg_uri"
@@ -426,7 +435,7 @@ function pickInBrowser(scryfallId) {
   overflow-y: auto;
   padding: 16px 18px 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--browser-card-min, 200px), 1fr));
   gap: 14px;
   align-content: start;
 }
@@ -446,18 +455,28 @@ function pickInBrowser(scryfallId) {
 }
 .browser-card:hover { border-color: var(--amber-lo); transform: translateY(-2px); }
 .browser-card.selected { border-color: var(--amber); }
-.browser-card img {
+.browser-card-frame {
   width: 100%;
   aspect-ratio: 63 / 88;
+  background: #1a1a22;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+.browser-card-frame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   display: block;
 }
-.browser-card .no-image {
-  aspect-ratio: 63 / 88;
+.browser-card-frame .no-image {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   color: var(--ink-70);
-  background: #1a1a22;
   text-align: center;
   padding: 8px;
   font-family: var(--font-mono), monospace;
