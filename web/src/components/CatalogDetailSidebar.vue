@@ -480,6 +480,9 @@ const browserImageSizes = computed(() => {
   width: 100%;
   position: relative;
   background: #1a1a22;
+  border: 1px solid #0a0a0a;
+  border-radius: 8px;
+  overflow: hidden;
   flex-shrink: 0;
 }
 .browser-card-frame::before {
@@ -494,6 +497,7 @@ const browserImageSizes = computed(() => {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: inherit;
 }
 .browser-card-frame .no-image {
   position: absolute;
