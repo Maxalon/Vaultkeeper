@@ -67,6 +67,10 @@ function openDeck(deck) {
   router.push({ name: 'deck', params: { id: deck.id } })
 }
 
+function goToPending() {
+  if (route.name !== 'pending') router.push({ name: 'pending' })
+}
+
 function formatShort(f) {
   return ({ commander: 'CMDR', oathbreaker: 'OATH', pauper: 'PAU', standard: 'STD', modern: 'MOD' })[f] || (f || '').toUpperCase()
 }
@@ -320,8 +324,8 @@ function innerOptions(group) {
         v-if="collection.pending"
         type="button"
         class="pending-row sidebar-item top"
-        :class="{ active: route.name === 'collection' && collection.activeLocationId === collection.pending.id }"
-        @click="activate({ id: collection.pending.id })"
+        :class="{ active: route.name === 'pending' }"
+        @click="goToPending"
         :title="`${collection.pending.card_count} card(s) awaiting re-shelving`"
       >
         <span class="set-sym all-cards-icon" aria-hidden="true">

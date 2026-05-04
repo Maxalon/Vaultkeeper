@@ -211,6 +211,30 @@ export const useCollectionStore = defineStore('collection', {
       return data
     },
 
+    /**
+     * Pending-relocation actions. The sidebar's `pending` summary
+     * arrives via fetchGroups; these add the full-list / resolve
+     * surface that powers the /pending route and the per-deck tab.
+     *
+     * @param {{ deckId?: number }} [opts] — when set, scopes the fetch
+     *   to copies that came from a specific deck (per-deck tab).
+     */
+    async fetchPendingList(opts = {}) {
+      const params = {}
+      if (opts.deckId) params.deck_id = opts.deckId
+      const { data } = await api.get('/pending-relocations', { params })
+      return data?.data || []
+    },
+
+    /**
+     * @param {Array<{collection_entry_id:number,target_location_id?:number|null,discard?:boolean}>} assignments
+     */
+    async resolvePending(assignments) {
+      const { data } = await api.post('/pending-relocations/resolve', { assignments })
+      await this.fetchGroups()
+      return data
+    },
+
     async updateDeck(id, payload) {
       const { data } = await api.put(`/decks/${id}`, payload)
       await this.fetchGroups()

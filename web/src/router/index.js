@@ -58,6 +58,12 @@ const routes = [
     props: true,
   },
   {
+    path: '/pending',
+    name: 'pending',
+    component: () => import('../views/PendingRelocationView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/',
     redirect: { name: 'collection' },
   },
