@@ -94,6 +94,24 @@ const browserGridStyle = computed(() => {
     : 200
   return { '--browser-card-min': `${min}px` }
 })
+
+function browserImageSrc(p) {
+  if (catalog.cardSize === 'small') return p.image_small || p.image_normal || p.image_large
+  if (catalog.cardSize === 'large') return p.image_large || p.image_normal || p.image_small
+  return p.image_normal || p.image_large || p.image_small
+}
+function browserImageSrcset(p) {
+  return [
+    p.image_small  ? `${p.image_small} 146w`  : null,
+    p.image_normal ? `${p.image_normal} 488w` : null,
+    p.image_large  ? `${p.image_large} 672w`  : null,
+  ].filter(Boolean).join(', ')
+}
+const browserImageSizes = computed(() => {
+  if (catalog.cardSize === 'small') return '146px'
+  if (catalog.cardSize === 'large') return '320px'
+  return '220px'
+})
 </script>
 
 <template>
@@ -190,8 +208,10 @@ const browserGridStyle = computed(() => {
             >
               <div class="browser-card-frame">
                 <img
-                  v-if="p.image_normal || p.image_large"
-                  :src="p.image_normal || p.image_large"
+                  v-if="browserImageSrc(p)"
+                  :src="browserImageSrc(p)"
+                  :srcset="browserImageSrcset(p)"
+                  :sizes="browserImageSizes"
                   :alt="`${p.set_name} #${p.collector_number}`"
                   loading="lazy"
                   decoding="async"
