@@ -67,6 +67,44 @@ class DeckEntryActionService
     }
 
     /**
+     * Bind an unbound deck-entry to a fresh CE in the deck-location with
+     * the entry's current quantity. Equivalent to "I just bought this
+     * card and I'm putting it in this deck" for an existing wishlist
+     * slot. Sets the skip flag so the observer doesn't replay any
+     * default behaviour during the bind.
+     */
+    public function bindAsNewCopy(DeckEntry $entry): DeckEntry
+    {
+        if ($entry->physical_copy_id !== null) {
+            throw new RuntimeException("Entry {$entry->id} is already bound to a physical copy.");
+        }
+
+        return DB::transaction(function () use ($entry) {
+            $deck = $entry->deck;
+            $deckLocation = $this->requireDeckLocation($deck);
+            $copy = CollectionEntry::create([
+                'user_id'      => $deck->user_id,
+                'scryfall_id'  => $entry->scryfall_id,
+                'location_id'  => $deckLocation->id,
+                'quantity'     => max(1, (int) $entry->quantity),
+                'condition'    => 'NM',
+                'foil'         => false,
+                'needs_review' => false,
+            ]);
+
+            $entry->skipPendingQueueOnce = true;
+            $entry->fill([
+                'physical_copy_id' => $copy->id,
+                'wanted'           => null,
+            ])->save();
+
+            $deckLocation->refreshSetCodes();
+
+            return $entry->fresh();
+        });
+    }
+
+    /**
      * Bump an existing slot's quantity by `$delta`, keeping the linked CE
      * in step. The skip flag suppresses the observer's default behaviour
      * (which would mark the slot wanted on grow when no copy is bound).

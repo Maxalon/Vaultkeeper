@@ -8,6 +8,7 @@ use App\Models\Deck;
 use App\Models\DeckEntry;
 use App\Models\Location;
 use App\Models\ScryfallCard;
+use App\Services\DeckEntryActionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -21,7 +22,10 @@ class DeckEntryController extends Controller
         'Battle', 'Planeswalker', 'Creature', 'Land', 'Instant', 'Sorcery', 'Artifact', 'Enchantment',
     ];
 
-    public function __construct(private DeckController $deckCtrl) {}
+    public function __construct(
+        private DeckController $deckCtrl,
+        private DeckEntryActionService $actions,
+    ) {}
 
     public function index(Request $request, Deck $deck): JsonResponse
     {
@@ -76,7 +80,26 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            // Inline picker: 'create_new_copy' delegates the create to
+            // DeckEntryActionService::createWithNewCopy so a fresh CE is
+            // created in the deck-location and linked in the same write.
+            'mode'                   => 'sometimes|in:create_new_copy',
         ]);
+
+        // Inline-picker shortcut: "I just bought it (and I'm putting it
+        // in this deck)". Bypasses the regular store path entirely so
+        // the linked CE has needs_review=false (user-confirmed).
+        if (($data['mode'] ?? null) === 'create_new_copy') {
+            $entry = $this->actions->createWithNewCopy($deck, [
+                'scryfall_id' => $data['scryfall_id'],
+                'zone'        => $data['zone'] ?? 'main',
+                'quantity'    => $data['quantity'] ?? 1,
+                'category'    => $data['category'] ?? $this->autoCategory(
+                    ScryfallCard::where('scryfall_id', $data['scryfall_id'])->first()
+                ),
+            ]);
+            return response()->json($this->presentEntryBare($entry->fresh('card')), 201);
+        }
 
         $card = ScryfallCard::where('scryfall_id', $data['scryfall_id'])->first();
 
@@ -128,7 +151,49 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            // Inline picker hooks. `mode=create_new_copy` overrides the
+            // observer's "grow → wanted" default by minting a CE in the
+            // deck-location for the gained copies (or binding the whole
+            // unbound slot when no quantity change is specified).
+            // `discard=true` overrides the "shrink → pending" default by
+            // dropping the freed copies outright.
+            'mode'                   => 'sometimes|in:create_new_copy',
+            'discard'                => 'sometimes|boolean',
         ]);
+
+        $mode    = $data['mode']    ?? null;
+        $discard = (bool) ($data['discard'] ?? false);
+
+        if ($mode === 'create_new_copy') {
+            // "I bought it" — either bind the existing quantity (no qty
+            // change in the patch) or grow by the delta and back the
+            // delta with a fresh CE.
+            $newQty = array_key_exists('quantity', $data) ? (int) $data['quantity'] : (int) $entry->quantity;
+            $delta  = $newQty - (int) $entry->quantity;
+            if ($delta > 0) {
+                $entry = $this->actions->growWithNewCopy($entry, $delta);
+            } elseif ($delta === 0 && $entry->physical_copy_id === null) {
+                $entry = $this->actions->bindAsNewCopy($entry);
+            } else {
+                throw ValidationException::withMessages([
+                    'mode' => ['create_new_copy is only valid when the slot is unbound or the quantity is increasing.'],
+                ]);
+            }
+            return response()->json($this->presentEntryBare($entry->fresh('card')));
+        }
+
+        if ($discard) {
+            // "Sold or discarded" shrink — must come with a quantity
+            // strictly less than the current one.
+            if (! array_key_exists('quantity', $data) || (int) $data['quantity'] >= (int) $entry->quantity) {
+                throw ValidationException::withMessages([
+                    'discard' => ['discard=true requires a quantity strictly less than the current one.'],
+                ]);
+            }
+            $delta = (int) $entry->quantity - (int) $data['quantity'];
+            $entry = $this->actions->shrinkAndDiscard($entry, $delta);
+            return response()->json($this->presentEntryBare($entry->fresh('card')));
+        }
 
         // Bind path: when the request is binding the slot to a physical
         // copy from outside the deck-location, the picked copy needs to
@@ -149,16 +214,34 @@ class DeckEntryController extends Controller
         }
 
         DB::transaction(function () use ($entry, $data) {
+            // Strip mode-control keys before persisting — they're not
+            // database columns. validate() leaves them in $data even
+            // though the action-service branches above already ran.
+            unset($data['mode'], $data['discard']);
             $entry->update($data);
         });
 
         return response()->json($this->presentEntryBare($entry->fresh('card')));
     }
 
-    public function destroy(Deck $deck, DeckEntry $entry): Response
+    public function destroy(Request $request, Deck $deck, DeckEntry $entry): Response
     {
         $this->authorizeOwner($deck);
         abort_if($entry->deck_id !== $deck->id, 404);
+
+        // Inline picker: `?discard=true` drops the entry's bound copy
+        // outright instead of routing it to pending. The default (no
+        // query string) is the existing observer-driven behaviour.
+        $discard = filter_var($request->query('discard', false), FILTER_VALIDATE_BOOLEAN);
+        if ($discard && $entry->physical_copy_id !== null) {
+            $wasCommander = (bool) $entry->is_commander;
+            $commanderId  = $entry->scryfall_id;
+            $this->actions->destroyAndDiscard($entry);
+            if ($wasCommander) {
+                $this->reconcileCommandersAfterRemoval($deck, $commanderId);
+            }
+            return response()->noContent();
+        }
 
         DB::transaction(function () use ($deck, $entry) {
             $wasCommander = (bool) $entry->is_commander;
@@ -170,18 +253,29 @@ class DeckEntryController extends Controller
             $entry->delete();
 
             if ($wasCommander) {
-                if ($deck->commander_1_scryfall_id === $commanderId) {
-                    $deck->commander_1_scryfall_id = null;
-                }
-                if ($deck->commander_2_scryfall_id === $commanderId) {
-                    $deck->commander_2_scryfall_id = null;
-                }
-                $deck->save();
-                $this->deckCtrl->recomputeColorIdentity($deck->fresh('commander1', 'commander2'));
+                $this->reconcileCommandersAfterRemoval($deck, $commanderId);
             }
         });
 
         return response()->noContent();
+    }
+
+    /**
+     * Clear the deleted entry's scryfall_id from whichever commander
+     * slot(s) it occupied and recompute the deck's color identity. Used
+     * by both the default destroy path and the inline-picker discard
+     * branch so they stay consistent.
+     */
+    private function reconcileCommandersAfterRemoval(Deck $deck, string $commanderId): void
+    {
+        if ($deck->commander_1_scryfall_id === $commanderId) {
+            $deck->commander_1_scryfall_id = null;
+        }
+        if ($deck->commander_2_scryfall_id === $commanderId) {
+            $deck->commander_2_scryfall_id = null;
+        }
+        $deck->save();
+        $this->deckCtrl->recomputeColorIdentity($deck->fresh('commander1', 'commander2'));
     }
 
     /**
