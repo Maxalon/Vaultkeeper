@@ -293,7 +293,6 @@ class DeckController extends Controller
             'signature_for_entry_id' => $entry->signature_for_entry_id,
             'wanted'                 => $entry->wanted,
             'physical_copy_id'       => $entry->physical_copy_id,
-            'needs_review'           => (bool) $entry->needs_review,
             'card'                   => $card ? [
                 'scryfall_id'     => $card->scryfall_id,
                 'oracle_id'       => $card->oracle_id,

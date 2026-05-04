@@ -113,13 +113,10 @@ class DeckEntryObserverTest extends TestCase
         $entry->skipPendingQueueOnce = true;
         $entry->update(['physical_copy_id' => null]);
 
-        // Skip flag → no pending location should have been created and
-        // the copy should still sit in the deck-location.
-        $this->assertDatabaseMissing('locations', [
-            'user_id' => $this->user->id,
-            'role'    => Location::ROLE_PENDING_RELOCATION,
-        ]);
+        // Skip flag → the copy should still sit in the deck-location with
+        // no review_reason set.
         $copy->refresh();
         $this->assertSame($deckLocation->id, $copy->location_id);
+        $this->assertNull($copy->review_reason);
     }
 }

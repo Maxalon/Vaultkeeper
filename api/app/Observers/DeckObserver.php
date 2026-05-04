@@ -5,11 +5,11 @@ namespace App\Observers;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\Location;
-use App\Services\PendingRelocationService;
+use App\Services\ReviewQueueService;
 
 class DeckObserver
 {
-    public function __construct(private PendingRelocationService $pendingRelocations) {}
+    public function __construct(private ReviewQueueService $reviewQueue) {}
 
 
     /**
@@ -44,12 +44,12 @@ class DeckObserver
     }
 
     /**
-     * Before a deck is deleted, sweep its physical copies into the user's
-     * pending bucket so they aren't lost (the deck-location FK cascades, and
+     * Before a deck is deleted, sweep its physical copies into the review
+     * queue so they aren't lost (the deck-location FK cascades, and
      * collection_entries.location_id is nullOnDelete — if we did nothing,
      * those copies would silently land in "Unassigned"). Also flips
-     * `source_deck_deleted` on copies already in pending that came from
-     * this deck, since `source_deck_id` is about to null out and the
+     * `source_deck_deleted` on copies already queued for review that came
+     * from this deck, since `source_deck_id` is about to null out and the
      * snapshot is the only label left.
      */
     public function deleting(Deck $deck): void
@@ -65,12 +65,13 @@ class DeckObserver
                 ->get();
 
             foreach ($copies as $copy) {
-                $this->pendingRelocations->moveCopyToPending($copy, $deck, deckBeingDeleted: true);
+                $this->reviewQueue->markCopyForReview($copy, $deck, deckBeingDeleted: true);
             }
         }
 
-        // Pre-existing pending copies sourced from this deck — keep their
-        // snapshot, mark deleted=true. Done in bulk; no model events needed.
+        // Pre-existing review-queued copies sourced from this deck — keep
+        // their snapshot, mark deleted=true. Done in bulk; no model events
+        // needed.
         CollectionEntry::query()
             ->where('source_deck_id', $deck->id)
             ->update(['source_deck_deleted' => true]);

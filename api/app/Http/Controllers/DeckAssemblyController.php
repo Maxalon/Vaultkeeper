@@ -54,9 +54,10 @@ class DeckAssemblyController extends Controller
     /**
      * POST /api/decks/{deck}/unassemble
      *
-     * Tears down the deck-location: deletes system-created CEs, queues
-     * user-touched ones to pending, clears every entry's
-     * `physical_copy_id`. No body — the action is parameterless.
+     * Tears down the deck-location: every CE in it is sent to the review
+     * queue with reason `no_location`, and every entry's
+     * `physical_copy_id` is cleared. No CE is deleted. No body — the
+     * action is parameterless.
      */
     public function unassemble(Deck $deck): JsonResponse
     {

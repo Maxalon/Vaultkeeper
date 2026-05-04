@@ -91,37 +91,28 @@ class LocationGroupController extends Controller
             'items'       => $items,
             'total_count' => $total,
             'decks'       => $this->sidebarDecks($userId),
-            'pending'     => $this->sidebarPending($userId),
+            'review'      => $this->sidebarReview($userId),
         ]);
     }
 
     /**
-     * Pending-relocation summary for the sidebar. Returns NULL when the
-     * bucket either doesn't exist yet (the user has never shrunk a deck) or
-     * exists but is empty — in either case there's nothing to render.
+     * Review-queue summary for the sidebar. Returns NULL when nothing is
+     * flagged for review — the row simply doesn't render.
      *
-     * @return array{id: int, name: string, card_count: int}|null
+     * @return array{card_count: int}|null
      */
-    private function sidebarPending(int $userId): ?array
+    private function sidebarReview(int $userId): ?array
     {
-        $pending = Location::query()
+        $count = CollectionEntry::query()
             ->where('user_id', $userId)
-            ->where('role', Location::ROLE_PENDING_RELOCATION)
-            ->first();
-
-        if ($pending === null) {
-            return null;
-        }
-
-        $count = CollectionEntry::where('location_id', $pending->id)->count();
+            ->whereNotNull('review_reason')
+            ->count();
 
         if ($count === 0) {
             return null;
         }
 
         return [
-            'id'         => $pending->id,
-            'name'       => $pending->name,
             'card_count' => $count,
         ];
     }

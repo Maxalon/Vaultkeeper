@@ -138,8 +138,8 @@ class CollectionController extends Controller
                 'nullable',
                 'integer',
                 // Must belong to the same user AND be a user-managed location.
-                // Auto-managed rows (deck/pending) are off-limits to direct
-                // user moves — they're written exclusively by their owning
+                // Auto-managed rows (deck) are off-limits to direct user
+                // moves — they're written exclusively by their owning
                 // model so the invariants stay coherent.
                 function ($attr, $value, $fail) {
                     if ($value === null) return;
@@ -158,12 +158,14 @@ class CollectionController extends Controller
         ]);
 
         // The user re-shelving this copy means the "from <deck>" stamp from
-        // the last shrink is no longer relevant. Clear it in the same write
-        // as the location move so the pill disappears.
+        // the last shrink is no longer relevant — clear it in the same
+        // write as the location move so the pill disappears. Picking any
+        // valid location also resolves a `no_location` review reason.
         if (array_key_exists('location_id', $data)) {
             $data['source_deck_id'] = null;
             $data['source_deck_name_snapshot'] = null;
             $data['source_deck_deleted'] = false;
+            $data['review_reason'] = null;
         }
 
         $previousLocationId = $entry->getOriginal('location_id');

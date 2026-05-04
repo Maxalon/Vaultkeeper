@@ -13,7 +13,6 @@ class Location extends Model
 
     public const ROLE_USER = 'user';
     public const ROLE_DECK = 'deck';
-    public const ROLE_PENDING_RELOCATION = 'pending_relocation';
 
     protected $fillable = [
         'user_id',
@@ -53,8 +52,8 @@ class Location extends Model
 
     /**
      * Locations the user manages directly (drawers, binders, user-created
-     * deck-themed shelves). Excludes the auto-managed `deck` and
-     * `pending_relocation` rows that aren't surfaced in the sidebar.
+     * deck-themed shelves). Excludes the auto-managed `deck` rows that
+     * aren't surfaced in the sidebar.
      */
     public function scopeUserManaged($query)
     {

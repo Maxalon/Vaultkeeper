@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\ReviewReason;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
@@ -68,14 +69,16 @@ class DeckAssemblyServiceTest extends TestCase
         $this->assertSame(0, $result['slots_split']);
         $this->assertSame(0, $result['slots_marked_wanted']);
 
-        // Each entry now has a CE in the deck-location with needs_review=true.
+        // Each entry now has a CE in the deck-location with review_reason
+        // set to DefaultValuesApplied (the user can accept defaults or
+        // correct them on the /review surface).
         foreach ([$bolt, $solRing, $sideBolt] as $e) {
             $e->refresh();
             $this->assertNotNull($e->physical_copy_id, "entry {$e->id} should be bound");
             $ce = CollectionEntry::find($e->physical_copy_id);
             $this->assertSame($this->deckLocation->id, $ce->location_id);
             $this->assertSame((int) $e->quantity, (int) $ce->quantity);
-            $this->assertTrue((bool) $ce->needs_review);
+            $this->assertSame(ReviewReason::DefaultValuesApplied, $ce->review_reason);
             $this->assertSame('NM', $ce->condition);
             $this->assertFalse((bool) $ce->foil);
             $this->assertNull($e->wanted);
@@ -171,7 +174,7 @@ class DeckAssemblyServiceTest extends TestCase
         $boundCeId = $boltAfterFirst->physical_copy_id;
 
         // Mutate the bound CE so we can detect any silent reset on re-run.
-        CollectionEntry::find($boundCeId)->update(['quantity' => 99, 'needs_review' => false]);
+        CollectionEntry::find($boundCeId)->update(['quantity' => 99, 'review_reason' => null]);
 
         $result = $this->service()->assemble($this->deck, new AssembleIntent(all: true));
 
@@ -209,46 +212,37 @@ class DeckAssemblyServiceTest extends TestCase
         $this->service()->assemble($this->deck, $intent2);
     }
 
-    public function test_unassemble_deletes_system_created_ces_and_clears_bindings(): void
+    public function test_unassemble_marks_every_copy_for_review_uniformly(): void
     {
-        $bolt = $this->entry($this->bolt->scryfall_id, 'main', 4);
+        $bolt    = $this->entry($this->bolt->scryfall_id,    'main', 4);
+        $solRing = $this->entry($this->solRing->scryfall_id, 'main', 1);
         $this->service()->assemble($this->deck, new AssembleIntent(all: true));
-        $boltAfterAssemble = $bolt->fresh();
-        $this->assertNotNull($boltAfterAssemble->physical_copy_id);
+
+        $boltCopy    = CollectionEntry::find($bolt->fresh()->physical_copy_id);
+        $solRingCopy = CollectionEntry::find($solRing->fresh()->physical_copy_id);
+
+        // Simulate the user editing one of the copies (e.g. condition).
+        // Pre-refactor this would have routed it to "moved_to_pending"
+        // while the untouched one was deleted; post-refactor both go
+        // through the review queue uniformly.
+        $solRingCopy->update(['condition' => 'LP', 'review_reason' => null]);
 
         $result = $this->service()->unassemble($this->deck);
 
-        $this->assertSame(1, $result['deleted']);
-        $this->assertSame(0, $result['moved_to_pending']);
+        $this->assertSame(2, $result['marked_for_review']);
+        $this->assertArrayNotHasKey('deleted', $result, 'unassemble should not delete CEs anymore');
+        $this->assertArrayNotHasKey('moved_to_pending', $result);
+
         $this->assertNull($bolt->fresh()->physical_copy_id);
-        $this->assertSame(
-            0,
-            CollectionEntry::where('location_id', $this->deckLocation->id)->count(),
-        );
-    }
+        $this->assertNull($solRing->fresh()->physical_copy_id);
 
-    public function test_unassemble_queues_user_touched_copies_to_pending(): void
-    {
-        $bolt = $this->entry($this->bolt->scryfall_id, 'main', 4);
-        $this->service()->assemble($this->deck, new AssembleIntent(all: true));
-        $copy = CollectionEntry::find($bolt->fresh()->physical_copy_id);
-
-        // Simulate the user editing the copy (e.g. changing condition).
-        // This flips needs_review off — assemble's "I haven't touched it"
-        // signal — so unassemble routes it to pending instead.
-        $copy->update(['condition' => 'LP', 'needs_review' => false]);
-
-        $result = $this->service()->unassemble($this->deck);
-
-        $this->assertSame(0, $result['deleted']);
-        $this->assertSame(1, $result['moved_to_pending']);
-
-        $copy->refresh();
-        $pending = Location::where('user_id', $this->user->id)
-            ->where('role', Location::ROLE_PENDING_RELOCATION)
-            ->firstOrFail();
-        $this->assertSame($pending->id, $copy->location_id);
-        $this->assertSame($this->deck->id, $copy->source_deck_id);
-        $this->assertNull($bolt->fresh()->physical_copy_id);
+        foreach ([$boltCopy, $solRingCopy] as $copy) {
+            $copy->refresh();
+            $this->assertNotNull(CollectionEntry::find($copy->id), 'CE preserved through unassemble');
+            $this->assertNull($copy->location_id, 'no_location route — location cleared');
+            $this->assertSame(ReviewReason::NoLocation, $copy->review_reason);
+            $this->assertSame($this->deck->id, $copy->source_deck_id);
+            $this->assertSame('Atraxa Build', $copy->source_deck_name_snapshot);
+        }
     }
 }

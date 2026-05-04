@@ -27,8 +27,8 @@ class DeckEntryActionService
 {
     /**
      * Add a deck_entry for a card the user just acquired and is also
-     * tucking into this deck. Creates a CE in the deck-location with
-     * `needs_review = false` (the user explicitly confirmed it) and links
+     * tucking into this deck. Creates a CE in the deck-location with no
+     * review_reason (the user explicitly confirmed the values) and links
      * the new deck_entry to it.
      *
      * @param  array{scryfall_id: string, zone?: string, quantity?: int, category?: ?string}  $payload
@@ -48,7 +48,6 @@ class DeckEntryActionService
                 'quantity'     => $quantity,
                 'condition'    => 'NM',
                 'foil'         => false,
-                'needs_review' => false,
             ]);
 
             $entry = DeckEntry::create([
@@ -89,7 +88,6 @@ class DeckEntryActionService
                 'quantity'     => max(1, (int) $entry->quantity),
                 'condition'    => 'NM',
                 'foil'         => false,
-                'needs_review' => false,
             ]);
 
             $entry->skipPendingQueueOnce = true;
@@ -123,13 +121,12 @@ class DeckEntryActionService
                 $deck = $entry->deck;
                 $deckLocation = $this->requireDeckLocation($deck);
                 $copy = CollectionEntry::create([
-                    'user_id'      => $deck->user_id,
-                    'scryfall_id'  => $entry->scryfall_id,
-                    'location_id'  => $deckLocation->id,
-                    'quantity'     => $delta,
-                    'condition'    => 'NM',
-                    'foil'         => false,
-                    'needs_review' => false,
+                    'user_id'     => $deck->user_id,
+                    'scryfall_id' => $entry->scryfall_id,
+                    'location_id' => $deckLocation->id,
+                    'quantity'    => $delta,
+                    'condition'   => 'NM',
+                    'foil'        => false,
                 ]);
                 $entry->skipPendingQueueOnce = true;
                 $entry->fill([

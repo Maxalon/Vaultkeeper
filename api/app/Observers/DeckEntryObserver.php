@@ -5,21 +5,21 @@ namespace App\Observers;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\Location;
-use App\Services\PendingRelocationService;
+use App\Services\ReviewQueueService;
 
 /**
  * Centralizes deck-entry side effects that branch 3 had inlined inside
  * DeckEntryController:
  *
  *   - on update: if the user unlinked or swapped the entry's bound copy,
- *     and the OLD copy lives in this deck's deck-location, push it to the
- *     user's pending-relocation bucket.
+ *     and the OLD copy lives in this deck's deck-location, send it to the
+ *     review queue with reason `no_location`.
  *   - on delete: same, for the entry's currently-bound copy.
  *
  * Adds two pieces of behaviour the assembly stack needs:
  *
  *   - `$entry->skipPendingQueueOnce` — a one-shot flag honoured here. When
- *     set, the observer skips its pending-queueing logic for that single
+ *     set, the observer skips its review-queueing logic for that single
  *     save (and resets the flag). DeckEntryActionService uses this to
  *     execute "sold/discarded" intents — the user explicitly told us where
  *     the copy went, no need to queue it.
@@ -31,7 +31,7 @@ use App\Services\PendingRelocationService;
  */
 class DeckEntryObserver
 {
-    public function __construct(private PendingRelocationService $pendingRelocations) {}
+    public function __construct(private ReviewQueueService $reviewQueue) {}
 
     public function updating(DeckEntry $entry): void
     {
@@ -86,10 +86,10 @@ class DeckEntryObserver
     }
 
     /**
-     * Move `$copyId` to the user's pending bucket — but only if that copy
-     * currently lives in this deck's deck-location. Copies the user has
-     * shelved elsewhere (binders, drawers, even a different deck) are left
-     * alone; the user already chose where they belong.
+     * Mark `$copyId` for review with reason `no_location` — but only if
+     * that copy currently lives in this deck's deck-location. Copies the
+     * user has shelved elsewhere (binders, drawers, even a different deck)
+     * are left alone; the user already chose where they belong.
      */
     private function relocateIfInDeckLocation(int $copyId, DeckEntry $entry): void
     {
@@ -112,6 +112,6 @@ class DeckEntryObserver
             return;
         }
 
-        $this->pendingRelocations->moveCopyToPending($copy, $deck);
+        $this->reviewQueue->markCopyForReview($copy, $deck);
     }
 }
