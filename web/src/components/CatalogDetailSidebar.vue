@@ -456,6 +456,7 @@ const browserImageSizes = computed(() => {
   padding: 16px 18px 24px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--browser-card-min, 200px), 1fr));
+  grid-auto-rows: max-content;
   gap: 14px;
   align-content: start;
 }
@@ -477,11 +478,14 @@ const browserImageSizes = computed(() => {
 .browser-card.selected { border-color: var(--amber); }
 .browser-card-frame {
   width: 100%;
-  aspect-ratio: 63 / 88;
+  position: relative;
   background: #1a1a22;
   flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
+}
+.browser-card-frame::before {
+  content: '';
+  display: block;
+  padding-top: 139.68%; /* 88/63 — reserves height before the image loads */
 }
 .browser-card-frame img {
   position: absolute;
