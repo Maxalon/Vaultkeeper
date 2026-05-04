@@ -10,6 +10,7 @@ import ImportModal from './ImportModal.vue'
 import ImportDeckModal from './ImportDeckModal.vue'
 import ImportDeckCsvModal from './ImportDeckCsvModal.vue'
 import BulkImportDeckModal from './BulkImportDeckModal.vue'
+import AssembleDeckModal from './AssembleDeckModal.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
 import IconBinder from '../assets/icons/binder.svg'
@@ -74,8 +75,20 @@ const deckImportOpen = ref(false)
 const csvDeckImportOpen = ref(false)
 const bulkDeckImportOpen = ref(false)
 const deckImportMenuOpen = ref(false)
+// `assembleDeck` is the deck whose AssembleDeckModal is currently open
+// (or null). Driven by the @assemble emit on the import modals — when
+// the user pre-tickled "already assembled" we hand off the new deck
+// here once the import POST resolves.
+const assembleDeck = ref(null)
 const modalOpen = ref(false)
 const editingLocation = ref(null)
+
+function onImportAssemble(deck) {
+  assembleDeck.value = deck
+}
+function closeAssembleModal() {
+  assembleDeck.value = null
+}
 
 function openBulkDeckImport() {
   deckImportMenuOpen.value = false
@@ -521,9 +534,22 @@ function innerOptions(group) {
     </footer>
 
     <ImportModal v-if="importOpen" @close="importOpen = false" />
-    <ImportDeckModal v-if="deckImportOpen" @close="deckImportOpen = false" />
-    <ImportDeckCsvModal v-if="csvDeckImportOpen" @close="csvDeckImportOpen = false" />
+    <ImportDeckModal
+      v-if="deckImportOpen"
+      @close="deckImportOpen = false"
+      @assemble="onImportAssemble"
+    />
+    <ImportDeckCsvModal
+      v-if="csvDeckImportOpen"
+      @close="csvDeckImportOpen = false"
+      @assemble="onImportAssemble"
+    />
     <BulkImportDeckModal v-if="bulkDeckImportOpen" @close="bulkDeckImportOpen = false" />
+    <AssembleDeckModal
+      v-if="assembleDeck"
+      :deck="assembleDeck"
+      @close="closeAssembleModal"
+    />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
 
     <div

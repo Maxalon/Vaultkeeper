@@ -345,6 +345,48 @@ export const useDeckStore = defineStore('deck', {
       })
     },
 
+    /**
+     * POST /api/decks/{id}/assemble — declare the deck physically built.
+     * The backend creates one CE per slot in the deck-location, links
+     * each entry's `physical_copy_id`, and (for partial-exclude rows)
+     * splits the slot in two.
+     *
+     * `intent` shape:
+     *   { all: bool, sections?: string[], excludes?: [{scryfall_id, zone, qty}] }
+     */
+    async assembleDeck(id, intent) {
+      const toast = useToast()
+      try {
+        const { data } = await api.post(`/decks/${id}/assemble`, intent)
+        // Re-load entries so the new physical_copy_id bindings + split
+        // rows from partial-excludes show up immediately.
+        await this.loadEntries(id)
+        await useCollectionStore().fetchGroups()
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Assemble failed')
+        throw e
+      }
+    },
+
+    /**
+     * POST /api/decks/{id}/unassemble — tear down the assembled state.
+     * System-created copies are deleted; user-touched ones go to
+     * pending. Every entry's physical_copy_id is cleared.
+     */
+    async unassembleDeck(id) {
+      const toast = useToast()
+      try {
+        const { data } = await api.post(`/decks/${id}/unassemble`)
+        await this.loadEntries(id)
+        await useCollectionStore().fetchGroups()
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Unassemble failed')
+        throw e
+      }
+    },
+
     async ignoreIllegality(id, payload) {
       await api.post(`/decks/${id}/illegalities/ignore`, payload)
       await this.loadIllegalities(id)

@@ -3,7 +3,9 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCollectionStore } from '../stores/collection'
 
-const emit = defineEmits(['close'])
+// `assemble` fires after a successful import when the user pre-ticked
+// the "already assembled" toggle — parent opens AssembleDeckModal.
+const emit = defineEmits(['close', 'assemble'])
 const collection = useCollectionStore()
 const router = useRouter()
 
@@ -11,9 +13,9 @@ const file = ref(null)
 const name = ref('')
 const format = ref('commander')
 // Per locked decision 7, the toggle is a SPA-side concern: the import
-// POST never receives it. It will eventually open AssembleDeckModal
-// against the new deck, but that modal lands in a follow-up branch —
-// for now the toggle is captured but no-op.
+// POST never receives it. After a successful import we surface a
+// "Mark as assembled" CTA on the result panel so the user can hand
+// off to AssembleDeckModal.
 const assembled = ref(false)
 
 const submitting = ref(false)
@@ -91,6 +93,13 @@ function openDeck() {
   const id = result.value?.deck?.id
   emit('close')
   if (id) router.push({ name: 'deck', params: { id } })
+}
+
+function requestAssemble() {
+  const deck = result.value?.deck
+  if (!deck) return
+  emit('assemble', { id: deck.id, name: deck.name })
+  emit('close')
 }
 </script>
 
@@ -211,7 +220,11 @@ function openDeck() {
 
         <div class="actions">
           <button type="button" @click="emit('close')">Close</button>
-          <button type="button" class="primary" @click="openDeck">Open Deck</button>
+          <button v-if="!assembled" type="button" class="primary" @click="openDeck">Open Deck</button>
+          <template v-else>
+            <button type="button" @click="openDeck">Open Deck</button>
+            <button type="button" class="primary" @click="requestAssemble">Mark as assembled</button>
+          </template>
         </div>
       </div>
     </div>

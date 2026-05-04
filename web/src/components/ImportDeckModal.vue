@@ -3,7 +3,11 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCollectionStore } from '../stores/collection'
 
-const emit = defineEmits(['close'])
+// `assemble` fires after a successful import when the user pre-ticked
+// the "already assembled" toggle. Carries the new deck's id + name so
+// the parent can open AssembleDeckModal against it. Closing this modal
+// after an emit is the parent's responsibility.
+const emit = defineEmits(['close', 'assemble'])
 const collection = useCollectionStore()
 const router = useRouter()
 
@@ -100,6 +104,13 @@ function openDeck() {
   const id = result.value?.deck?.id ?? conflict.value?.id
   emit('close')
   if (id) router.push({ name: 'deck', params: { id } })
+}
+
+function requestAssemble() {
+  const deck = result.value?.deck
+  if (!deck) return
+  emit('assemble', { id: deck.id, name: deck.name })
+  emit('close')
 }
 </script>
 
@@ -251,7 +262,11 @@ function openDeck() {
 
         <div class="actions">
           <button type="button" @click="emit('close')">Close</button>
-          <button type="button" class="primary" @click="openDeck">Open Deck</button>
+          <button v-if="!assembled" type="button" class="primary" @click="openDeck">Open Deck</button>
+          <template v-else>
+            <button type="button" @click="openDeck">Open Deck</button>
+            <button type="button" class="primary" @click="requestAssemble">Mark as assembled</button>
+          </template>
         </div>
       </div>
     </div>

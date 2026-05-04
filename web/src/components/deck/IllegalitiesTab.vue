@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import { useTabsStore } from '../../stores/tabs'
+import Checkbox from '../Checkbox.vue'
 
 const deck = useDeckStore()
 const tabs = useTabsStore()
@@ -79,7 +80,11 @@ function jumpToCard(row) {
         class="illegality-row"
         :class="{ ignored: row.ignored }"
       >
-        <input type="checkbox" name="ignore-illegality" :checked="row.ignored" @change="toggle(row)" />
+        <Checkbox
+          name="ignore-illegality"
+          :model-value="row.ignored"
+          @update:model-value="toggle(row)"
+        />
         <div class="row-body">
           <div class="row-head">
             <span class="row-type">{{ LABELS[row.type] || row.type }}</span>
