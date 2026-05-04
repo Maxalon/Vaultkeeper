@@ -46,6 +46,71 @@ function onZoneChange(zone) {
   }
 }
 
+/**
+ * Find the (scryfall_id, zone)-matching wanted sibling for the
+ * current entry, if any. Used by +1/-1 to route quantity changes
+ * to the wanted side first — bound CE-backed quantity only moves
+ * via the explicit inline-picker "I bought it" path.
+ */
+function findWantedSibling(e) {
+  if (!e) return null
+  return deck.entries.find(
+    (r) => r.id !== e.id
+        && r.scryfall_id === e.scryfall_id
+        && r.zone === e.zone
+        && r.physical_copy_id == null
+        && r.wanted != null,
+  ) || null
+}
+
+function onIncrement() {
+  if (!entry.value || !deckId.value) return
+  const e = entry.value
+  // Unbound entry (wanted-only or unset): just bump it.
+  if (e.physical_copy_id == null) {
+    deck.updateEntry(deckId.value, e.id, { quantity: e.quantity + 1 })
+    return
+  }
+  // Bound entry: bump the wanted sibling, or mint one when none exists.
+  const sibling = findWantedSibling(e)
+  if (sibling) {
+    deck.updateEntry(deckId.value, sibling.id, { quantity: sibling.quantity + 1 })
+  } else {
+    deck.growWanted(deckId.value, e.scryfall_id, e.zone)
+  }
+}
+
+function onDecrement() {
+  if (!entry.value || !deckId.value) return
+  const e = entry.value
+  // Unbound entry: −1 hits this row directly. At qty=1, removing
+  // the row deletes it (no observer side-effects since it's wanted-only).
+  if (e.physical_copy_id == null) {
+    if (e.quantity <= 1) {
+      deck.removeEntry(deckId.value, e.id)
+    } else {
+      deck.updateEntry(deckId.value, e.id, { quantity: e.quantity - 1 })
+    }
+    return
+  }
+  // Bound entry with a wanted sibling: peel the sibling first, deleting
+  // it at qty=1.
+  const sibling = findWantedSibling(e)
+  if (sibling) {
+    if (sibling.quantity <= 1) {
+      deck.removeEntry(deckId.value, sibling.id)
+    } else {
+      deck.updateEntry(deckId.value, sibling.id, { quantity: sibling.quantity - 1 })
+    }
+    return
+  }
+  // Purely-bound entry, no wanted sibling: existing observer-driven
+  // path (queues the freed copy to the review/pending bucket).
+  if (e.quantity > 1) {
+    deck.updateEntry(deckId.value, e.id, { quantity: e.quantity - 1 })
+  }
+}
+
 function runAction(action) {
   action.run().catch(() => { /* store-level toast */ })
 }
@@ -107,8 +172,8 @@ function onRemove() {
         <label>Quantity</label>
         <QuantityStepper
           :value="entry.quantity"
-          @dec="patch({ quantity: Math.max(1, entry.quantity - 1) })"
-          @inc="patch({ quantity: entry.quantity + 1 })"
+          @dec="onDecrement"
+          @inc="onIncrement"
         />
       </div>
 
