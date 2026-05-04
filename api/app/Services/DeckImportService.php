@@ -833,6 +833,19 @@ class DeckImportService
         $safety = 50; // hard cap on pages so a misbehaving API can't loop forever
 
         while ($url !== null && $safety-- > 0) {
+            // SSRF guard: re-anchor each iteration to archidekt.com. The
+            // first URL is hard-coded above; subsequent URLs come from
+            // `$json['next']`, which is attacker-influenceable if the
+            // Archidekt response is ever spoofed (DNS, MITM) or the
+            // service itself is compromised. Without this check, the
+            // worker container could be pointed at internal services
+            // (db:3306, redis:6379, minio:9000, cloud metadata) on the
+            // shared Docker network.
+            if (parse_url($url, PHP_URL_HOST) !== 'archidekt.com'
+                || parse_url($url, PHP_URL_SCHEME) !== 'https') {
+                break;
+            }
+
             $response = Http::withHeaders(self::BROWSER_HEADERS)->timeout(15)->get($url);
 
             if (! $response->successful()) {

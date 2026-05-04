@@ -70,7 +70,10 @@ class DeckEntryController extends Controller
             'category'               => 'sometimes|nullable|string|max:100',
             'is_commander'           => 'sometimes|boolean',
             'is_signature_spell'     => 'sometimes|boolean',
-            'signature_for_entry_id' => 'sometimes|nullable|integer',
+            'signature_for_entry_id' => [
+                'sometimes', 'nullable', 'integer',
+                $this->signatureForEntryRule($deck),
+            ],
             'wanted'                 => 'sometimes|nullable|in:main,side,maybe',
             'physical_copy_id'       => [
                 'sometimes', 'nullable', 'integer',
@@ -141,7 +144,10 @@ class DeckEntryController extends Controller
             'quantity'               => 'sometimes|integer|min:1',
             'category'               => 'sometimes|nullable|string|max:100',
             'is_signature_spell'     => 'sometimes|boolean',
-            'signature_for_entry_id' => 'sometimes|nullable|integer',
+            'signature_for_entry_id' => [
+                'sometimes', 'nullable', 'integer',
+                $this->signatureForEntryRule($deck),
+            ],
             'wanted'                 => 'sometimes|nullable|in:main,side,maybe',
             'physical_copy_id'       => [
                 'sometimes', 'nullable', 'integer',
@@ -636,6 +642,24 @@ class DeckEntryController extends Controller
     private function authorizeOwner(Deck $deck): void
     {
         abort_if($deck->user_id !== auth()->id(), 403);
+    }
+
+    /**
+     * Validation closure that ensures `signature_for_entry_id` references
+     * an entry that already exists in the SAME deck. Without this check
+     * a user could point a signature spell at any deck-entry id in the
+     * database — the deck still belongs to them, but the FK reaches
+     * across users and breaks the legality engine's invariants.
+     */
+    private function signatureForEntryRule(Deck $deck): \Closure
+    {
+        return function ($attr, $value, $fail) use ($deck) {
+            if ($value === null) return;
+            $ok = DeckEntry::where('id', $value)
+                ->where('deck_id', $deck->id)
+                ->exists();
+            if (! $ok) $fail('The signature_for_entry_id must belong to this deck.');
+        };
     }
 
     private function presentEntry(DeckEntry $entry, array $owned, array $committed, array $oracleTags): array
