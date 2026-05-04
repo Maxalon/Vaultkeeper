@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ReviewReason;
+use App\Models\Concerns\HasOptimisticVersion;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class CollectionEntry extends Model
 {
     use HasFactory;
+    use HasOptimisticVersion;
 
     protected $fillable = [
         'user_id',
@@ -30,6 +32,7 @@ class CollectionEntry extends Model
         'quantity' => 'integer',
         'review_reason' => ReviewReason::class,
         'source_deck_deleted' => 'boolean',
+        'version' => 'integer',
     ];
 
     public function user(): BelongsTo

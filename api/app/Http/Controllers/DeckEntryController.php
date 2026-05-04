@@ -408,25 +408,39 @@ class DeckEntryController extends Controller
             ]);
         }
 
-        return DB::transaction(function () use ($copy, $deckLocation, $needed, $available) {
-            $sourceLocationId = $copy->location_id;
+        return DB::transaction(function () use ($copy, $deckLocation, $needed) {
+            // Re-read the source CE under a row lock — the qty / location
+            // checks above ran outside the transaction so we have to
+            // re-verify under the lock to avoid a TOCTOU split. (E.g. a
+            // concurrent bind could have already drained the copy.)
+            $locked = CollectionEntry::query()
+                ->where('id', $copy->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $sourceLocationId = $locked->location_id;
+            $available = (int) $locked->quantity;
+            if ($available < $needed) {
+                throw ValidationException::withMessages([
+                    'physical_copy_id' => ["That copy only has {$available} available; this slot needs {$needed}."],
+                ]);
+            }
 
             if ($available === $needed) {
                 // Whole CE moves into the deck-location — single row update.
-                $copy->update(['location_id' => $deckLocation->id]);
-                $boundId = $copy->id;
+                $locked->update(['location_id' => $deckLocation->id]);
+                $boundId = $locked->id;
             } else {
                 // Split: keep (available − needed) in the source CE, create
                 // a new CE with `needed` copies in the deck-location.
-                $copy->update(['quantity' => $available - $needed]);
+                $locked->update(['quantity' => $available - $needed]);
                 $newCopy = CollectionEntry::create([
-                    'user_id'     => $copy->user_id,
-                    'scryfall_id' => $copy->scryfall_id,
+                    'user_id'     => $locked->user_id,
+                    'scryfall_id' => $locked->scryfall_id,
                     'location_id' => $deckLocation->id,
                     'quantity'    => $needed,
-                    'condition'   => $copy->condition,
-                    'foil'        => (bool) $copy->foil,
-                    'notes'       => $copy->notes,
+                    'condition'   => $locked->condition,
+                    'foil'        => (bool) $locked->foil,
+                    'notes'       => $locked->notes,
                 ]);
                 $boundId = $newCopy->id;
             }
