@@ -321,6 +321,11 @@ export const useDeckStore = defineStore('deck', {
       if (idx === -1) return
       const removed = this.entries.splice(idx, 1)[0]
       if (this.activeEntryId === entryId) this.activeEntryId = null
+      // Whether the default-path delete will queue a CE for review.
+      // (Discard skips the queue; a row with no bound copy has nothing
+      // to queue either.)
+      const willQueueForReview = !opts.discard && removed?.physical_copy_id != null
+      const cardName = removed?.scryfall_card?.name || 'Card'
       try {
         const url = opts.discard
           ? `/decks/${deckId}/entries/${entryId}?discard=true`
@@ -334,6 +339,25 @@ export const useDeckStore = defineStore('deck', {
           // queue, so this is a no-op there, but it's cheap.
           useCollectionStore().fetchGroups(),
         ])
+        if (willQueueForReview) {
+          // Default path queued the freed copy for review with reason
+          // `no_location`. Offer the user a one-click override to
+          // discard it instead, since the most common other intent
+          // ("I sold/discarded this") would otherwise need a trip
+          // to /review to express.
+          const collection = useCollectionStore()
+          toast.withActions(
+            `${cardName} marked for review.`,
+            [
+              {
+                label: 'Sold / discarded',
+                run: () => collection.resolveReview([
+                  { collection_entry_id: removed.physical_copy_id, discard: true },
+                ]),
+              },
+            ],
+          )
+        }
       } catch (e) {
         this.entries.splice(idx, 0, removed)
         toast.error(e.response?.data?.message || 'Delete failed')

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../lib/api'
 import { useDeckStore } from '../stores/deck'
 import { useToast } from '../composables/useToast'
@@ -19,6 +20,7 @@ const emit = defineEmits(['close', 'assembled'])
 
 const store = useDeckStore()
 const toast = useToast()
+const router = useRouter()
 
 // When the parent doesn't supply entries, fetch on mount so the
 // exclude autocomplete has something to search over.
@@ -176,7 +178,23 @@ async function submit() {
     if (wanted > 0) {
       message += ` ${wanted} slot${wanted === 1 ? '' : 's'} remain on your wishlist.`
     }
-    toast.success(message)
+    if (created > 0) {
+      // Created CEs land with review_reason = default_values_applied;
+      // nudge the user to confirm or correct condition / foil / notes.
+      message += ' Defaults applied (NM, non-foil) — review when ready.'
+      toast.withActions(message, [
+        {
+          label: 'Review now',
+          kind: 'primary',
+          run: () => router.push({
+            name: 'review',
+            query: { reason: 'default_values_applied' },
+          }),
+        },
+      ])
+    } else {
+      toast.success(message)
+    }
     emit('assembled', result)
     emit('close')
   } finally {
