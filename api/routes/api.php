@@ -76,8 +76,14 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
     Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
 
-    Route::post  ('decks/{deck}/assemble',                 [DeckAssemblyController::class, 'assemble']);
-    Route::post  ('decks/{deck}/unassemble',               [DeckAssemblyController::class, 'unassemble']);
+    // Assemble/unassemble each fan out to ~deck-size CE writes inside one
+    // transaction. The 120/min global floor would let one user do ~12K CE
+    // writes/min across decks; pull that down to a level that still
+    // supports normal "build a deck, change my mind, rebuild" cadences.
+    Route::post  ('decks/{deck}/assemble',                 [DeckAssemblyController::class, 'assemble'])
+        ->middleware('throttle:30,1');
+    Route::post  ('decks/{deck}/unassemble',               [DeckAssemblyController::class, 'unassemble'])
+        ->middleware('throttle:30,1');
 
     Route::get   ('decks/{deck}/entries',                  [DeckEntryController::class, 'index']);
     Route::post  ('decks/{deck}/entries',                  [DeckEntryController::class, 'store']);
@@ -97,18 +103,25 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
 
     Route::get('location-groups',               [LocationGroupController::class, 'index']);
     Route::post('location-groups',              [LocationGroupController::class, 'store']);
-    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder']);
+    // reorder walks up to 1000 nodes and writes each — tighter throttle
+    // matches the cap on payload size.
+    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder'])
+        ->middleware('throttle:30,1');
     Route::put('location-groups/{group}',       [LocationGroupController::class, 'update']);
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 
     Route::get ('review',         [ReviewController::class, 'index']);
     Route::get ('review/count',   [ReviewController::class, 'count']);
-    Route::post('review/resolve', [ReviewController::class, 'resolve']);
+    // resolve drives one transaction with up to 500 row-locks; tighter
+    // throttle so a single user can't lock up the CE table.
+    Route::post('review/resolve', [ReviewController::class, 'resolve'])
+        ->middleware('throttle:30,1');
 
     // Backward-compat aliases for one release. New code should hit /review.
     Route::get ('pending-relocations',         [ReviewController::class, 'index']);
     Route::get ('pending-relocations/count',   [ReviewController::class, 'count']);
-    Route::post('pending-relocations/resolve', [ReviewController::class, 'resolve']);
+    Route::post('pending-relocations/resolve', [ReviewController::class, 'resolve'])
+        ->middleware('throttle:30,1');
 
     Route::get('collection',               [CollectionController::class, 'index']);
     Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);

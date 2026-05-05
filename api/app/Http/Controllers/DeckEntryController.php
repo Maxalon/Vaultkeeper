@@ -303,7 +303,11 @@ class DeckEntryController extends Controller
         $data = $request->validate([
             'scryfall_id' => ['required', 'uuid', 'exists:scryfall_cards,scryfall_id'],
             'zone'        => ['required', 'in:main,side,maybe'],
-            'delta'       => ['sometimes', 'integer', 'min:1'],
+            // Bounded: deck_entries.quantity is a SMALLINT/INT in MySQL —
+            // a giant delta would overflow the column and surface a raw
+            // DB error to the user. 1000 is far more than any real deck
+            // would need.
+            'delta'       => ['sometimes', 'integer', 'min:1', 'max:1000'],
             'category'    => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
         $delta = (int) ($data['delta'] ?? 1);
