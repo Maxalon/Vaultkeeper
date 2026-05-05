@@ -118,7 +118,12 @@ class ReviewController extends Controller
         $userId = auth()->id();
 
         $data = $request->validate([
-            'assignments'                        => 'required|array|min:1',
+            // Cap: each row drives a `lockForUpdate` + writes to
+            // collection_entries (and possibly locations), all inside one
+            // transaction. Without an upper bound, a single authenticated
+            // request could queue 10K+ row locks and exhaust the DB
+            // connection / PHP memory. 500 covers any plausible UI batch.
+            'assignments'                        => 'required|array|min:1|max:500',
             'assignments.*.collection_entry_id'  => 'required|integer',
             'assignments.*.target_location_id'   => 'sometimes|nullable|integer',
             'assignments.*.discard'              => 'sometimes|boolean',

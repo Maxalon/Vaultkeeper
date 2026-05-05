@@ -36,7 +36,12 @@ Route::prefix('auth')->group(function () {
 // catalogue is empty.
 Route::get('cards/featured', [CardController::class, 'featured']);
 
-Route::middleware('auth:api')->group(function () {
+// Authenticated API. The 'throttle:120,1' floor across the group caps a single
+// authenticated user (or an attacker with one valid JWT) at 120 req/minute,
+// which is generous enough for real SPA usage but stops a logged-in client
+// from saturating the 1-CPU API container or fanning out queue jobs. Heavy
+// import endpoints get a tighter sub-throttle below.
+Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::prefix('auth')->group(function () {
         Route::post('logout',  [AuthController::class, 'logout']);
         Route::post('refresh', [AuthController::class, 'refresh']);
@@ -55,16 +60,30 @@ Route::middleware('auth:api')->group(function () {
 
     Route::get   ('decks',                                 [DeckController::class, 'index']);
     Route::post  ('decks',                                 [DeckController::class, 'store']);
-    Route::post  ('decks/import',                          [DeckImportController::class, 'store']);
-    Route::post  ('decks/import/csv',                      [DeckImportController::class, 'csv']);
-    Route::post  ('decks/import/bulk',                     [DeckImportController::class, 'bulk']);
+    // Import endpoints dispatch long-running queue jobs
+    // (BulkImportUserDecksJob can run for 30 minutes and fans 50
+    // paginated HTTP fetches at Archidekt; CSV/text imports parse
+    // user-supplied bodies). Hold each to 5/minute so a single user
+    // can't fill the queue.
+    Route::post  ('decks/import',                          [DeckImportController::class, 'store'])
+        ->middleware('throttle:5,1');
+    Route::post  ('decks/import/csv',                      [DeckImportController::class, 'csv'])
+        ->middleware('throttle:5,1');
+    Route::post  ('decks/import/bulk',                     [DeckImportController::class, 'bulk'])
+        ->middleware('throttle:5,1');
     Route::get   ('decks/import/bulk/{key}',               [DeckImportController::class, 'bulkStatus']);
     Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);
     Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
     Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
 
-    Route::post  ('decks/{deck}/assemble',                 [DeckAssemblyController::class, 'assemble']);
-    Route::post  ('decks/{deck}/unassemble',               [DeckAssemblyController::class, 'unassemble']);
+    // Assemble/unassemble each fan out to ~deck-size CE writes inside one
+    // transaction. The 120/min global floor would let one user do ~12K CE
+    // writes/min across decks; pull that down to a level that still
+    // supports normal "build a deck, change my mind, rebuild" cadences.
+    Route::post  ('decks/{deck}/assemble',                 [DeckAssemblyController::class, 'assemble'])
+        ->middleware('throttle:30,1');
+    Route::post  ('decks/{deck}/unassemble',               [DeckAssemblyController::class, 'unassemble'])
+        ->middleware('throttle:30,1');
 
     Route::get   ('decks/{deck}/entries',                  [DeckEntryController::class, 'index']);
     Route::post  ('decks/{deck}/entries',                  [DeckEntryController::class, 'store']);
@@ -84,18 +103,25 @@ Route::middleware('auth:api')->group(function () {
 
     Route::get('location-groups',               [LocationGroupController::class, 'index']);
     Route::post('location-groups',              [LocationGroupController::class, 'store']);
-    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder']);
+    // reorder walks up to 1000 nodes and writes each — tighter throttle
+    // matches the cap on payload size.
+    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder'])
+        ->middleware('throttle:30,1');
     Route::put('location-groups/{group}',       [LocationGroupController::class, 'update']);
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 
     Route::get ('review',         [ReviewController::class, 'index']);
     Route::get ('review/count',   [ReviewController::class, 'count']);
-    Route::post('review/resolve', [ReviewController::class, 'resolve']);
+    // resolve drives one transaction with up to 500 row-locks; tighter
+    // throttle so a single user can't lock up the CE table.
+    Route::post('review/resolve', [ReviewController::class, 'resolve'])
+        ->middleware('throttle:30,1');
 
     // Backward-compat aliases for one release. New code should hit /review.
     Route::get ('pending-relocations',         [ReviewController::class, 'index']);
     Route::get ('pending-relocations/count',   [ReviewController::class, 'count']);
-    Route::post('pending-relocations/resolve', [ReviewController::class, 'resolve']);
+    Route::post('pending-relocations/resolve', [ReviewController::class, 'resolve'])
+        ->middleware('throttle:30,1');
 
     Route::get('collection',               [CollectionController::class, 'index']);
     Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);
@@ -104,5 +130,7 @@ Route::middleware('auth:api')->group(function () {
     Route::patch('collection/{entry}',     [CollectionController::class, 'update']);
     Route::delete('collection/{entry}',    [CollectionController::class, 'destroy']);
 
-    Route::post('import', [ImportController::class, 'store']);
+    // CSV / text bulk import — same heavy-job reasoning as decks/import*.
+    Route::post('import', [ImportController::class, 'store'])
+        ->middleware('throttle:5,1');
 });

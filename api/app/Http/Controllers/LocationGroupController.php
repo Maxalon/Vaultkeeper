@@ -309,7 +309,9 @@ class LocationGroupController extends Controller
     public function reorder(Request $request): Response
     {
         $data = $request->validate([
-            'items'                          => 'present|array',
+            // Top-level cap; the recursive walker below also enforces a
+            // total-node cap so a deeply-nested payload can't blow up.
+            'items'                          => 'present|array|max:500',
             'items.*'                        => 'array',
         ]);
 
@@ -317,7 +319,19 @@ class LocationGroupController extends Controller
 
         $groupIds    = [];
         $locationIds = [];
-        $this->collectIds($data['items'], $groupIds, $locationIds);
+        // Total-node cap on the recursive walk: even with the array-level
+        // max:500 above, a payload could still nest 500 children inside
+        // each top-level item. Without this guard an attacker could
+        // submit a tree with N^2 nodes that we'd walk (and ownership-
+        // check) before any write happens. 1000 is well above the size
+        // of any real-world sidebar.
+        $remaining = 1000;
+        $this->collectIds($data['items'], $groupIds, $locationIds, $remaining);
+        if ($remaining < 0) {
+            throw ValidationException::withMessages([
+                'items' => 'Reorder payload too large.',
+            ]);
+        }
 
         // Reject any group_id appearing more than once in the payload —
         // that's the structural definition of a cycle.
@@ -389,10 +403,16 @@ class LocationGroupController extends Controller
      * @param array<int, array<string, mixed>> $items
      * @param array<int, int>                  $groupIds
      * @param array<int, int>                  $locationIds
+     * @param int                               $remaining  decremented per-node; when it drops
+     *                                                     below zero the caller throws 422 to
+     *                                                     reject the payload.
      */
-    private function collectIds(array $items, array &$groupIds, array &$locationIds): void
+    private function collectIds(array $items, array &$groupIds, array &$locationIds, int &$remaining): void
     {
         foreach ($items as $item) {
+            if ($remaining-- < 0) {
+                return;
+            }
             $kind = $item['kind'] ?? null;
             $id   = isset($item['id']) ? (int) $item['id'] : null;
             if ($id === null) {
@@ -403,7 +423,7 @@ class LocationGroupController extends Controller
                 $groupIds[] = $id;
                 $children = $item['children'] ?? [];
                 if (is_array($children)) {
-                    $this->collectIds($children, $groupIds, $locationIds);
+                    $this->collectIds($children, $groupIds, $locationIds, $remaining);
                 }
             } elseif ($kind === 'location' || $kind === 'deck') {
                 $locationIds[] = $id;

@@ -37,12 +37,17 @@ class DeckAssemblyController extends Controller
 
         $data = $request->validate([
             'all'                    => 'sometimes|boolean',
-            'sections'               => 'sometimes|array',
+            // sections is a fixed enum domain — 3 entries — so a small cap
+            // is the right shape; excludes scales with deck size, capped
+            // at 500 (more than any sane deck) so an attacker can't force
+            // 10K+ exists() lookups on scryfall_cards before the real work
+            // begins.
+            'sections'               => 'sometimes|array|max:3',
             'sections.*'             => 'in:main,side,maybe',
-            'excludes'               => 'sometimes|array',
+            'excludes'               => 'sometimes|array|max:500',
             'excludes.*.scryfall_id' => 'required_with:excludes|uuid|exists:scryfall_cards,scryfall_id',
             'excludes.*.zone'        => 'required_with:excludes|in:main,side,maybe',
-            'excludes.*.qty'         => 'required_with:excludes|integer|min:1',
+            'excludes.*.qty'         => 'required_with:excludes|integer|min:1|max:1000',
         ]);
 
         $intent = AssembleIntent::fromArray($data);

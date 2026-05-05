@@ -211,7 +211,11 @@ class CollectionController extends Controller
     public function batchMove(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'ids'         => 'required|array|min:1',
+            // Cap: a single batchMove fans out to a whereIn().update() over
+            // the request's ids. 500 is safely above any plausible UI batch
+            // and well below the level where one request would lock-out the
+            // collection_entries table for other users.
+            'ids'         => 'required|array|min:1|max:500',
             'ids.*'       => 'integer',
             'location_id' => [
                 'present',

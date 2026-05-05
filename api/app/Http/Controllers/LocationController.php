@@ -96,8 +96,15 @@ class LocationController extends Controller
         // By default we detach entries so the user doesn't lose collection rows
         // just because they removed a drawer. When the caller opts in we drop
         // the entries themselves — destructive, so it's gated on a flag.
+        //
+        // The user_id filter is defence-in-depth: location ownership is
+        // already verified above (line 91), but if a future migration or
+        // admin tool ever produces a row where a CollectionEntry's
+        // location_id points at another user's location, this WHERE
+        // ensures we only mutate the *current* user's rows.
         DB::transaction(function () use ($location, $deleteEntries) {
-            $entries = CollectionEntry::where('location_id', $location->id);
+            $entries = CollectionEntry::where('location_id', $location->id)
+                ->where('user_id', auth()->id());
             if ($deleteEntries) {
                 $entries->delete();
             } else {
