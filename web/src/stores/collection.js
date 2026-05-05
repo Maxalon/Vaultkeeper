@@ -61,6 +61,49 @@ function loadCollapsedGroups() {
   }
 }
 
+/**
+ * Sync the sidebar tree in place. vue-draggable-plus binds to the array
+ * reference at mount and mutates it directly on drag; if `fetchGroups`
+ * replaced the array with a fresh one, the directive would keep mutating
+ * the orphan and `reorderAll` would post the pre-drag order. Mutating in
+ * place at every level keeps every captured reference live.
+ *
+ * Existing items are matched by `kind:id` so that group/deck/location
+ * objects (and their nested `children` arrays) keep the same identity
+ * across refetches.
+ */
+function syncTreeInPlace(target, source) {
+  const byKey = new Map()
+  for (const item of target) byKey.set(`${item.kind}:${item.id}`, item)
+
+  const next = []
+  for (const src of source) {
+    const key = `${src.kind}:${src.id}`
+    const existing = byKey.get(key)
+    if (existing) {
+      // Copy scalar fields onto the existing item so the proxy identity
+      // is preserved. `children` is handled recursively so its array
+      // reference stays stable too.
+      for (const k of Object.keys(src)) {
+        if (k === 'children') continue
+        if (existing[k] !== src[k]) existing[k] = src[k]
+      }
+      if (src.kind === 'group') {
+        if (!Array.isArray(existing.children)) existing.children = []
+        syncTreeInPlace(existing.children, src.children || [])
+      }
+      next.push(existing)
+      byKey.delete(key)
+    } else {
+      next.push(src)
+    }
+  }
+
+  // Replace target's contents in-place with `next`. `splice(0, len, ...next)`
+  // keeps the same array reference, which is what vue-draggable bound to.
+  target.splice(0, target.length, ...next)
+}
+
 export const useCollectionStore = defineStore('collection', {
   state: () => ({
     /**
@@ -159,7 +202,8 @@ export const useCollectionStore = defineStore('collection', {
   actions: {
     async fetchGroups() {
       const { data } = await api.get('/location-groups')
-      this.sidebarItems = data.items
+      // In-place sync — see `syncTreeInPlace` for why we don't reassign.
+      syncTreeInPlace(this.sidebarItems, data.items)
       this.totalCount = data.total_count
       this.review = data.review || null
     },
