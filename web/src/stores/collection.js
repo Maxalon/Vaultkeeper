@@ -407,26 +407,56 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchLocations()
     },
 
-    async updateEntry(id, payload) {
-      const { data } = await api.patch(`/collection/${id}`, payload)
-      const idx = this.entries.findIndex((e) => e.id === id)
-      if (idx !== -1) {
-        this.entries[idx] = {
-          ...this.entries[idx],
-          quantity: data.quantity,
-          condition: data.condition,
-          foil: data.foil,
-          notes: data.notes,
-          location_id: data.location_id,
+    /**
+     * Per-CE-id promise chain. Every CE-mutating action awaits the
+     * previous in-flight one for the same id before kicking off, so a
+     * burst of clicks (4 +1s in a row) can't interleave at the network
+     * layer and step on each other's optimistic-locking version. Each
+     * link includes a fresh version pulled from local state right
+     * before the request fires.
+     */
+    _enqueueForEntry(id, fn) {
+      if (!this._pendingByEntry) this._pendingByEntry = new Map()
+      const prev = this._pendingByEntry.get(id) || Promise.resolve()
+      const next = prev.catch(() => {}).then(fn)
+      this._pendingByEntry.set(id, next)
+      // Clean up the map entry once the chain settles to avoid leaking.
+      next.finally(() => {
+        if (this._pendingByEntry.get(id) === next) {
+          this._pendingByEntry.delete(id)
         }
-      }
-      if (this.activeEntryId === id) {
-        this.activeEntry = data
-      }
-      if (payload.location_id !== undefined) {
-        this.fetchLocations()
-      }
-      return data
+      })
+      return next
+    },
+
+    async updateEntry(id, payload) {
+      return this._enqueueForEntry(id, async () => {
+        const local = this.entries.find((e) => e.id === id) ?? this.activeEntry
+        const body = { ...payload }
+        if (local && typeof local.version === 'number' && body.version === undefined) {
+          body.version = local.version
+        }
+        const { data } = await api.patch(`/collection/${id}`, body)
+        const idx = this.entries.findIndex((e) => e.id === id)
+        if (idx !== -1) {
+          this.entries[idx] = {
+            ...this.entries[idx],
+            quantity: data.quantity,
+            condition: data.condition,
+            foil: data.foil,
+            notes: data.notes,
+            location_id: data.location_id,
+            version: data.version,
+          }
+        }
+        if (this.activeEntryId === id) {
+          this.activeEntry = data
+        }
+        if (payload.location_id !== undefined) {
+          this.fetchLocations()
+        }
+        return data
+      })
     },
 
     toggleSelecting() {
@@ -465,10 +495,16 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     async deleteEntry(id) {
-      await api.delete(`/collection/${id}`)
-      this.entries = this.entries.filter((e) => e.id !== id)
-      if (this.activeEntryId === id) this.closeActiveEntry()
-      this.fetchLocations()
+      return this._enqueueForEntry(id, async () => {
+        const local = this.entries.find((e) => e.id === id) ?? this.activeEntry
+        const params = local && typeof local.version === 'number'
+          ? { version: local.version }
+          : undefined
+        await api.delete(`/collection/${id}`, { params })
+        this.entries = this.entries.filter((e) => e.id !== id)
+        if (this.activeEntryId === id) this.closeActiveEntry()
+        this.fetchLocations()
+      })
     },
   },
 })

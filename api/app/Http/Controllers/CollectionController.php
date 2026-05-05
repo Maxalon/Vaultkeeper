@@ -155,7 +155,13 @@ class CollectionController extends Controller
             'notes'    => 'sometimes|nullable|string|max:1000',
             'quantity' => 'sometimes|integer|min:1',
             'foil'     => 'sometimes|boolean',
+            // Optional optimistic-locking version. When present, the
+            // current row's version must match — otherwise 412.
+            'version'  => 'sometimes|integer|min:0',
         ]);
+
+        $expectedVersion = array_key_exists('version', $data) ? (int) $data['version'] : null;
+        unset($data['version']);
 
         // The user re-shelving this copy means the "from <deck>" stamp from
         // the last shrink is no longer relevant — clear it in the same
@@ -169,7 +175,19 @@ class CollectionController extends Controller
         }
 
         $previousLocationId = $entry->getOriginal('location_id');
-        $entry->update($data);
+
+        DB::transaction(function () use ($entry, $data, $expectedVersion) {
+            $locked = CollectionEntry::query()
+                ->where('id', $entry->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($expectedVersion !== null) {
+                $locked->assertVersion($expectedVersion);
+            }
+            $locked->update($data);
+            // Bring the route-bound model in line with the locked write.
+            $entry->setRawAttributes($locked->fresh()->getAttributes(), true);
+        });
 
         if (array_key_exists('location_id', $data)) {
             $affected = array_filter([$previousLocationId, $entry->location_id]);
@@ -277,12 +295,26 @@ class CollectionController extends Controller
         );
     }
 
-    public function destroy(CollectionEntry $entry): Response
+    public function destroy(Request $request, CollectionEntry $entry): Response
     {
         abort_if($entry->user_id !== auth()->id(), 403);
 
-        $locationId = $entry->location_id;
-        $entry->delete();
+        $expectedVersion = $request->has('version')
+            ? (int) $request->input('version')
+            : null;
+
+        $locationId = null;
+        DB::transaction(function () use ($entry, $expectedVersion, &$locationId) {
+            $locked = CollectionEntry::query()
+                ->where('id', $entry->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($expectedVersion !== null) {
+                $locked->assertVersion($expectedVersion);
+            }
+            $locationId = $locked->location_id;
+            $locked->delete();
+        });
 
         if ($locationId) {
             Location::find($locationId)?->refreshSetCodes();
@@ -363,6 +395,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'version'     => (int) ($entry->version ?? 0),
             'source_deck' => $this->presentSourceDeck($entry),
             'created_at'  => $entry->created_at?->toIso8601String(),
             'card'        => $card ? [
@@ -403,6 +436,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'version'     => (int) ($entry->version ?? 0),
             'source_deck' => $this->presentSourceDeck($entry),
             'card'        => $card ? [
                 'scryfall_id'      => $card->scryfall_id,

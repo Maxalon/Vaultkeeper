@@ -138,7 +138,10 @@ class DeckEntryActionService
                 return $entry->fresh();
             }
 
-            $copy = CollectionEntry::find($entry->physical_copy_id);
+            $copy = CollectionEntry::query()
+                ->where('id', $entry->physical_copy_id)
+                ->lockForUpdate()
+                ->first();
             if ($copy !== null) {
                 $copy->update(['quantity' => (int) $copy->quantity + $delta]);
             }
@@ -170,7 +173,10 @@ class DeckEntryActionService
 
         return DB::transaction(function () use ($entry, $delta) {
             if ($entry->physical_copy_id !== null) {
-                $copy = CollectionEntry::find($entry->physical_copy_id);
+                $copy = CollectionEntry::query()
+                    ->where('id', $entry->physical_copy_id)
+                    ->lockForUpdate()
+                    ->first();
                 if ($copy !== null) {
                     $newQty = (int) $copy->quantity - $delta;
                     if ($newQty <= 0) {
