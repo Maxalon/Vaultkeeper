@@ -59,7 +59,6 @@ function onPeekShow({ rect }) {
     :card="card"
     :quantity="qty"
     :show-qty-in-bar="false"
-    :show-skeleton="false"
     :mode-b="settings.displayMode === 'B'"
     :hover-mode="settings.hoverMode"
     :draggable="true"
