@@ -315,6 +315,35 @@ export const useDeckStore = defineStore('deck', {
       return this.updateEntry(deckId, entryId, { zone })
     },
 
+    /**
+     * POST /api/decks/{deck}/entries/{entry}/edit-physical — adjust the
+     * bound CE's condition / foil / notes / printing, optionally splitting
+     * the slot when `apply_to` is less than the current quantity. The
+     * server returns either the updated source entry (apply-all) or the
+     * freshly-minted sibling (split). We re-load the full entry list so
+     * both sides of a split materialise locally.
+     */
+    async editPhysicalCopy(deckId, entryId, payload) {
+      const toast = useToast()
+      this.saving.add(entryId)
+      try {
+        const { data } = await api.post(
+          `/decks/${deckId}/entries/${entryId}/edit-physical`,
+          payload,
+        )
+        await Promise.all([
+          this.loadEntries(deckId),
+          this.loadIllegalities(deckId),
+        ])
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Edit failed')
+        throw e
+      } finally {
+        this.saving.delete(entryId)
+      }
+    },
+
     async removeEntry(deckId, entryId, opts = {}) {
       const toast = useToast()
       const idx = this.entries.findIndex((e) => e.id === entryId)

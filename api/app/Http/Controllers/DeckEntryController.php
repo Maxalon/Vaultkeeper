@@ -9,6 +9,7 @@ use App\Models\DeckEntry;
 use App\Models\Location;
 use App\Models\ScryfallCard;
 use App\Services\DeckEntryActionService;
+use App\Services\PhysicalCopyEditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -25,6 +26,7 @@ class DeckEntryController extends Controller
     public function __construct(
         private DeckController $deckCtrl,
         private DeckEntryActionService $actions,
+        private PhysicalCopyEditService $physicalEdits,
     ) {}
 
     public function index(Request $request, Deck $deck): JsonResponse
@@ -33,7 +35,7 @@ class DeckEntryController extends Controller
 
         $query = DeckEntry::query()
             ->where('deck_id', $deck->id)
-            ->with('card');
+            ->with(['card', 'physicalCopy.location:id,name,role']);
 
         if ($zone = $request->query('zone')) {
             $query->where('zone', $zone);
@@ -243,6 +245,35 @@ class DeckEntryController extends Controller
         });
 
         return response()->json($this->presentEntryBare($entry->fresh('card')));
+    }
+
+    /**
+     * POST /api/decks/{deck}/entries/{entry}/edit-physical
+     *
+     * Edit the bound CE's condition / foil / notes / printing, optionally
+     * splitting the slot when `apply_to` is less than the current quantity.
+     * Backed by PhysicalCopyEditService — the heavy lifting (CE split,
+     * sibling deck_entry creation, observer-suppression flag) lives there.
+     */
+    public function editPhysical(Request $request, Deck $deck, DeckEntry $entry): JsonResponse
+    {
+        $this->authorizeOwner($deck);
+        abort_if($entry->deck_id !== $deck->id, 404);
+
+        $data = $request->validate([
+            'apply_to'    => ['required', 'integer', 'min:1'],
+            'version'     => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'condition'   => ['sometimes', 'in:NM,LP,MP,HP,DMG'],
+            'foil'        => ['sometimes', 'boolean'],
+            'notes'       => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'scryfall_id' => ['sometimes', 'string', 'size:36', 'exists:scryfall_cards,scryfall_id'],
+        ]);
+
+        $result = $this->physicalEdits->edit($deck, $entry, $data);
+
+        return response()->json($this->presentEntryBare(
+            $result->fresh(['card', 'physicalCopy.location'])
+        ));
     }
 
     /**
@@ -622,6 +653,28 @@ class DeckEntryController extends Controller
     private function presentEntryBare(DeckEntry $entry): array
     {
         $card = $entry->card;
+        // Bound-CE detail block — drives the Physical Copies tab and any
+        // sidebar surface that wants to show the actual condition/foil/
+        // notes the slot is backed by.
+        $physical = null;
+        if ($entry->physical_copy_id !== null) {
+            $copy = $entry->relationLoaded('physicalCopy')
+                ? $entry->physicalCopy
+                : $entry->physicalCopy()->with('location:id,name,role')->first();
+            if ($copy !== null) {
+                $physical = [
+                    'id'           => $copy->id,
+                    'quantity'     => (int) $copy->quantity,
+                    'condition'    => $copy->condition,
+                    'foil'         => (bool) $copy->foil,
+                    'notes'        => $copy->notes,
+                    'location_id'  => $copy->location_id,
+                    'location_name'=> $copy->location?->name,
+                    'version'      => (int) ($copy->version ?? 0),
+                    'review_reason'=> $copy->review_reason?->value,
+                ];
+            }
+        }
         return [
             'id'                     => $entry->id,
             'deck_id'                => $entry->deck_id,
@@ -634,6 +687,7 @@ class DeckEntryController extends Controller
             'signature_for_entry_id' => $entry->signature_for_entry_id,
             'wanted'                 => $entry->wanted,
             'physical_copy_id'       => $entry->physical_copy_id,
+            'physical_copy'          => $physical,
             'scryfall_card'          => $card ? [
                 'scryfall_id'    => $card->scryfall_id,
                 'oracle_id'      => $card->oracle_id,

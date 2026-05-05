@@ -70,6 +70,7 @@ Route::middleware('auth:api')->group(function () {
     Route::post  ('decks/{deck}/entries',                  [DeckEntryController::class, 'store']);
     Route::post  ('decks/{deck}/wanted',                   [DeckEntryController::class, 'growWanted']);
     Route::patch ('decks/{deck}/entries/{entry}',          [DeckEntryController::class, 'update']);
+    Route::post  ('decks/{deck}/entries/{entry}/edit-physical', [DeckEntryController::class, 'editPhysical']);
     Route::delete('decks/{deck}/entries/{entry}',          [DeckEntryController::class, 'destroy']);
 
     Route::get ('decks/{deck}/illegalities',               [DeckLegalityController::class, 'index']);

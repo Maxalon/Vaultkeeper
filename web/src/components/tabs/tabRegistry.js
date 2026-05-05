@@ -8,6 +8,7 @@ const CatalogPanel        = defineAsyncComponent(() => import('../CatalogPanel.v
 const DeckTabContent      = defineAsyncComponent(() => import('../deck/DeckTabContent.vue'))
 const AnalysisTab         = defineAsyncComponent(() => import('../deck/AnalysisTab.vue'))
 const IllegalitiesTab     = defineAsyncComponent(() => import('../deck/IllegalitiesTab.vue'))
+const PhysicalCopiesTab   = defineAsyncComponent(() => import('../deck/PhysicalCopiesTab.vue'))
 const ReviewList = defineAsyncComponent(() => import('../review/ReviewList.vue'))
 
 export const tabRegistry = {
@@ -23,6 +24,7 @@ export const tabRegistry = {
   },
   analysis:     { component: markRaw(AnalysisTab),     props: () => ({}) },
   illegalities: { component: markRaw(IllegalitiesTab), props: () => ({}) },
+  physical:     { component: markRaw(PhysicalCopiesTab), props: () => ({}) },
   review:       {
     component: markRaw(ReviewList),
     // Per-deck Review tab — scope the list to copies that came from
