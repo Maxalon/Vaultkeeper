@@ -178,6 +178,72 @@ class DeckEntryControllerTest extends TestCase
         $this->assertNull($deck->color_identity);
     }
 
+    public function test_patch_scryfall_id_swaps_printing_within_same_oracle(): void
+    {
+        $oracle = '99999999-0000-0000-0000-000000000001';
+        $a = ScryfallCard::factory()->create([
+            'oracle_id' => $oracle, 'name' => 'Bolt', 'set_code' => 'old',
+        ]);
+        $b = ScryfallCard::factory()->create([
+            'oracle_id' => $oracle, 'name' => 'Bolt', 'set_code' => 'new',
+        ]);
+        $entry = DeckEntry::create([
+            'deck_id' => $this->deck->id, 'scryfall_id' => $a->scryfall_id,
+            'quantity' => 1, 'zone' => 'main',
+        ]);
+
+        $this->withHeaders($this->headers())
+            ->patchJson("/api/decks/{$this->deck->id}/entries/{$entry->id}", [
+                'scryfall_id' => $b->scryfall_id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('scryfall_id', $b->scryfall_id);
+    }
+
+    public function test_patch_scryfall_id_rejected_for_different_oracle(): void
+    {
+        $a = ScryfallCard::factory()->create([
+            'oracle_id' => '99999999-0000-0000-0000-000000000002', 'name' => 'A',
+        ]);
+        $b = ScryfallCard::factory()->create([
+            'oracle_id' => '99999999-0000-0000-0000-000000000003', 'name' => 'B',
+        ]);
+        $entry = DeckEntry::create([
+            'deck_id' => $this->deck->id, 'scryfall_id' => $a->scryfall_id,
+            'quantity' => 1, 'zone' => 'main',
+        ]);
+
+        $this->withHeaders($this->headers())
+            ->patchJson("/api/decks/{$this->deck->id}/entries/{$entry->id}", [
+                'scryfall_id' => $b->scryfall_id,
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame($a->scryfall_id, $entry->fresh()->scryfall_id);
+    }
+
+    public function test_patch_scryfall_id_rejected_when_bound(): void
+    {
+        $oracle = '99999999-0000-0000-0000-000000000004';
+        $a = ScryfallCard::factory()->create(['oracle_id' => $oracle, 'set_code' => 'old']);
+        $b = ScryfallCard::factory()->create(['oracle_id' => $oracle, 'set_code' => 'new']);
+        $copy = CollectionEntry::factory()->create([
+            'user_id' => $this->user->id, 'scryfall_id' => $a->scryfall_id,
+        ]);
+        $entry = DeckEntry::create([
+            'deck_id' => $this->deck->id, 'scryfall_id' => $a->scryfall_id,
+            'quantity' => 1, 'zone' => 'main', 'physical_copy_id' => $copy->id,
+        ]);
+
+        $this->withHeaders($this->headers())
+            ->patchJson("/api/decks/{$this->deck->id}/entries/{$entry->id}", [
+                'scryfall_id' => $b->scryfall_id,
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame($a->scryfall_id, $entry->fresh()->scryfall_id);
+    }
+
     public function test_entries_require_auth_and_ownership(): void
     {
         $other = User::factory()->create();

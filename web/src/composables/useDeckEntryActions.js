@@ -102,11 +102,25 @@ export function useDeckEntryActions(entryRef) {
         kind: 'neutral',
         run: () => deck.bindEntryAsNewCopy(deckId(), e.id),
       })
-    } else {
+    }
+    // "Remove from deck" — the safe default. For bound entries the
+    // freed copy lands in the review queue (with a one-click "Sold /
+    // discarded" toast override), so this is reversible. For unbound
+    // entries it just drops the slot.
+    out.push({
+      id: 'remove-from-deck',
+      label: 'Remove from deck',
+      hint: isBound
+        ? 'Frees the copy to your collection (queued for review).'
+        : 'Drops this slot from the deck.',
+      kind: 'neutral',
+      run: () => deck.removeEntry(deckId(), e.id),
+    })
+    if (isBound) {
       out.push({
         id: 'mark-sold',
         label: 'Mark as sold or discarded',
-        hint: "Removes the slot and deletes its copy — bypasses Pending Relocation.",
+        hint: 'Removes the slot AND deletes the copy — bypasses review.',
         kind: 'danger',
         run: () => deck.destroyEntryAndDiscard(deckId(), e.id),
       })

@@ -229,7 +229,7 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     /**
-     * @param {Array<{collection_entry_id:number,target_location_id?:number|null,discard?:boolean,accept_defaults?:boolean}>} assignments
+     * @param {Array<{collection_entry_id:number,target_location_id?:number|null,discard?:boolean,accept_defaults?:boolean,condition?:string,foil?:boolean}>} assignments
      */
     async resolveReview(assignments) {
       const { data } = await api.post('/review/resolve', { assignments })

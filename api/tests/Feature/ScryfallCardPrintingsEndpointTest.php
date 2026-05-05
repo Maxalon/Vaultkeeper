@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
+use App\Models\Location;
 use App\Models\MtgSet;
 use App\Models\ScryfallCard;
 use App\Models\User;
@@ -86,6 +87,67 @@ class ScryfallCardPrintingsEndpointTest extends TestCase
         auth('api')->logout();
         $this->getJson('/api/scryfall-cards/printings?oracle_id=11111111-0000-0000-0000-000000000003')
             ->assertUnauthorized();
+    }
+
+    public function test_in_collection_true_when_user_has_non_deck_ce(): void
+    {
+        $oracleId = '11111111-0000-0000-0000-000000000010';
+        $card = ScryfallCard::factory()->create([
+            'oracle_id' => $oracleId, 'name' => 'Owned',
+            'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
+        ]);
+        // Plain CE, no location — counts as "in collection".
+        CollectionEntry::create([
+            'user_id' => $this->user->id, 'scryfall_id' => $card->scryfall_id,
+            'quantity' => 1, 'condition' => 'NM', 'foil' => false,
+        ]);
+
+        $resp = $this->withHeaders($this->headers())
+            ->getJson("/api/scryfall-cards/printings?oracle_id={$oracleId}");
+        $resp->assertOk();
+        $this->assertTrue($resp->json('data.0.ownership.in_collection'));
+    }
+
+    public function test_in_collection_false_when_only_ce_is_in_deck_location(): void
+    {
+        $oracleId = '11111111-0000-0000-0000-000000000011';
+        $card = ScryfallCard::factory()->create([
+            'oracle_id' => $oracleId, 'name' => 'DeckOnly',
+            'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
+        ]);
+        // Creating a deck auto-creates its deck-role location.
+        $deck = Deck::create([
+            'user_id' => $this->user->id, 'name' => 'D', 'format' => 'commander',
+        ]);
+        $deckLoc = Location::where('deck_id', $deck->id)->firstOrFail();
+        // CE lives in the deck-location — should NOT count toward
+        // "in collection" (user's intent: ignore deck-located copies).
+        CollectionEntry::create([
+            'user_id' => $this->user->id, 'scryfall_id' => $card->scryfall_id,
+            'location_id' => $deckLoc->id,
+            'quantity' => 1, 'condition' => 'NM', 'foil' => false,
+        ]);
+
+        $resp = $this->withHeaders($this->headers())
+            ->getJson("/api/scryfall-cards/printings?oracle_id={$oracleId}");
+        $resp->assertOk();
+        $this->assertFalse($resp->json('data.0.ownership.in_collection'));
+        // But the raw owned counts still see it.
+        $this->assertSame(1, $resp->json('data.0.ownership.nonfoil'));
+    }
+
+    public function test_in_collection_false_when_no_ce_exists(): void
+    {
+        $oracleId = '11111111-0000-0000-0000-000000000012';
+        ScryfallCard::factory()->create([
+            'oracle_id' => $oracleId, 'name' => 'Unowned',
+            'supertypes' => [], 'types' => ['Artifact'], 'subtypes' => [],
+        ]);
+
+        $resp = $this->withHeaders($this->headers())
+            ->getJson("/api/scryfall-cards/printings?oracle_id={$oracleId}");
+        $resp->assertOk();
+        $this->assertFalse($resp->json('data.0.ownership.in_collection'));
     }
 
     public function test_set_name_and_icon_svg_uri_joined(): void

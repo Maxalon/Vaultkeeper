@@ -231,6 +231,49 @@ class ReviewControllerTest extends TestCase
         $this->assertSame($originalLocId, $copy->location_id, 'accept_defaults must NOT move the row');
     }
 
+    public function test_resolve_accept_defaults_patches_condition_and_foil_in_place(): void
+    {
+        ['copy' => $copy] = $this->buildDefaultValuesCe();
+        $originalLocId = $copy->location_id;
+
+        $this->withHeaders($this->headers())
+            ->postJson('/api/review/resolve', [
+                'assignments' => [
+                    [
+                        'collection_entry_id' => $copy->id,
+                        'accept_defaults'     => true,
+                        'condition'           => 'LP',
+                        'foil'                => true,
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->assertJson(['accepted' => 1]);
+
+        $copy->refresh();
+        $this->assertNull($copy->review_reason);
+        $this->assertSame($originalLocId, $copy->location_id, 'location stays bound to deck');
+        $this->assertSame('LP', $copy->condition);
+        $this->assertTrue((bool) $copy->foil);
+    }
+
+    public function test_resolve_accept_defaults_rejects_invalid_condition(): void
+    {
+        ['copy' => $copy] = $this->buildDefaultValuesCe();
+
+        $this->withHeaders($this->headers())
+            ->postJson('/api/review/resolve', [
+                'assignments' => [
+                    [
+                        'collection_entry_id' => $copy->id,
+                        'accept_defaults'     => true,
+                        'condition'           => 'BOGUS',
+                    ],
+                ],
+            ])
+            ->assertStatus(422);
+    }
+
     public function test_resolve_accept_defaults_rejected_for_other_reasons(): void
     {
         ['copy' => $copy] = $this->buildReviewable();

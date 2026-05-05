@@ -92,7 +92,8 @@ class ReviewController extends Controller
      *     "assignments": [
      *       { "collection_entry_id": 12, "target_location_id": 5 },
      *       { "collection_entry_id": 13, "discard": true },
-     *       { "collection_entry_id": 14, "accept_defaults": true },
+     *       { "collection_entry_id": 14, "accept_defaults": true,
+     *         "condition": "LP", "foil": true },
      *       { "collection_entry_id": 15 }   // skipped
      *     ]
      *   }
@@ -104,7 +105,10 @@ class ReviewController extends Controller
      *   - discard=true → delete the CE outright.
      *   - accept_defaults=true → only valid for review_reason =
      *     'default_values_applied'. Clears review_reason without moving
-     *     the row. Returns 422 for other reasons.
+     *     the row. Optional `condition` / `foil` patch the deck-bound
+     *     copy in place so the user can correct what assemble minted
+     *     without breaking the deck binding. Returns 422 for other
+     *     reasons.
      *   - none of the above → skip.
      *
      * @return JsonResponse  { resolved, merged, discarded, accepted, skipped }
@@ -119,6 +123,8 @@ class ReviewController extends Controller
             'assignments.*.target_location_id'   => 'sometimes|nullable|integer',
             'assignments.*.discard'              => 'sometimes|boolean',
             'assignments.*.accept_defaults'      => 'sometimes|boolean',
+            'assignments.*.condition'            => 'sometimes|in:NM,LP,MP,HP,DMG',
+            'assignments.*.foil'                 => 'sometimes|boolean',
         ]);
 
         $resolved  = 0;
@@ -167,12 +173,22 @@ class ReviewController extends Controller
                         // bug, not a silent skip.
                         abort(422, 'accept_defaults is only valid for default_values_applied rows.');
                     }
-                    $copy->forceFill([
+                    $patch = [
                         'review_reason'             => null,
                         'source_deck_id'            => null,
                         'source_deck_name_snapshot' => null,
                         'source_deck_deleted'       => false,
-                    ])->save();
+                    ];
+                    // Optional condition/foil overrides let the user
+                    // correct what assemble minted without breaking
+                    // the deck binding (location stays put).
+                    if (array_key_exists('condition', $row)) {
+                        $patch['condition'] = $row['condition'];
+                    }
+                    if (array_key_exists('foil', $row)) {
+                        $patch['foil'] = (bool) $row['foil'];
+                    }
+                    $copy->forceFill($patch)->save();
                     $accepted++;
                     continue;
                 }

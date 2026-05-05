@@ -151,6 +151,27 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            // Swap which printing this slot represents (e.g. via the
+            // sidebar's printing-picker). Only allowed for unbound slots
+            // — once a CE is bound, the binding pins the printing, so
+            // the user must unbind first. The new printing must share
+            // the current entry's oracle_id, so the picker can't be
+            // abused to swap to a different card.
+            'scryfall_id'            => [
+                'sometimes', 'string', 'size:36',
+                'exists:scryfall_cards,scryfall_id',
+                function ($attr, $value, $fail) use ($entry) {
+                    if ($entry->physical_copy_id !== null) {
+                        $fail('Cannot change printing while a physical copy is bound. Unbind first.');
+                        return;
+                    }
+                    $newOracle = ScryfallCard::where('scryfall_id', $value)->value('oracle_id');
+                    $curOracle = ScryfallCard::where('scryfall_id', $entry->scryfall_id)->value('oracle_id');
+                    if ($newOracle === null || $curOracle === null || $newOracle !== $curOracle) {
+                        $fail('The selected printing must be of the same card.');
+                    }
+                },
+            ],
             // Inline picker hooks. `mode=create_new_copy` overrides the
             // observer's "grow → wanted" default by minting a CE in the
             // deck-location for the gained copies (or binding the whole
