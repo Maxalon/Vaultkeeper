@@ -68,6 +68,7 @@ Route::middleware('auth:api')->group(function () {
 
     Route::get   ('decks/{deck}/entries',                  [DeckEntryController::class, 'index']);
     Route::post  ('decks/{deck}/entries',                  [DeckEntryController::class, 'store']);
+    Route::post  ('decks/{deck}/wanted',                   [DeckEntryController::class, 'growWanted']);
     Route::patch ('decks/{deck}/entries/{entry}',          [DeckEntryController::class, 'update']);
     Route::delete('decks/{deck}/entries/{entry}',          [DeckEntryController::class, 'destroy']);
 

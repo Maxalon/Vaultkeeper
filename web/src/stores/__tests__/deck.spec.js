@@ -54,13 +54,49 @@ describe('mergedEntriesByZone', () => {
     expect(rows).toHaveLength(1)
     const merged = rows[0]
     // The merged row carries the bound entry's id so existing edit
-    // handlers naturally target the right row.
+    // handlers naturally target the right row. The +1/-1 quantity
+    // routing happens in the sidebar via _wantedEntry / _boundEntry.
     expect(merged.id).toBe(10)
     expect(merged.quantity).toBe(4)
     expect(merged.owned_quantity).toBe(2)
     expect(merged.wanted_quantity).toBe(2)
     expect(merged._split).toBe(true)
     expect(merged._wantedEntry.id).toBe(11)
+    expect(merged._boundEntry.id).toBe(10)
+  })
+
+  it('annotates a purely-bound singleton with _canSplit', () => {
+    const store = useDeckStore()
+    store.entries = [
+      entry({
+        id: 20,
+        scryfall_id: 'sid-bolt',
+        quantity: 4,
+        physical_copy_id: 200,
+      }),
+    ]
+    const rows = store.mergedEntriesByZone('main')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe(20)
+    expect(rows[0]._canSplit).toBe(true)
+    // Wanted-only and unbound rows don't get _canSplit — the +1 path
+    // in the sidebar already targets them directly.
+    expect(rows[0]._split).toBeFalsy()
+  })
+
+  it('does not annotate wanted-only singletons with _canSplit', () => {
+    const store = useDeckStore()
+    store.entries = [
+      entry({
+        id: 30,
+        scryfall_id: 'sid-bolt',
+        quantity: 2,
+        wanted: 'main',
+      }),
+    ]
+    const rows = store.mergedEntriesByZone('main')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]._canSplit).toBeFalsy()
   })
 
   it('does not merge across zones', () => {

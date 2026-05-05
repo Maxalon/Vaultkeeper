@@ -79,11 +79,16 @@ export const useDeckStore = defineStore('deck', {
      *
      * Each merged row carries:
      *   - the bound entry's id / scryfall_card / category / etc.
-     *     (commands operating on row.id naturally hit the bound row)
+     *     (commands operating on row.id naturally hit the bound row;
+     *     +1 / catalog-drag route to the wanted sibling explicitly)
      *   - quantity = bound + wanted (the visual total)
      *   - owned_quantity / wanted_quantity for the badge
-     *   - _split = true and _wantedEntry pointing at the sibling, so
-     *     view code can drill in if it needs to.
+     *   - _split = true, _wantedEntry, and _boundEntry pointers so
+     *     edit handlers can address either side directly.
+     *
+     * Purely-bound rows (no wanted sibling yet) get _canSplit = true
+     * so `+1` knows to mint a wanted sibling via /decks/{id}/wanted
+     * instead of bumping the bound row's CE-backed quantity.
      *
      * Commanders / signature spells are never merged — they always
      * have qty=1 and partial-exclude is rejected for them server-side.
@@ -102,8 +107,15 @@ export const useDeckStore = defineStore('deck', {
 
       const merged = []
       const consumedIds = new Set()
+      const annotated = new Map()
       for (const [, rows] of groups) {
-        if (rows.length < 2) continue
+        if (rows.length === 1) {
+          const only = rows[0]
+          if (only.physical_copy_id != null && only.wanted == null) {
+            annotated.set(only.id, { ...only, _canSplit: true })
+          }
+          continue
+        }
         const bound  = rows.find((r) => r.physical_copy_id !== null && r.physical_copy_id !== undefined)
         const wanted = rows.find((r) => r.wanted !== null && r.wanted !== undefined && (r.physical_copy_id === null || r.physical_copy_id === undefined))
         if (!bound || !wanted) continue
@@ -115,17 +127,19 @@ export const useDeckStore = defineStore('deck', {
           wanted_quantity: wanted.quantity || 0,
           _split: true,
           _wantedEntry: wanted,
+          _boundEntry: bound,
         })
         consumedIds.add(bound.id)
         consumedIds.add(wanted.id)
       }
 
       // Stitch unmerged entries (commanders/sigs included, plus any
-      // ungrouped row) back in.
+      // ungrouped row) back in. Purely-bound singletons are returned
+      // with _canSplit=true so +1 can route to the new endpoint.
       const out = []
       for (const e of inZone) {
         if (consumedIds.has(e.id)) continue
-        out.push(e)
+        out.push(annotated.get(e.id) || e)
       }
       return out.concat(merged)
     },
@@ -225,6 +239,37 @@ export const useDeckStore = defineStore('deck', {
       try {
         const { data } = await api.post(`/decks/${deckId}/entries`, payload)
         this.entries.push(data)
+        await Promise.all([
+          this.loadIllegalities(deckId),
+          useCollectionStore().fetchDecks(),
+        ])
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Failed to add card')
+        throw e
+      }
+    },
+
+    /**
+     * "+1 want one more". The single endpoint behind the sidebar +1
+     * button (when the active entry is bound or already wanted) and
+     * the catalog-drag drop. Backend creates a fresh wanted-only
+     * deck_entry or bumps an existing wanted sibling — either way,
+     * a bound CE-backed quantity is never touched (that requires the
+     * explicit inline-picker "I bought it" path).
+     */
+    async growWanted(deckId, scryfallId, zone, opts = {}) {
+      const toast = useToast()
+      const body = { scryfall_id: scryfallId, zone }
+      if (opts.delta != null)    body.delta    = opts.delta
+      if (opts.category != null) body.category = opts.category
+      try {
+        const { data } = await api.post(`/decks/${deckId}/wanted`, body)
+        // Replace existing entry if the bumped sibling is already in
+        // local state, else append the fresh row.
+        const idx = this.entries.findIndex((e) => e.id === data.id)
+        if (idx === -1) this.entries.push(data)
+        else this.entries[idx] = { ...this.entries[idx], ...data }
         await Promise.all([
           this.loadIllegalities(deckId),
           useCollectionStore().fetchDecks(),

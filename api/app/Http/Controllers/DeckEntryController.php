@@ -224,6 +224,71 @@ class DeckEntryController extends Controller
         return response()->json($this->presentEntryBare($entry->fresh('card')));
     }
 
+    /**
+     * "Want one more (or N more) of this card in this deck."
+     *
+     * Single endpoint behind every "+1" / catalog-drag path: bumps the
+     * existing wanted sibling for (deck, scryfall_id, zone) when one
+     * exists, or inserts a fresh wanted-only entry when one doesn't.
+     * Never touches a bound sibling — bound rows only change quantity
+     * via the explicit inline-picker "I bought it" path.
+     *
+     * Lock order: SELECT ... FOR UPDATE on the parent deck row first
+     * (the same row every concurrent caller for this deck contends on),
+     * then read the deck_entries. Two parallel callers can't both decide
+     * to insert because they serialize on the deck lock.
+     */
+    public function growWanted(Request $request, Deck $deck): JsonResponse
+    {
+        $this->authorizeOwner($deck);
+
+        $data = $request->validate([
+            'scryfall_id' => ['required', 'uuid', 'exists:scryfall_cards,scryfall_id'],
+            'zone'        => ['required', 'in:main,side,maybe'],
+            'delta'       => ['sometimes', 'integer', 'min:1'],
+            'category'    => ['sometimes', 'nullable', 'string', 'max:100'],
+        ]);
+        $delta = (int) ($data['delta'] ?? 1);
+        $zone  = $data['zone'];
+        $sid   = $data['scryfall_id'];
+
+        $entry = DB::transaction(function () use ($deck, $sid, $zone, $delta, $data) {
+            // Serialize per-deck so two parallel "+1"s on the same
+            // (scryfall_id, zone) can't race into duplicate inserts.
+            Deck::whereKey($deck->id)->lockForUpdate()->first();
+
+            $sibling = DeckEntry::query()
+                ->where('deck_id', $deck->id)
+                ->where('scryfall_id', $sid)
+                ->where('zone', $zone)
+                ->whereNull('physical_copy_id')
+                ->whereNotNull('wanted')
+                ->lockForUpdate()
+                ->first();
+
+            if ($sibling !== null) {
+                $sibling->update(['quantity' => $sibling->quantity + $delta]);
+                return $sibling;
+            }
+
+            $card = ScryfallCard::where('scryfall_id', $sid)->first();
+            $category = array_key_exists('category', $data)
+                ? $data['category']
+                : ($card ? $this->autoCategory($card) : null);
+
+            return DeckEntry::create([
+                'deck_id'     => $deck->id,
+                'scryfall_id' => $sid,
+                'quantity'    => $delta,
+                'zone'        => $zone,
+                'category'    => $category,
+                'wanted'      => $zone,
+            ]);
+        });
+
+        return response()->json($this->presentEntryBare($entry->fresh('card')), 200);
+    }
+
     public function destroy(Request $request, Deck $deck, DeckEntry $entry): Response
     {
         $this->authorizeOwner($deck);

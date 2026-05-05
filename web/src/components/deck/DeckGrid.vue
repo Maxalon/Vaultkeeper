@@ -294,13 +294,15 @@ function onGroupDragLeave() {
 
 function applyDrop(payload, groupKey) {
   if (payload.source === 'catalog') {
-    deck.addEntry(deck.deck.id, {
-      scryfall_id: payload.scryfall_id,
-      zone: props.zone,
-      category: deck.view.groupBy === 'categories' && groupKey && groupKey !== 'Uncategorized'
+    // Catalog drag-in always routes through the wanted endpoint:
+    // a fresh card lands as a wanted-only entry, an existing card
+    // bumps its wanted sibling. Bound CE-backed quantity is never
+    // changed by drag — that requires the explicit inline picker.
+    const category =
+      deck.view.groupBy === 'categories' && groupKey && groupKey !== 'Uncategorized'
         ? groupKey
-        : undefined,
-    })
+        : null
+    deck.growWanted(deck.deck.id, payload.scryfall_id, props.zone, { category })
     return
   }
   if (payload.source === 'deck' && payload.deckEntryId) {
