@@ -20,14 +20,19 @@ class DeckObserver
     public function created(Deck $deck): void
     {
         Location::create([
-            'user_id' => $deck->user_id,
-            'deck_id' => $deck->id,
-            'role'    => Location::ROLE_DECK,
+            'user_id'    => $deck->user_id,
+            'deck_id'    => $deck->id,
+            'role'       => Location::ROLE_DECK,
             // `type` is enum('drawer','binder') at the schema level; role='deck'
             // already identifies this row as the deck-location, so we pick
             // 'drawer' arbitrarily for the type slot.
-            'type'    => 'drawer',
-            'name'    => $this->locationName($deck->name),
+            'type'       => 'drawer',
+            'name'       => $this->locationName($deck->name),
+            // Drop the deck at the end of the top-level sidebar order. Importers
+            // and other callers that want a specific group/position can rewrite
+            // these fields after the observer fires.
+            'group_id'   => null,
+            'sort_order' => Location::nextTopLevelSortOrder($deck->user_id),
         ]);
     }
 
