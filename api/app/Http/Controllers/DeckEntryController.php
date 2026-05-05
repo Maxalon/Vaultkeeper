@@ -8,11 +8,11 @@ use App\Models\Deck;
 use App\Models\DeckEntry;
 use App\Models\Location;
 use App\Models\ScryfallCard;
-use App\Services\PendingRelocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class DeckEntryController extends Controller
 {
@@ -21,10 +21,7 @@ class DeckEntryController extends Controller
         'Battle', 'Planeswalker', 'Creature', 'Land', 'Instant', 'Sorcery', 'Artifact', 'Enchantment',
     ];
 
-    public function __construct(
-        private DeckController $deckCtrl,
-        private PendingRelocationService $pendingRelocations,
-    ) {}
+    public function __construct(private DeckController $deckCtrl) {}
 
     public function index(Request $request, Deck $deck): JsonResponse
     {
@@ -133,19 +130,27 @@ class DeckEntryController extends Controller
             ],
         ]);
 
-        $previousCopyId = $entry->getOriginal('physical_copy_id');
-
-        $entry->update($data);
-
-        // If the user just unlinked (or swapped) the physical copy, the now-
-        // detached copy is "homeless" — if it was sitting in this deck's
-        // deck-location, move it to the pending bucket so the user is
-        // prompted to re-shelf it.
-        if (array_key_exists('physical_copy_id', $data)
-            && $previousCopyId !== null
-            && $previousCopyId !== $entry->physical_copy_id) {
-            $this->relocateDetachedCopyIfInDeckLocation($previousCopyId, $deck);
+        // Bind path: when the request is binding the slot to a physical
+        // copy from outside the deck-location, the picked copy needs to
+        // *move into* this deck's deck-location (and possibly split, if
+        // the source CE has more copies than the slot needs). Resolves to
+        // the CE that should actually be referenced by physical_copy_id.
+        // Reads the slot quantity from the patch payload when present so
+        // a combined "set qty=4 AND bind" request splits to the new size.
+        if (array_key_exists('physical_copy_id', $data) && $data['physical_copy_id'] !== null
+            && $data['physical_copy_id'] !== $entry->physical_copy_id) {
+            $slotQuantity = (int) ($data['quantity'] ?? $entry->quantity);
+            $data['physical_copy_id'] = $this->bindPhysicalCopy(
+                deck:     $deck,
+                entry:    $entry,
+                copyId:   (int) $data['physical_copy_id'],
+                quantity: max(1, $slotQuantity),
+            );
         }
+
+        DB::transaction(function () use ($entry, $data) {
+            $entry->update($data);
+        });
 
         return response()->json($this->presentEntryBare($entry->fresh('card')));
     }
@@ -158,13 +163,11 @@ class DeckEntryController extends Controller
         DB::transaction(function () use ($deck, $entry) {
             $wasCommander = (bool) $entry->is_commander;
             $commanderId  = $entry->scryfall_id;
-            $physicalCopyId = $entry->physical_copy_id;
 
+            // The deletion fires DeckEntryObserver::deleting, which moves
+            // an attached physical copy to pending if it was sitting in
+            // this deck's deck-location.
             $entry->delete();
-
-            if ($physicalCopyId !== null) {
-                $this->relocateDetachedCopyIfInDeckLocation($physicalCopyId, $deck);
-            }
 
             if ($wasCommander) {
                 if ($deck->commander_1_scryfall_id === $commanderId) {
@@ -182,28 +185,103 @@ class DeckEntryController extends Controller
     }
 
     /**
-     * If the given collection_entry currently lives in `$deck`'s
-     * deck-location, move it to the user's pending bucket and stamp it with
-     * the source deck. Other source locations are left alone — the user
-     * already chose where to keep that copy.
+     * Move the picked copy into the deck's deck-location, splitting the
+     * source CE if it has more copies than the slot needs. Returns the
+     * collection_entry id the deck_entry should reference (the existing
+     * row when the whole CE moved over, or a freshly-created one when we
+     * had to split).
+     *
+     * Already-in-deck-location copies (e.g. picking the same CE the slot
+     * is currently bound to) are returned as-is. Picking a copy already
+     * in *another* deck's deck-location is rejected — those are owned by
+     * that deck and shouldn't silently re-bind to a second slot.
      */
-    private function relocateDetachedCopyIfInDeckLocation(int $copyId, Deck $deck): void
+    private function bindPhysicalCopy(Deck $deck, DeckEntry $entry, int $copyId, int $quantity): int
     {
-        $copy = CollectionEntry::find($copyId);
-        if ($copy === null || $copy->user_id !== $deck->user_id) {
-            return;
+        $copy = CollectionEntry::query()
+            ->where('id', $copyId)
+            ->where('user_id', $deck->user_id)
+            ->first();
+        if ($copy === null) {
+            throw ValidationException::withMessages([
+                'physical_copy_id' => ['The physical_copy_id must belong to the authenticated user.'],
+            ]);
         }
 
-        $deckLocationId = Location::query()
+        $deckLocation = Location::query()
             ->where('deck_id', $deck->id)
             ->where('role', Location::ROLE_DECK)
-            ->value('id');
-
-        if ($copy->location_id !== $deckLocationId) {
-            return;
+            ->first();
+        if ($deckLocation === null) {
+            // Should never happen — DeckObserver creates the deck-location
+            // on Deck::create. Defensive only.
+            throw ValidationException::withMessages([
+                'physical_copy_id' => ['Deck location not found; cannot bind copy.'],
+            ]);
         }
 
-        $this->pendingRelocations->moveCopyToPending($copy, $deck);
+        // Picking a copy that's already in this deck's deck-location is a
+        // no-op move — just return its id.
+        if ($copy->location_id === $deckLocation->id) {
+            return $copy->id;
+        }
+
+        // Don't let a copy that lives in *another* deck's deck-location be
+        // grabbed silently — that would break the source deck's "owned"
+        // invariant. The user has to release it from that deck first.
+        if ($copy->location_id !== null) {
+            $sourceDeckLocation = Location::query()
+                ->where('id', $copy->location_id)
+                ->where('role', Location::ROLE_DECK)
+                ->first();
+            if ($sourceDeckLocation !== null && $sourceDeckLocation->deck_id !== $deck->id) {
+                throw ValidationException::withMessages([
+                    'physical_copy_id' => ['That copy is already assigned to another deck.'],
+                ]);
+            }
+        }
+
+        $needed = max(1, $quantity);
+        $available = (int) $copy->quantity;
+        if ($available < $needed) {
+            throw ValidationException::withMessages([
+                'physical_copy_id' => ["That copy only has {$available} available; this slot needs {$needed}."],
+            ]);
+        }
+
+        return DB::transaction(function () use ($copy, $deckLocation, $needed, $available) {
+            $sourceLocationId = $copy->location_id;
+
+            if ($available === $needed) {
+                // Whole CE moves into the deck-location — single row update.
+                $copy->update(['location_id' => $deckLocation->id]);
+                $boundId = $copy->id;
+            } else {
+                // Split: keep (available − needed) in the source CE, create
+                // a new CE with `needed` copies in the deck-location.
+                $copy->update(['quantity' => $available - $needed]);
+                $newCopy = CollectionEntry::create([
+                    'user_id'      => $copy->user_id,
+                    'scryfall_id'  => $copy->scryfall_id,
+                    'location_id'  => $deckLocation->id,
+                    'quantity'     => $needed,
+                    'condition'    => $copy->condition,
+                    'foil'         => (bool) $copy->foil,
+                    'notes'        => $copy->notes,
+                    'needs_review' => false,
+                ]);
+                $boundId = $newCopy->id;
+            }
+
+            // Refresh set_codes on the source location so the sidebar
+            // chip drops codes the moved-out card was the last of.
+            if ($sourceLocationId !== null) {
+                Location::find($sourceLocationId)?->refreshSetCodes();
+            }
+            $deckLocation->refreshSetCodes();
+
+            return $boundId;
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────

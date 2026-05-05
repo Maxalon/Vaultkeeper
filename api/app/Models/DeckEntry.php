@@ -32,6 +32,15 @@ class DeckEntry extends Model
         'needs_review'       => 'boolean',
     ];
 
+    /**
+     * One-shot escape hatch read by DeckEntryObserver. When true on the
+     * next save/delete, the observer skips its pending-queueing logic and
+     * resets the flag. Used by DeckEntryActionService to express "the user
+     * already told us where this copy went" intents (sold/discarded,
+     * just-bought, etc.). Not persisted.
+     */
+    public bool $skipPendingQueueOnce = false;
+
     public function deck(): BelongsTo
     {
         return $this->belongsTo(Deck::class);

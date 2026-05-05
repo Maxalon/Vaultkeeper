@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CardController;
 use App\Http\Controllers\CollectionController;
+use App\Http\Controllers\DeckAssemblyController;
 use App\Http\Controllers\DeckController;
 use App\Http\Controllers\DeckEntryController;
 use App\Http\Controllers\DeckImportController;
@@ -60,6 +61,9 @@ Route::middleware('auth:api')->group(function () {
     Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);
     Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
     Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
+
+    Route::post  ('decks/{deck}/assemble',                 [DeckAssemblyController::class, 'assemble']);
+    Route::post  ('decks/{deck}/unassemble',               [DeckAssemblyController::class, 'unassemble']);
 
     Route::get   ('decks/{deck}/entries',                  [DeckEntryController::class, 'index']);
     Route::post  ('decks/{deck}/entries',                  [DeckEntryController::class, 'store']);
