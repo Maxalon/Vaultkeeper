@@ -116,21 +116,46 @@ export const useDeckStore = defineStore('deck', {
           }
           continue
         }
-        const bound  = rows.find((r) => r.physical_copy_id !== null && r.physical_copy_id !== undefined)
-        const wanted = rows.find((r) => r.wanted !== null && r.wanted !== undefined && (r.physical_copy_id === null || r.physical_copy_id === undefined))
-        if (!bound || !wanted) continue
-        const total = (bound.quantity || 0) + (wanted.quantity || 0)
-        merged.push({
-          ...bound,
-          quantity: total,
-          owned_quantity: bound.quantity || 0,
-          wanted_quantity: wanted.quantity || 0,
-          _split: true,
-          _wantedEntry: wanted,
-          _boundEntry: bound,
-        })
-        consumedIds.add(bound.id)
-        consumedIds.add(wanted.id)
+        // Treat every unbound row (physical_copy_id null, regardless of
+        // whether `wanted` is set) as part of the wishlist side. The
+        // observer auto-sets wanted=zone on grow, but a freshly-added
+        // unbound row arrives with wanted=null — we still need to merge
+        // it into the display row so the deck list doesn't show two
+        // strips for the same card.
+        const wantedRows = rows.filter(
+          (r) => r.physical_copy_id === null || r.physical_copy_id === undefined,
+        )
+        const bound = rows.find((r) => r.physical_copy_id !== null && r.physical_copy_id !== undefined)
+
+        if (bound && wantedRows.length > 0) {
+          const wantedQty = wantedRows.reduce((s, r) => s + (r.quantity || 0), 0)
+          const total = (bound.quantity || 0) + wantedQty
+          merged.push({
+            ...bound,
+            quantity: total,
+            owned_quantity: bound.quantity || 0,
+            wanted_quantity: wantedQty,
+            _split: true,
+            // _wantedEntry points at the first unbound sibling —
+            // handlers that mutate it (sidebar Wanted+/−,
+            // AddCopiesModal reconciliation) re-read fresh state from
+            // the store post-mutation, so one representative row is
+            // enough.
+            _wantedEntry: wantedRows[0],
+            _boundEntry: bound,
+          })
+          consumedIds.add(bound.id)
+          for (const w of wantedRows) consumedIds.add(w.id)
+        } else if (!bound && wantedRows.length > 1) {
+          // No bound row, but multiple unbound rows — coalesce to one
+          // strip showing the summed wishlist quantity. No /-split,
+          // since there's no owned side.
+          const total = wantedRows.reduce((s, r) => s + (r.quantity || 0), 0)
+          merged.push({ ...wantedRows[0], quantity: total })
+          for (const w of wantedRows) consumedIds.add(w.id)
+        }
+        // else: 2+ bound rows with no wanted → leave as-is (malformed
+        // but the merge can't pick one without guessing).
       }
 
       // Stitch unmerged entries (commanders/sigs included, plus any

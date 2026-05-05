@@ -53,30 +53,43 @@ function onZoneChange(zone) {
 }
 
 /**
- * Find the bound + wanted siblings for the active entry's
- * (scryfall_id, zone) pair. The active entry might be either side
- * (depends on which row was clicked) — sibling resolution unifies
- * the two stepper handlers below.
+ * Find the bound + wishlist (unbound) siblings for the active entry's
+ * (scryfall_id, zone) pair. Any unbound row counts as wishlist — even
+ * one with `wanted: null` — because catalog-drag creates a slot in
+ * that shape and the observer only flips `wanted=zone` on a later
+ * grow. Without this, the sidebar would render Wanted=0 for those
+ * rows and Wanted+ would route to growWanted, spawning a duplicate.
  */
 function siblings(e) {
-  if (!e) return { bound: null, wanted: null }
+  if (!e) return { bound: null, wanted: null, wantedQty: 0 }
   const peers = deck.entries.filter(
     (r) => r.scryfall_id === e.scryfall_id && r.zone === e.zone,
   )
-  const bound  = peers.find((r) => r.physical_copy_id != null) || null
-  const wanted = peers.find(
-    (r) => r.physical_copy_id == null && r.wanted != null,
-  ) || null
-  return { bound, wanted }
+  const bound = peers.find((r) => r.physical_copy_id != null) || null
+  const unbound = peers.filter((r) => r.physical_copy_id == null)
+  const wanted = unbound[0] || null
+  const wantedQty = unbound.reduce((s, r) => s + (r.quantity || 0), 0)
+  return { bound, wanted, wantedQty }
 }
 
 const sibs       = computed(() => siblings(entry.value))
-const wantedQty  = computed(() => sibs.value.wanted?.quantity ?? 0)
-const ownedQty   = computed(() => sibs.value.bound?.quantity  ?? 0)
+const wantedQty  = computed(() => sibs.value.wantedQty)
+const ownedQty   = computed(() => sibs.value.bound?.quantity ?? 0)
 
 function onWantedInc() {
   if (!entry.value || !deckId.value) return
-  deck.growWanted(deckId.value, entry.value.scryfall_id, entry.value.zone)
+  const w = sibs.value.wanted
+  if (w) {
+    // Bump the existing unbound row in place. The observer's grow
+    // hook auto-sets `wanted=zone` if it wasn't already, so this
+    // handles both "wanted=null catalog row" and "true wishlist row"
+    // paths without spawning a duplicate.
+    deck.updateEntry(deckId.value, w.id, { quantity: w.quantity + 1 })
+  } else {
+    // Pure-bound slot, no wishlist sibling yet — POST a fresh wanted
+    // entry via /decks/{id}/wanted.
+    deck.growWanted(deckId.value, entry.value.scryfall_id, entry.value.zone)
+  }
 }
 
 function onWantedDec() {
