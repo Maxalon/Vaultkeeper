@@ -396,13 +396,13 @@ watch(
   line-height: 1.02;
   letter-spacing: -0.015em;
   color: var(--ink-100);
-  margin: 0;
-  padding: 2px 6px;
-  margin-left: -6px;
+  padding: 6px 6px 0;
+  margin: -4px 0 0 -6px;
   border-radius: 4px;
   transition: background 0.12s ease;
   cursor: text;
   display: inline-block;
+  align-self: flex-start;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
   max-width: 100%;
   overflow: hidden;
