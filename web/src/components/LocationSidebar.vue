@@ -67,8 +67,8 @@ function openDeck(deck) {
   router.push({ name: 'deck', params: { id: deck.id } })
 }
 
-function goToPending() {
-  if (route.name !== 'pending') router.push({ name: 'pending' })
+function goToReview() {
+  if (route.name !== 'review') router.push({ name: 'review' })
 }
 
 function formatShort(f) {
@@ -321,18 +321,18 @@ function innerOptions(group) {
       </button>
 
       <button
-        v-if="collection.pending"
+        v-if="collection.review"
         type="button"
         class="pending-row sidebar-item top"
-        :class="{ active: route.name === 'pending' }"
-        @click="goToPending"
-        :title="`${collection.pending.card_count} card(s) awaiting re-shelving`"
+        :class="{ active: route.name === 'review' }"
+        @click="goToReview"
+        :title="`${collection.review.card_count} card(s) need attention`"
       >
         <span class="set-sym all-cards-icon" aria-hidden="true">
           <IconDrawer />
         </span>
-        <span class="label">{{ collection.pending.name }}</span>
-        <span class="num">{{ collection.pending.card_count }}</span>
+        <span class="label">Review</span>
+        <span class="num">{{ collection.review.card_count }}</span>
       </button>
 
       <div

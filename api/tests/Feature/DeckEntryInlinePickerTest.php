@@ -63,7 +63,7 @@ class DeckEntryInlinePickerTest extends TestCase
         $copy = CollectionEntry::find($entry->physical_copy_id);
         $this->assertSame($this->deckLocation->id, $copy->location_id);
         $this->assertSame(2, (int) $copy->quantity);
-        $this->assertFalse((bool) $copy->needs_review, 'user-confirmed CE should not be flagged for review');
+        $this->assertNull($copy->review_reason, 'user-confirmed CE should not be flagged for review');
     }
 
     public function test_update_with_create_new_copy_binds_unbound_slot(): void
@@ -162,10 +162,10 @@ class DeckEntryInlinePickerTest extends TestCase
         $entry->refresh();
         $this->assertSame(3, (int) $entry->quantity);
         $this->assertSame(3, (int) $copy->fresh()->quantity);
-        $this->assertDatabaseMissing('locations', [
-            'user_id' => $this->user->id,
-            'role'    => Location::ROLE_PENDING_RELOCATION,
-        ]);
+        $this->assertSame(0, CollectionEntry::query()
+            ->where('user_id', $this->user->id)
+            ->whereNotNull('review_reason')
+            ->count());
     }
 
     public function test_update_discard_requires_strict_quantity_decrease(): void
@@ -207,13 +207,13 @@ class DeckEntryInlinePickerTest extends TestCase
 
         $this->assertNull(DeckEntry::find($entry->id));
         $this->assertNull(CollectionEntry::find($copy->id));
-        $this->assertDatabaseMissing('locations', [
-            'user_id' => $this->user->id,
-            'role'    => Location::ROLE_PENDING_RELOCATION,
-        ]);
+        $this->assertSame(0, CollectionEntry::query()
+            ->where('user_id', $this->user->id)
+            ->whereNotNull('review_reason')
+            ->count());
     }
 
-    public function test_destroy_default_path_still_queues_to_pending(): void
+    public function test_destroy_default_path_still_queues_for_review(): void
     {
         $copy = CollectionEntry::factory()->create([
             'user_id'     => $this->user->id,
@@ -233,9 +233,7 @@ class DeckEntryInlinePickerTest extends TestCase
             ->assertNoContent();
 
         $copy->refresh();
-        $pending = Location::where('user_id', $this->user->id)
-            ->where('role', Location::ROLE_PENDING_RELOCATION)
-            ->firstOrFail();
-        $this->assertSame($pending->id, $copy->location_id);
+        $this->assertNull($copy->location_id);
+        $this->assertSame(\App\Enums\ReviewReason::NoLocation, $copy->review_reason);
     }
 }

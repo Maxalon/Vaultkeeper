@@ -6,7 +6,6 @@ use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\Location;
 use App\Models\User;
-use App\Services\PendingRelocationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -40,7 +39,6 @@ class LocationVisibilityTest extends TestCase
             'name'    => 'Hidden Deck',
             'format'  => 'commander',
         ]);
-        app(PendingRelocationService::class)->ensureLocation($this->user);
 
         $response = $this->withHeaders($this->headers())
             ->getJson('/api/locations')
@@ -49,7 +47,6 @@ class LocationVisibilityTest extends TestCase
         $names = collect($response->json('locations'))->pluck('name')->all();
         $this->assertContains('Visible Drawer', $names);
         $this->assertNotContains('Deck: Hidden Deck', $names);
-        $this->assertNotContains('Pending Relocation', $names);
     }
 
     public function test_location_groups_index_hides_auto_managed_rows(): void

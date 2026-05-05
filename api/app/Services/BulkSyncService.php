@@ -958,19 +958,21 @@ class BulkSyncService
     }
 
     /**
-     * Flag every collection / deck entry that pointed at $deletedId for the
-     * user to review. The scryfall_cards row itself is kept so the user
-     * still sees their card data (image, text) alongside the needs_review
-     * flag — dropping it would cascade into FK issues and remove the info
-     * the user needs to decide what to do with the stale reference.
+     * Flag every collection_entry that pointed at $deletedId for the user
+     * to review. The scryfall_cards row itself is kept so the user still
+     * sees their card data (image, text) alongside the review reason —
+     * dropping it would cascade into FK issues and remove the info the
+     * user needs to decide what to do with the stale reference.
+     *
+     * deck_entries don't carry a review_reason; the review surface
+     * focuses on physical copies (CEs). A stale scryfall_id in a
+     * deck_entry is harmless until the user clicks through to bind a
+     * copy, at which point the picker exposes the issue.
      */
     private function markDeleted(string $deletedId): void
     {
         CollectionEntry::where('scryfall_id', $deletedId)
-            ->update(['needs_review' => true]);
-
-        DeckEntry::where('scryfall_id', $deletedId)
-            ->update(['needs_review' => true]);
+            ->update(['review_reason' => \App\Enums\ReviewReason::CardDataChanged]);
     }
 
     // ─────────────────────────────────────────────────────────────────────

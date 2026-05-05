@@ -11,7 +11,7 @@ use App\Http\Controllers\DeckLegalityController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\LocationGroupController;
-use App\Http\Controllers\PendingRelocationController;
+use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScryfallCardController;
 use Illuminate\Support\Facades\Route;
 
@@ -87,9 +87,14 @@ Route::middleware('auth:api')->group(function () {
     Route::put('location-groups/{group}',       [LocationGroupController::class, 'update']);
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 
-    Route::get ('pending-relocations',         [PendingRelocationController::class, 'index']);
-    Route::get ('pending-relocations/count',   [PendingRelocationController::class, 'count']);
-    Route::post('pending-relocations/resolve', [PendingRelocationController::class, 'resolve']);
+    Route::get ('review',         [ReviewController::class, 'index']);
+    Route::get ('review/count',   [ReviewController::class, 'count']);
+    Route::post('review/resolve', [ReviewController::class, 'resolve']);
+
+    // Backward-compat aliases for one release. New code should hit /review.
+    Route::get ('pending-relocations',         [ReviewController::class, 'index']);
+    Route::get ('pending-relocations/count',   [ReviewController::class, 'count']);
+    Route::post('pending-relocations/resolve', [ReviewController::class, 'resolve']);
 
     Route::get('collection',               [CollectionController::class, 'index']);
     Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);

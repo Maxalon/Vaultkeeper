@@ -207,12 +207,10 @@ class PhysicalCopyDropdownBindingTest extends TestCase
         $entry->refresh();
         $this->assertSame($newCopy->id, $entry->physical_copy_id);
 
-        // Old copy was kicked out of the deck-location → goes to pending.
+        // Old copy was kicked out of the deck-location → flagged for review.
         $oldCopy->refresh();
-        $pending = Location::where('user_id', $this->user->id)
-            ->where('role', Location::ROLE_PENDING_RELOCATION)
-            ->firstOrFail();
-        $this->assertSame($pending->id, $oldCopy->location_id);
+        $this->assertNull($oldCopy->location_id);
+        $this->assertSame(\App\Enums\ReviewReason::NoLocation, $oldCopy->review_reason);
         $this->assertSame($this->deck->id, $oldCopy->source_deck_id);
     }
 }

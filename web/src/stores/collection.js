@@ -72,11 +72,11 @@ export const useCollectionStore = defineStore('collection', {
     /** Full decks list (flat — already split across groups by group_id). */
     decks: [],
     /**
-     * Pending-relocation summary: { id, name, card_count } when there are
-     * copies awaiting re-shelving, otherwise null. Driven by the backend so
-     * the row only shows up when there's something in it.
+     * Review-queue summary: { card_count } when there are review-flagged
+     * copies, otherwise null. Driven by the backend so the row only
+     * shows up when there's something in it.
      */
-    pending: null,
+    review: null,
     collapsedGroups: loadCollapsedGroups(),
     totalCount: 0,
     activeLocationId: null, // number | null (null = all cards)
@@ -176,7 +176,7 @@ export const useCollectionStore = defineStore('collection', {
       this.sidebarItems = data.items
       this.totalCount = data.total_count
       this.decks = data.decks || []
-      this.pending = data.pending || null
+      this.review = data.review || null
     },
 
     // Alias so existing callers (createLocation, updateEntry, batchMove,
@@ -212,25 +212,27 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     /**
-     * Pending-relocation actions. The sidebar's `pending` summary
-     * arrives via fetchGroups; these add the full-list / resolve
-     * surface that powers the /pending route and the per-deck tab.
+     * Review-queue actions. The sidebar's `review` summary arrives via
+     * fetchGroups; these add the full-list / resolve surface that
+     * powers the /review route and the per-deck tab.
      *
-     * @param {{ deckId?: number }} [opts] — when set, scopes the fetch
-     *   to copies that came from a specific deck (per-deck tab).
+     * @param {{ deckId?: number, reason?: string }} [opts] — `deckId`
+     *   scopes the fetch to copies that came from a specific deck;
+     *   `reason` filters by review_reason.
      */
-    async fetchPendingList(opts = {}) {
+    async fetchReviewList(opts = {}) {
       const params = {}
       if (opts.deckId) params.deck_id = opts.deckId
-      const { data } = await api.get('/pending-relocations', { params })
+      if (opts.reason) params.reason  = opts.reason
+      const { data } = await api.get('/review', { params })
       return data?.data || []
     },
 
     /**
-     * @param {Array<{collection_entry_id:number,target_location_id?:number|null,discard?:boolean}>} assignments
+     * @param {Array<{collection_entry_id:number,target_location_id?:number|null,discard?:boolean,accept_defaults?:boolean}>} assignments
      */
-    async resolvePending(assignments) {
-      const { data } = await api.post('/pending-relocations/resolve', { assignments })
+    async resolveReview(assignments) {
+      const { data } = await api.post('/review/resolve', { assignments })
       await this.fetchGroups()
       return data
     },

@@ -39,16 +39,16 @@ async function onUnassemble() {
   if (!deck.deck) return
   const ok = await confirmDialog({
     title: 'Unassemble this deck?',
-    message: "Copies created by the assemble flow will be deleted. Copies you've edited manually will move to Pending Relocation so you can reshelve them.",
+    message: 'Every physical copy in this deck will move to Review so you can decide where each one goes.',
     confirmText: 'Unassemble',
     destructive: true,
   })
   if (!ok) return
   try {
     const result = await deck.unassembleDeck(deck.deck.id)
-    const moved = result?.moved_to_pending ?? 0
+    const flagged = result?.marked_for_review ?? 0
     let msg = 'Deck unassembled.'
-    if (moved > 0) msg += ` ${moved} copy${moved === 1 ? '' : 'ies'} moved to Pending Relocation.`
+    if (flagged > 0) msg += ` ${flagged} cop${flagged === 1 ? 'y' : 'ies'} marked for review.`
     toast.success(msg)
   } catch { /* deck.unassembleDeck already toasts on failure */ }
 }

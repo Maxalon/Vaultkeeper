@@ -329,10 +329,9 @@ export const useDeckStore = defineStore('deck', {
         await Promise.all([
           this.loadIllegalities(deckId),
           useCollectionStore().fetchDecks(),
-          // Resolve might empty/refill the pending bucket — refresh
-          // the sidebar summary so the badge is in sync. Discard
-          // doesn't queue, so this is mostly a no-op there, but it's
-          // cheap.
+          // Removing an entry might queue its copy for review — refresh
+          // the sidebar summary so the badge is in sync. Discard doesn't
+          // queue, so this is a no-op there, but it's cheap.
           useCollectionStore().fetchGroups(),
         ])
       } catch (e) {
@@ -513,8 +512,8 @@ export const useDeckStore = defineStore('deck', {
 
     /**
      * POST /api/decks/{id}/unassemble — tear down the assembled state.
-     * System-created copies are deleted; user-touched ones go to
-     * pending. Every entry's physical_copy_id is cleared.
+     * Every CE in the deck-location is marked for review with reason
+     * `no_location`. Every entry's physical_copy_id is cleared.
      */
     async unassembleDeck(id) {
       const toast = useToast()

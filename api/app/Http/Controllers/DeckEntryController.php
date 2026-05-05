@@ -88,7 +88,7 @@ class DeckEntryController extends Controller
 
         // Inline-picker shortcut: "I just bought it (and I'm putting it
         // in this deck)". Bypasses the regular store path entirely so
-        // the linked CE has needs_review=false (user-confirmed).
+        // the linked CE has no review_reason (user-confirmed).
         if (($data['mode'] ?? null) === 'create_new_copy') {
             $entry = $this->actions->createWithNewCopy($deck, [
                 'scryfall_id' => $data['scryfall_id'],
@@ -420,14 +420,13 @@ class DeckEntryController extends Controller
                 // a new CE with `needed` copies in the deck-location.
                 $copy->update(['quantity' => $available - $needed]);
                 $newCopy = CollectionEntry::create([
-                    'user_id'      => $copy->user_id,
-                    'scryfall_id'  => $copy->scryfall_id,
-                    'location_id'  => $deckLocation->id,
-                    'quantity'     => $needed,
-                    'condition'    => $copy->condition,
-                    'foil'         => (bool) $copy->foil,
-                    'notes'        => $copy->notes,
-                    'needs_review' => false,
+                    'user_id'     => $copy->user_id,
+                    'scryfall_id' => $copy->scryfall_id,
+                    'location_id' => $deckLocation->id,
+                    'quantity'    => $needed,
+                    'condition'   => $copy->condition,
+                    'foil'        => (bool) $copy->foil,
+                    'notes'       => $copy->notes,
                 ]);
                 $boundId = $newCopy->id;
             }
@@ -600,7 +599,6 @@ class DeckEntryController extends Controller
             'signature_for_entry_id' => $entry->signature_for_entry_id,
             'wanted'                 => $entry->wanted,
             'physical_copy_id'       => $entry->physical_copy_id,
-            'needs_review'           => (bool) $entry->needs_review,
             'scryfall_card'          => $card ? [
                 'scryfall_id'    => $card->scryfall_id,
                 'oracle_id'      => $card->oracle_id,

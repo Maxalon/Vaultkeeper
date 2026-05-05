@@ -55,7 +55,7 @@ class DeckEntryActionServiceTest extends TestCase
         $copy = CollectionEntry::find($entry->physical_copy_id);
         $this->assertSame($this->deckLocation->id, $copy->location_id);
         $this->assertSame(2, (int) $copy->quantity);
-        $this->assertFalse((bool) $copy->needs_review, 'user-created copy should not need review');
+        $this->assertNull($copy->review_reason, 'user-created copy should not need review');
     }
 
     public function test_grow_with_new_copy_bumps_linked_ce(): void
@@ -122,13 +122,14 @@ class DeckEntryActionServiceTest extends TestCase
         $this->assertSame(3, (int) $result->quantity);
         $this->assertSame(3, (int) $copy->fresh()->quantity);
 
-        $this->assertDatabaseMissing('locations', [
-            'user_id' => $this->user->id,
-            'role'    => Location::ROLE_PENDING_RELOCATION,
-        ]);
+        // shrinkAndDiscard should NOT flag the still-bound copy for review.
+        $this->assertSame(0, CollectionEntry::query()
+            ->where('user_id', $this->user->id)
+            ->whereNotNull('review_reason')
+            ->count());
     }
 
-    public function test_destroy_and_discard_deletes_entry_and_ce_without_pending(): void
+    public function test_destroy_and_discard_deletes_entry_and_ce_without_review(): void
     {
         $copy = CollectionEntry::factory()->create([
             'user_id'     => $this->user->id,
@@ -147,10 +148,10 @@ class DeckEntryActionServiceTest extends TestCase
 
         $this->assertNull(DeckEntry::find($entry->id));
         $this->assertNull(CollectionEntry::find($copy->id));
-        $this->assertDatabaseMissing('locations', [
-            'user_id' => $this->user->id,
-            'role'    => Location::ROLE_PENDING_RELOCATION,
-        ]);
+        $this->assertSame(0, CollectionEntry::query()
+            ->where('user_id', $this->user->id)
+            ->whereNotNull('review_reason')
+            ->count());
     }
 
     public function test_skip_flag_is_one_shot(): void
@@ -174,14 +175,11 @@ class DeckEntryActionServiceTest extends TestCase
         $entry->update(['zone' => 'side']);
 
         // Second save — flag is reset, default behaviour applies. Detach
-        // the copy → observer should now move it to pending.
+        // the copy → observer should now flag it for review.
         $entry->update(['physical_copy_id' => null]);
 
         $copy->refresh();
-        $pending = Location::where('user_id', $this->user->id)
-            ->where('role', Location::ROLE_PENDING_RELOCATION)
-            ->first();
-        $this->assertNotNull($pending, 'second save without flag should have triggered the queue');
-        $this->assertSame($pending->id, $copy->location_id);
+        $this->assertNull($copy->location_id, 'second save should have triggered the review-queue path');
+        $this->assertSame(\App\Enums\ReviewReason::NoLocation, $copy->review_reason);
     }
 }

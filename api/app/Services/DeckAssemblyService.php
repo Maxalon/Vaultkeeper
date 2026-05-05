@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ReviewReason;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
@@ -34,7 +35,7 @@ use RuntimeException;
  */
 class DeckAssemblyService
 {
-    public function __construct(private PendingRelocationService $pendingRelocations) {}
+    public function __construct(private ReviewQueueService $reviewQueue) {}
 
     /**
      * @param  AssembleIntent  $intent  Master toggle / per-section selection / per-quantity excludes
@@ -116,7 +117,6 @@ class DeckAssemblyService
                         'signature_for_entry_id' => null,
                         'wanted'                 => $entry->zone,
                         'physical_copy_id'       => null,
-                        'needs_review'           => false,
                     ]);
 
                     $createdCes++;
@@ -135,13 +135,14 @@ class DeckAssemblyService
     }
 
     /**
-     * Tear down an assembled deck. System-created copies (still
-     * `needs_review = true`, untouched by the user) are deleted outright.
-     * User-touched copies are queued to pending so the user can decide
-     * where they belong now that the deck is unassembled. Either way,
-     * every deck_entry's `physical_copy_id` is cleared.
+     * Tear down an assembled deck. Every CE in the deck-location is sent
+     * to the review queue with reason `no_location` — uniform treatment
+     * regardless of whether the user had edited the copy or not. *Where
+     * a card came from doesn't matter, where it's going does*: the user
+     * gets to decide on the /review surface. No CE is ever deleted by
+     * unassemble. Every deck_entry's `physical_copy_id` is cleared.
      *
-     * @return array{deleted: int, moved_to_pending: int}
+     * @return array{marked_for_review: int}
      */
     public function unassemble(Deck $deck): array
     {
@@ -152,8 +153,7 @@ class DeckAssemblyService
                     ->where('role', Location::ROLE_DECK)
                     ->first();
 
-                $deleted = 0;
-                $moved   = 0;
+                $markedForReview = 0;
 
                 if ($deckLocation !== null) {
                     $copies = CollectionEntry::query()
@@ -161,18 +161,8 @@ class DeckAssemblyService
                         ->get();
 
                     foreach ($copies as $copy) {
-                        if ($copy->needs_review) {
-                            // System-created, user hasn't touched it —
-                            // safe to delete outright.
-                            $copy->delete();
-                            $deleted++;
-                        } else {
-                            // User has edited this copy (notes, condition,
-                            // foil…) so it's no longer purely auto-managed.
-                            // Send it to pending so they can re-shelve it.
-                            $this->pendingRelocations->moveCopyToPending($copy, $deck);
-                            $moved++;
-                        }
+                        $this->reviewQueue->markCopyForReview($copy, $deck);
+                        $markedForReview++;
                     }
                 }
 
@@ -193,8 +183,7 @@ class DeckAssemblyService
                 }
 
                 return [
-                    'deleted'          => $deleted,
-                    'moved_to_pending' => $moved,
+                    'marked_for_review' => $markedForReview,
                 ];
             });
         });
@@ -246,14 +235,14 @@ class DeckAssemblyService
     private function createDeckLocationCopy(Deck $deck, Location $deckLocation, DeckEntry $entry, int $quantity): CollectionEntry
     {
         return CollectionEntry::create([
-            'user_id'      => $deck->user_id,
-            'scryfall_id'  => $entry->scryfall_id,
-            'location_id'  => $deckLocation->id,
-            'quantity'     => $quantity,
-            'condition'    => 'NM',
-            'foil'         => false,
-            'notes'        => null,
-            'needs_review' => true,
+            'user_id'       => $deck->user_id,
+            'scryfall_id'   => $entry->scryfall_id,
+            'location_id'   => $deckLocation->id,
+            'quantity'      => $quantity,
+            'condition'     => 'NM',
+            'foil'          => false,
+            'notes'         => null,
+            'review_reason' => ReviewReason::DefaultValuesApplied,
         ]);
     }
 }
