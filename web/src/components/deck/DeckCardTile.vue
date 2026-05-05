@@ -37,6 +37,12 @@ let hoverTimer = null
 
 const card = computed(() => props.entry?.scryfall_card || {})
 const qty = computed(() => props.entry?.quantity || 0)
+// Partial-exclude split rows (locked decision 3.3) carry _split = true
+// from the merged-view getter, plus owned_quantity / wanted_quantity
+// for the split badge.
+const isSplit = computed(() => !!props.entry?._split)
+const ownedQty = computed(() => props.entry?.owned_quantity ?? null)
+const wantedQty = computed(() => props.entry?.wanted_quantity ?? null)
 
 const imageSrc = computed(
   () => card.value.image_normal || card.value.image_small,
@@ -92,7 +98,12 @@ function onDragEnd() {
     />
     <div v-else class="name-fallback">{{ card.name }}</div>
 
-    <span v-if="qty > 1" class="qty-badge">{{ qty }}</span>
+    <span v-if="qty > 1 && !isSplit" class="qty-badge">{{ qty }}</span>
+    <span
+      v-if="isSplit"
+      class="split-badge"
+      :title="`Owned ${ownedQty}, wanted ${wantedQty}`"
+    >{{ ownedQty }}<span class="sep">/</span>{{ wantedQty }}</span>
     <span v-if="showGameChanger && card.commander_game_changer" class="gc-badge">GC</span>
 
     <DfcPopover
@@ -166,6 +177,25 @@ function onDragEnd() {
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
 }
+.split-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(201, 162, 39, 0.92);
+  color: #1a120c;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+.split-badge .sep { opacity: 0.6; margin: 0 1px; }
 .gc-badge {
   bottom: 6px;
   left: 6px;

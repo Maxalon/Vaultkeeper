@@ -71,6 +71,65 @@ export const useDeckStore = defineStore('deck', {
     entriesByZone: (state) => (zone) =>
       state.entries.filter((e) => e.zone === zone),
 
+    /**
+     * Same as `entriesByZone`, but coalesces partial-exclude split
+     * pairs (locked decision 3.3) into a single display row. The
+     * backend leaves the two raw rows in place so individual edits
+     * still target the right one — this view is purely cosmetic.
+     *
+     * Each merged row carries:
+     *   - the bound entry's id / scryfall_card / category / etc.
+     *     (commands operating on row.id naturally hit the bound row)
+     *   - quantity = bound + wanted (the visual total)
+     *   - owned_quantity / wanted_quantity for the badge
+     *   - _split = true and _wantedEntry pointing at the sibling, so
+     *     view code can drill in if it needs to.
+     *
+     * Commanders / signature spells are never merged — they always
+     * have qty=1 and partial-exclude is rejected for them server-side.
+     */
+    mergedEntriesByZone: (state) => (zone) => {
+      const inZone = state.entries.filter((e) => e.zone === zone)
+      // Group by (scryfall_id, zone) — the only legitimate pair shape
+      // is one bound + one wanted row.
+      const groups = new Map()
+      for (const e of inZone) {
+        if (e.is_commander || e.is_signature_spell) continue
+        const key = e.scryfall_id
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key).push(e)
+      }
+
+      const merged = []
+      const consumedIds = new Set()
+      for (const [, rows] of groups) {
+        if (rows.length < 2) continue
+        const bound  = rows.find((r) => r.physical_copy_id !== null && r.physical_copy_id !== undefined)
+        const wanted = rows.find((r) => r.wanted !== null && r.wanted !== undefined && (r.physical_copy_id === null || r.physical_copy_id === undefined))
+        if (!bound || !wanted) continue
+        const total = (bound.quantity || 0) + (wanted.quantity || 0)
+        merged.push({
+          ...bound,
+          quantity: total,
+          owned_quantity: bound.quantity || 0,
+          wanted_quantity: wanted.quantity || 0,
+          _split: true,
+          _wantedEntry: wanted,
+        })
+        consumedIds.add(bound.id)
+        consumedIds.add(wanted.id)
+      }
+
+      // Stitch unmerged entries (commanders/sigs included, plus any
+      // ungrouped row) back in.
+      const out = []
+      for (const e of inZone) {
+        if (consumedIds.has(e.id)) continue
+        out.push(e)
+      }
+      return out.concat(merged)
+    },
+
     commanderEntries: (state) =>
       state.entries.filter((e) => e.is_commander),
 
@@ -211,23 +270,61 @@ export const useDeckStore = defineStore('deck', {
       return this.updateEntry(deckId, entryId, { zone })
     },
 
-    async removeEntry(deckId, entryId) {
+    async removeEntry(deckId, entryId, opts = {}) {
       const toast = useToast()
       const idx = this.entries.findIndex((e) => e.id === entryId)
       if (idx === -1) return
       const removed = this.entries.splice(idx, 1)[0]
       if (this.activeEntryId === entryId) this.activeEntryId = null
       try {
-        await api.delete(`/decks/${deckId}/entries/${entryId}`)
+        const url = opts.discard
+          ? `/decks/${deckId}/entries/${entryId}?discard=true`
+          : `/decks/${deckId}/entries/${entryId}`
+        await api.delete(url)
         await Promise.all([
           this.loadIllegalities(deckId),
           useCollectionStore().fetchDecks(),
+          // Resolve might empty/refill the pending bucket — refresh
+          // the sidebar summary so the badge is in sync. Discard
+          // doesn't queue, so this is mostly a no-op there, but it's
+          // cheap.
+          useCollectionStore().fetchGroups(),
         ])
       } catch (e) {
         this.entries.splice(idx, 0, removed)
         toast.error(e.response?.data?.message || 'Delete failed')
         throw e
       }
+    },
+
+    /**
+     * Inline-picker shortcuts. Each maps directly onto a backend
+     * `mode=...` / `discard=true` call so the action service is the
+     * single point of truth for the assemble-related semantics. The
+     * `bindAsNewCopy` path is the same backend hook the menu offers
+     * for unbound entries; `discard` is the menu's "sold or discarded"
+     * action.
+     */
+    async bindEntryAsNewCopy(deckId, entryId) {
+      return this.updateEntry(deckId, entryId, { mode: 'create_new_copy' })
+    },
+
+    async growEntryAsNewCopy(deckId, entryId, newQuantity) {
+      return this.updateEntry(deckId, entryId, {
+        quantity: newQuantity,
+        mode: 'create_new_copy',
+      })
+    },
+
+    async shrinkEntryAndDiscard(deckId, entryId, newQuantity) {
+      return this.updateEntry(deckId, entryId, {
+        quantity: newQuantity,
+        discard: true,
+      })
+    },
+
+    async destroyEntryAndDiscard(deckId, entryId) {
+      return this.removeEntry(deckId, entryId, { discard: true })
     },
 
     async updateDeck(id, patch) {

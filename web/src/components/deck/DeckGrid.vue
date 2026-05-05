@@ -94,7 +94,11 @@ const filtered = computed(() => {
   const parsed = deck.parsedView
   const nameQ = (parsed.nameQuery || '').trim().toLowerCase()
   const tokens = parsed.tokens
-  const zoneEntries = deck.entriesByZone(props.zone).filter(
+  // Use the merged view so partial-exclude split rows (locked
+  // decision 3.3) render as one row with combined quantity. The
+  // commander / signature-spell filter still applies — those slots
+  // are never coalesced and they live in their own zone visually.
+  const zoneEntries = deck.mergedEntriesByZone(props.zone).filter(
     (e) => !e.is_commander && !e.is_signature_spell,
   )
   if (!nameQ && tokens.length === 0) return zoneEntries
