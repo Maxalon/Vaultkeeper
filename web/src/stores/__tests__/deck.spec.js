@@ -126,6 +126,93 @@ describe('mergedEntriesByZone', () => {
     expect(rows.every((r) => !r._split)).toBe(true)
   })
 
+  it('merges a fully-bound entry with a freshly-grown wanted sibling', () => {
+    // Reproduces the user's bug report: clicking Wanted+ on a bound row
+    // POSTs growWanted, which appends a wanted-only entry; the deck
+    // list should coalesce that pair into one strip with /-separated
+    // owned/wanted counts, not render two cards side by side.
+    const store = useDeckStore()
+    store.entries = [
+      entry({
+        id: 1,
+        scryfall_id: 'sid-bolt',
+        zone: 'main',
+        quantity: 1,
+        physical_copy_id: 99,
+        wanted: null,
+        category: 'Removal',
+      }),
+    ]
+    // Simulate growWanted's POST response — backend creates a brand-new
+    // wanted-only entry whose category came from autoCategory (not the
+    // bound row's manual category).
+    store.entries.push(entry({
+      id: 2,
+      scryfall_id: 'sid-bolt',
+      zone: 'main',
+      quantity: 1,
+      physical_copy_id: null,
+      wanted: 'main',
+      category: 'instant',
+    }))
+    const rows = store.mergedEntriesByZone('main')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]._split).toBe(true)
+    expect(rows[0].owned_quantity).toBe(1)
+    expect(rows[0].wanted_quantity).toBe(1)
+  })
+
+  it('merges a bound row with an unbound-no-wanted catalog row', () => {
+    // The catalog-drag flow inserts an unbound row with `wanted: null`
+    // (the observer only flips wanted=zone on a later grow). Pair it
+    // with a bound row for the same card and the deck list must still
+    // render one /-separated strip — never two side by side.
+    const store = useDeckStore()
+    store.entries = [
+      entry({ id: 1, scryfall_id: 'sid-bolt', quantity: 1, physical_copy_id: 99, wanted: null }),
+      entry({ id: 2, scryfall_id: 'sid-bolt', quantity: 1, physical_copy_id: null, wanted: null }),
+    ]
+    const rows = store.mergedEntriesByZone('main')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]._split).toBe(true)
+    expect(rows[0].owned_quantity).toBe(1)
+    expect(rows[0].wanted_quantity).toBe(1)
+  })
+
+  it('coalesces multiple unbound rows for the same card with no bound twin', () => {
+    // Stale historical state: the user has two unbound rows for the
+    // same card but never bought one. Render as one strip with the
+    // summed quantity instead of two stripes.
+    const store = useDeckStore()
+    store.entries = [
+      entry({ id: 1, scryfall_id: 'sid-bolt', quantity: 2, physical_copy_id: null, wanted: 'main' }),
+      entry({ id: 2, scryfall_id: 'sid-bolt', quantity: 1, physical_copy_id: null, wanted: null }),
+    ]
+    const rows = store.mergedEntriesByZone('main')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].quantity).toBe(3)
+    // No bound side, so the strip uses the regular qty pill — _split
+    // should NOT be set.
+    expect(rows[0]._split).toBeFalsy()
+  })
+
+  it('absorbs duplicate wanted siblings into one merged row', () => {
+    // Defensive: if historical bugs left two wanted-only entries for
+    // the same (scryfall_id, zone), the merge should still coalesce
+    // them with the bound row instead of leaking a stray strip.
+    const store = useDeckStore()
+    store.entries = [
+      entry({ id: 1, scryfall_id: 'sid-bolt', quantity: 2, physical_copy_id: 50, wanted: null }),
+      entry({ id: 2, scryfall_id: 'sid-bolt', quantity: 1, physical_copy_id: null, wanted: 'main' }),
+      entry({ id: 3, scryfall_id: 'sid-bolt', quantity: 1, physical_copy_id: null, wanted: 'main' }),
+    ]
+    const rows = store.mergedEntriesByZone('main')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]._split).toBe(true)
+    expect(rows[0].owned_quantity).toBe(2)
+    expect(rows[0].wanted_quantity).toBe(2)
+  })
+
   it('excludes commanders and signature spells from merging', () => {
     const store = useDeckStore()
     store.entries = [
