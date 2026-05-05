@@ -319,8 +319,10 @@ export const useCollectionStore = defineStore('collection', {
     /**
      * Persist the full drag-and-drop state. Fires after vue-draggable-plus has
      * already mutated the reactive arrays, so the UI is already correct —
-     * we just need the server to match. On failure, surface the error and
-     * refetch to snap back.
+     * we just need the server to match. On success we refetch so the store
+     * snaps cleanly to the server's view (rare cross-container moves can
+     * leave duplicates in the local tree until syncTreeInPlace reconciles
+     * by `kind:id`); on failure we refetch to revert.
      *
      * The payload mirrors the recursive sidebar tree: each group item has a
      * `children` array containing nested locations, decks, and groups.
@@ -341,6 +343,7 @@ export const useCollectionStore = defineStore('collection', {
       this.loading = true
       try {
         await api.post('/location-groups/reorder', { items: toPayload(this.sidebarItems) })
+        await this.fetchGroups()
       } catch (e) {
         this.error = e.response?.data?.message || 'Failed to reorder locations'
         await this.fetchGroups()
