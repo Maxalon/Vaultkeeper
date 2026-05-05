@@ -37,4 +37,28 @@ describe('useToast', () => {
     t.dismiss(id)
     expect(t.toasts).toHaveLength(0)
   })
+
+  it('withActions attaches action buttons to the toast', () => {
+    const t = useToast()
+    const ran = []
+    t.withActions('Heads up', [
+      { label: 'Apply', kind: 'primary', run: () => ran.push('apply') },
+      { label: 'Skip',  run: () => ran.push('skip') },
+    ])
+    expect(t.toasts).toHaveLength(1)
+    expect(t.toasts[0].actions).toHaveLength(2)
+    expect(t.toasts[0].actions[0].label).toBe('Apply')
+  })
+
+  it('runAction dismisses the toast and invokes the callback', async () => {
+    vi.useRealTimers() // runAction is async
+    const t = useToast()
+    let called = false
+    const action = { label: 'Go', run: () => { called = true } }
+    const id = t.withActions('Heads up', [action])
+    expect(t.toasts).toHaveLength(1)
+    await t.runAction(id, action)
+    expect(called).toBe(true)
+    expect(t.toasts).toHaveLength(0)
+  })
 })

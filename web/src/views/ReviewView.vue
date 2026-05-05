@@ -1,5 +1,6 @@
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
 import AppTopBar from '../components/AppTopBar.vue'
@@ -11,9 +12,19 @@ import ReviewList from '../components/review/ReviewList.vue'
  * per locked decision 12; the sidebar's review row links here. Reuses
  * the shell layout (sidebar + topbar) so nav stays consistent with the
  * rest of the app.
+ *
+ * Optional `?reason=` query param scopes the list to one reason group
+ * (deep-linkable from the post-assemble toast).
  */
 const collection = useCollectionStore()
 const settings = useSettingsStore()
+const route = useRoute()
+
+const reasonFilter = computed(() => {
+  const r = route.query.reason
+  if (!r) return null
+  return ['no_location', 'default_values_applied', 'card_data_changed'].includes(r) ? r : null
+})
 
 onMounted(async () => {
   // Make sure the sidebar locations + review summary are populated —
@@ -34,7 +45,7 @@ onMounted(async () => {
     />
     <LocationSidebar :collapsed="settings.sidebarCollapsed" />
     <main class="review-main">
-      <ReviewList scope="global" />
+      <ReviewList scope="global" :reason="reasonFilter" />
     </main>
   </div>
 </template>

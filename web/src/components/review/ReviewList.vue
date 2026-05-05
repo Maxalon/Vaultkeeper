@@ -26,6 +26,9 @@ import Checkbox from '../Checkbox.vue'
 const props = defineProps({
   scope: { type: String, default: 'global' }, // 'global' | 'deck'
   deckId: { type: Number, default: null },
+  // Optional review_reason filter — when set, only that section's rows
+  // are fetched. Used by deep-links from the post-assemble toast.
+  reason: { type: String, default: null },
   // Hide the page-level title row (the global view renders its own).
   hideHeader: { type: Boolean, default: false },
 })
@@ -83,9 +86,10 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    rows.value = await collection.fetchReviewList(
-      props.scope === 'deck' && props.deckId ? { deckId: props.deckId } : {},
-    )
+    const opts = {}
+    if (props.scope === 'deck' && props.deckId) opts.deckId = props.deckId
+    if (props.reason) opts.reason = props.reason
+    rows.value = await collection.fetchReviewList(opts)
     const next = {}
     for (const r of rows.value) {
       const prev = assignments.value[r.id]
@@ -100,7 +104,7 @@ async function load() {
 }
 
 onMounted(load)
-watch(() => [props.scope, props.deckId], load)
+watch(() => [props.scope, props.deckId, props.reason], load)
 
 function onRowTargetChange(id, value) {
   const a = (assignments.value[id] ||= { target: null, discard: false, accept_defaults: false, selected: false })
