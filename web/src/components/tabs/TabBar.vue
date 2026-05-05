@@ -141,6 +141,7 @@ function addTab(type) {
       <button type="button" @click="addTab('catalog')">Catalog</button>
       <button type="button" @click="addTab('analysis')">Analysis</button>
       <button type="button" @click="addTab('illegalities')">Illegalities</button>
+      <button type="button" @click="addTab('physical')">Physical</button>
       <button type="button" @click="addTab('review')">Review</button>
     </div>
   </Teleport>
