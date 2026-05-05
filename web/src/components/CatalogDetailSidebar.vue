@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useDeckStore } from '../stores/deck'
 import CardDetailBody from './CardDetailBody.vue'
-import HelpHint from './HelpHint.vue'
 import PrintingPickerModal from './PrintingPickerModal.vue'
 
 const catalog = useCatalogStore()
@@ -13,9 +12,6 @@ const activeCard = computed(() => catalog.activeCard)
 
 const printings = computed(
   () => catalog.printingsByOracle[catalog.activeCardOracleId] || [],
-)
-const loading = computed(
-  () => !!catalog.printingsLoading[catalog.activeCardOracleId],
 )
 
 const selectedPrintingId = computed(
@@ -54,11 +50,6 @@ const representativeCard = computed(() => {
   }
 })
 
-function formatDate(d) {
-  if (!d) return ''
-  return new Date(d).toISOString().slice(0, 10)
-}
-
 const deckId = computed(() => deck.deck?.id ?? null)
 
 const adding = ref(false)
@@ -87,6 +78,12 @@ function pickInBrowser(scryfallId) {
 <template>
   <aside v-if="activeCard" class="vk-detail vk-detail--catalog">
     <header class="vk-detail-header">
+      <button
+        v-if="catalog.activeCardOracleId"
+        type="button"
+        class="choose-printing-btn"
+        @click="openBrowser"
+      >Choose printing</button>
       <button class="close" type="button" @click="catalog.clearActive()" title="Close">✕</button>
     </header>
 
@@ -100,57 +97,6 @@ function pickInBrowser(scryfallId) {
           <button type="button" :disabled="adding" @click="addToDeck('side')">+ Side</button>
           <button type="button" :disabled="adding" @click="addToDeck('maybe')">+ Maybe</button>
         </div>
-      </section>
-
-      <section class="printings">
-        <header class="printings-header">
-          <h4>Printings ({{ printings.length }})</h4>
-          <button
-            type="button"
-            class="browse-btn"
-            :disabled="loading"
-            @click="openBrowser"
-          >Browse images…</button>
-          <HelpHint text="Open a grid of every printing of this card so you can pick the artwork." />
-        </header>
-        <div v-if="loading" class="loading-printings">Loading printings…</div>
-        <ul v-else>
-          <li
-            v-for="p in printings"
-            :key="p.scryfall_id"
-            class="printing-row"
-            :class="{ selected: p.scryfall_id === selectedPrintingId }"
-            @click="catalog.pickPrinting(activeCard.oracle_id, p.scryfall_id)"
-          >
-            <input
-              type="radio"
-              name="printing"
-              :checked="p.scryfall_id === selectedPrintingId"
-              :aria-label="p.set_name"
-            />
-            <img
-              v-if="p.icon_svg_uri"
-              class="set-icon"
-              :src="p.icon_svg_uri"
-              :alt="p.set_code"
-            />
-            <div class="printing-meta">
-              <span class="set-name">{{ p.set_name || p.set_code?.toUpperCase() }}</span>
-              <span class="set-code-num">
-                {{ (p.set_code || '').toUpperCase() }} · #{{ p.collector_number }}
-              </span>
-              <span class="release">{{ formatDate(p.released_at) }}</span>
-            </div>
-            <div class="ownership">
-              <span v-if="p.ownership?.nonfoil">
-                {{ p.ownership.nonfoil }}× ({{ p.ownership.available_nonfoil }} free)
-              </span>
-              <span v-if="p.ownership?.foil" class="foil">
-                {{ p.ownership.foil }}× foil ({{ p.ownership.available_foil }} free)
-              </span>
-            </div>
-          </li>
-        </ul>
       </section>
     </div>
 
@@ -177,9 +123,11 @@ function pickInBrowser(scryfallId) {
 }
 
 .vk-detail-header {
-  padding: 10px 12px 0;
+  padding: 10px 12px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
   flex-shrink: 0;
 }
 .close {
@@ -194,6 +142,24 @@ function pickInBrowser(scryfallId) {
   padding: 0;
 }
 .close:hover { background: var(--bg-2); color: var(--ink-100); }
+
+.choose-printing-btn {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-0);
+  border: 1px solid var(--amber-lo, #8a7436);
+  color: var(--amber, #c9a552);
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.choose-printing-btn:hover {
+  background: var(--amber-lo);
+  color: #1a1408;
+}
 
 .vk-detail-body {
   flex: 1;
@@ -235,86 +201,4 @@ function pickInBrowser(scryfallId) {
   cursor: not-allowed;
 }
 
-.printings { margin-top: 20px; }
-.printings-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 10px;
-}
-.printings h4 {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-50);
-  margin: 0;
-}
-.browse-btn {
-  background: transparent;
-  border: 1px solid var(--hairline);
-  color: var(--ink-70);
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.browse-btn:hover:not(:disabled) {
-  border-color: var(--amber-lo);
-  color: var(--amber);
-}
-.browse-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.loading-printings {
-  font-style: italic;
-  color: var(--ink-50);
-  font-size: 12px;
-  padding: 12px 0;
-}
-.printings ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.printing-row {
-  display: grid;
-  grid-template-columns: 16px 24px 1fr auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 10px;
-  background: var(--bg-0);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: border-color 0.1s ease;
-}
-.printing-row:hover { border-color: var(--amber-lo); }
-.printing-row.selected { border-color: var(--amber); background: rgba(201, 165, 82, 0.06); }
-.printing-row input[type="radio"] { accent-color: var(--amber); margin: 0; }
-.set-icon { width: 24px; height: 24px; object-fit: contain; filter: invert(0.9); }
-.printing-meta {
-  display: flex;
-  flex-direction: column;
-  font-size: 12px;
-  min-width: 0;
-}
-.set-name { color: var(--ink-100); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.set-code-num {
-  color: var(--ink-50);
-  font-family: var(--font-mono), monospace;
-  font-size: 10px;
-}
-.release { color: var(--ink-50); font-size: 10px; }
-.ownership {
-  display: flex;
-  flex-direction: column;
-  font-size: 10px;
-  color: var(--ink-70);
-  text-align: right;
-  font-family: var(--font-mono), monospace;
-}
-.ownership .foil { color: #b898f0; }
 </style>
