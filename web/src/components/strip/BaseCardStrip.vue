@@ -233,12 +233,33 @@ onBeforeUnmount(() => {
 }
 
 /* Inner clip layer. Fills the strip exactly and inherits the rounded
-   corners; overflow: hidden contains the overflowing card image. */
+   corners; overflow: hidden contains the overflowing card image.
+   The ::before paints a copy of the overlay's bottom gradient *behind*
+   the card image so the image's rounded bottom corners reveal it (gives
+   the "card laid on top of the gradient" look). */
 .strip-clip {
   position: absolute;
   inset: 0;
   overflow: hidden;
   border-radius: inherit;
+}
+.strip-clip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--strip-height);
+  background: linear-gradient(
+    180deg,
+    rgba(13, 15, 20, 0) 0%,
+    rgba(13, 15, 20, 0.65) 35%,
+    rgba(13, 15, 20, 0.92) 100%
+  );
+  pointer-events: none;
+  /* Above the skeleton (z:0) but below the card image (z:2) so the
+     image's rounded bottom corners reveal it. */
+  z-index: 1;
 }
 
 /* Hover bridge: a transparent extension of the strip's hover area
@@ -276,9 +297,12 @@ onBeforeUnmount(() => {
   width: 100%;
   height: auto;
   display: block;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
   user-select: none;
+  /* Match the strip's outer radius so the image's bottom corners curve;
+     the strip-clip's ::before gradient peeks through the cutouts. */
+  border-radius: inherit;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -294,7 +318,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 0 8px;
-  z-index: 2;
+  z-index: 3;
   pointer-events: none;
   background: linear-gradient(
     180deg,
@@ -350,6 +374,9 @@ onBeforeUnmount(() => {
 :deep(.corner-count-badge) {
   opacity: 0;
   transition: opacity 150ms ease-out;
+  /* Stay above .overlay (z:3) so the Mode B slide-into-bar animation
+     remains visible after the gradient layer pushed everything up. */
+  z-index: 4;
 }
 :deep(.qty-corner) {
   transform: translateY(0);
