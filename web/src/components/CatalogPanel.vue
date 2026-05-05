@@ -6,6 +6,7 @@ import SyntaxSearch from './SyntaxSearch.vue'
 import CardTile from './CardTile.vue'
 import CatalogStrip from './CatalogStrip.vue'
 import ManaSymbol from './ManaSymbol.vue'
+import HelpHint from './HelpHint.vue'
 
 /**
  * Self-contained catalog panel. No collection-store coupling. The catalog
@@ -216,16 +217,18 @@ const gridStyle = computed(() => {
           class="chip-btn"
           :class="{ active: catalog.deckFilters.formatActive }"
           type="button"
-          :title="`Only show cards legal in ${formatLabel}`"
           @click="catalog.toggleDeckFilter('format')"
         >{{ formatLabel }} legal</button>
+        <HelpHint
+          v-if="deckId && catalog.deckFilters.format"
+          :text="`Only show cards legal in ${formatLabel}.`"
+        />
 
         <button
           v-if="deckId && catalog.deckFilters.colorIdentity !== null"
           class="chip-btn chip-colors"
           :class="{ active: catalog.deckFilters.colorIdentityActive }"
           type="button"
-          :title="`Only show cards whose color identity fits the commander (${catalog.deckFilters.colorIdentity || 'colorless'})`"
           @click="catalog.toggleDeckFilter('identity')"
         >
           <span class="chip-colors-label">In-color</span>
@@ -239,6 +242,10 @@ const gridStyle = computed(() => {
           </span>
           <span v-else class="chip-colors-label-sub">colorless</span>
         </button>
+        <HelpHint
+          v-if="deckId && catalog.deckFilters.colorIdentity !== null"
+          :text="`Only show cards whose color identity fits the commander (${catalog.deckFilters.colorIdentity || 'colorless'}).`"
+        />
 
         <div class="spacer" />
 

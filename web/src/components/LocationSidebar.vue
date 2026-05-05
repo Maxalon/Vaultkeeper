@@ -326,7 +326,6 @@ function innerOptions(group) {
         class="pending-row sidebar-item top"
         :class="{ active: route.name === 'review' }"
         @click="goToReview"
-        :title="`${collection.review.card_count} card(s) need attention`"
       >
         <span class="set-sym all-cards-icon" aria-hidden="true">
           <IconDrawer />

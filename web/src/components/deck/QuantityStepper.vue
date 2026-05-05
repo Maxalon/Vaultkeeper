@@ -1,15 +1,28 @@
 <script setup>
-defineProps({
+const props = defineProps({
   value: { type: Number, required: true },
+  min: { type: Number, default: 1 },
+  decDisabled: { type: Boolean, default: false },
+  incDisabled: { type: Boolean, default: false },
 })
 defineEmits(['dec', 'inc'])
 </script>
 
 <template>
   <div class="quantity-stepper">
-    <button type="button" class="step" @click="$emit('dec')" :disabled="value <= 1">−</button>
+    <button
+      type="button"
+      class="step"
+      :disabled="decDisabled || value <= min"
+      @click="$emit('dec')"
+    >−</button>
     <span class="value">{{ value }}</span>
-    <button type="button" class="step" @click="$emit('inc')">+</button>
+    <button
+      type="button"
+      class="step"
+      :disabled="incDisabled"
+      @click="$emit('inc')"
+    >+</button>
   </div>
 </template>
 
