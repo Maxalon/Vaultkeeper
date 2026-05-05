@@ -74,7 +74,10 @@ async function submit() {
         companion_scryfall_id: deckForm.companion_scryfall_id,
       }
       if (isEditDeck.value) {
-        await collection.updateDeck(props.location.id, payload)
+        // The sidebar surfaces a deck via its shadow Location row (`id` is
+        // the location id, `deck_id` is the deck's own id). Deck CRUD
+        // endpoints address the deck directly.
+        await collection.updateDeck(props.location.deck_id, payload)
         emit('close')
       } else {
         const deck = await collection.createDeck(payload)
@@ -114,7 +117,7 @@ async function doDelete() {
     if (!ok) return
     submitting.value = true
     try {
-      await collection.deleteDeck(props.location.id)
+      await collection.deleteDeck(props.location.deck_id)
       emit('close')
     } catch (e) {
       error.value = e.response?.data?.message || 'Failed to delete'

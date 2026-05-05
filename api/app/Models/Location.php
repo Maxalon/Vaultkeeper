@@ -51,13 +51,45 @@ class Location extends Model
     }
 
     /**
-     * Locations the user manages directly (drawers, binders, user-created
-     * deck-themed shelves). Excludes the auto-managed `deck` rows that
-     * aren't surfaced in the sidebar.
+     * Locations the user manages directly as physical card storage. Excludes
+     * the auto-managed `deck` (the per-deck shadow) and `pending_relocation`
+     * (the singleton shrink bucket). Used by dropdowns and other surfaces
+     * where a deck shadow is not a valid move target.
      */
     public function scopeUserManaged($query)
     {
         return $query->where('role', self::ROLE_USER);
+    }
+
+    /**
+     * Rows that participate in the sidebar tree: regular user locations and
+     * deck shadows. Pending relocation stays out — it lives in its own
+     * sidebar slot above the sortable area.
+     */
+    public function scopeSidebarVisible($query)
+    {
+        return $query->whereIn('role', [self::ROLE_USER, self::ROLE_DECK]);
+    }
+
+    /**
+     * Next sort_order for a brand-new top-level item. Top-level groups
+     * (parent_group_id IS NULL) and top-level sidebar locations (group_id
+     * IS NULL, role IN user|deck) share one ordering space.
+     */
+    public static function nextTopLevelSortOrder(int $userId): int
+    {
+        $maxLoc = (int) self::query()
+            ->where('user_id', $userId)
+            ->whereNull('group_id')
+            ->whereIn('role', [self::ROLE_USER, self::ROLE_DECK])
+            ->max('sort_order');
+
+        $maxGroup = (int) LocationGroup::query()
+            ->where('user_id', $userId)
+            ->whereNull('parent_group_id')
+            ->max('sort_order');
+
+        return max($maxLoc, $maxGroup) + 1;
     }
 
     /**

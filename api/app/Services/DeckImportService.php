@@ -7,6 +7,7 @@ use App\Http\Controllers\DeckController;
 use App\Http\Controllers\DeckEntryController;
 use App\Models\Deck;
 use App\Models\DeckEntry;
+use App\Models\Location;
 use App\Models\LocationGroup;
 use App\Models\ScryfallCard;
 use App\Models\User;
@@ -312,7 +313,7 @@ class DeckImportService
 
             if ($existing) {
                 // Update mode: overwrite source-derived fields, preserve the
-                // user's local organisation (group_id, sort_order, ignored
+                // user's local organisation (sidebar position, ignored
                 // illegalities). Wipe DeckEntry rows and let the loop below
                 // re-insert them so card-level edits sync cleanly.
                 $existing->update($attributes);
@@ -323,8 +324,19 @@ class DeckImportService
                     'user_id'   => $user->id,
                     'source'    => $source,
                     'source_id' => $sourceId,
-                    'group_id'  => $groupId,
                 ]);
+
+                // The deck's shadow Location is the sortable entity for the
+                // sidebar — point it at the import's chosen group.
+                if ($groupId !== null) {
+                    Location::query()
+                        ->where('deck_id', $deck->id)
+                        ->where('role', Location::ROLE_DECK)
+                        ->update([
+                            'group_id'   => $groupId,
+                            'sort_order' => LocationGroup::nextChildSortOrder($user->id, $groupId),
+                        ]);
+                }
             }
 
             // Run the same commander-slot + color-identity reconciliation the

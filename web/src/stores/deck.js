@@ -241,7 +241,7 @@ export const useDeckStore = defineStore('deck', {
         this.entries.push(data)
         await Promise.all([
           this.loadIllegalities(deckId),
-          useCollectionStore().fetchDecks(),
+          useCollectionStore().fetchGroups(),
         ])
         return data
       } catch (e) {
@@ -299,7 +299,7 @@ export const useDeckStore = defineStore('deck', {
         this.entries[idx] = { ...this.entries[idx], ...data }
         await Promise.all([
           this.loadIllegalities(deckId),
-          countChanged ? useCollectionStore().fetchDecks() : null,
+          countChanged ? useCollectionStore().fetchGroups() : null,
         ])
         return data
       } catch (e) {
@@ -362,7 +362,6 @@ export const useDeckStore = defineStore('deck', {
         await api.delete(url)
         await Promise.all([
           this.loadIllegalities(deckId),
-          useCollectionStore().fetchDecks(),
           // Removing an entry might queue its copy for review — refresh
           // the sidebar summary so the badge is in sync. Discard doesn't
           // queue, so this is a no-op there, but it's cheap.

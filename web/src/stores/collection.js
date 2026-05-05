@@ -64,13 +64,14 @@ function loadCollapsedGroups() {
 export const useCollectionStore = defineStore('collection', {
   state: () => ({
     /**
-     * Top-level sidebar structure: a single array interleaving groups and
-     * un-grouped locations. Each item has `kind: 'group' | 'location'`.
-     * Groups carry their nested locations in `item.locations`.
+     * Recursive sidebar tree. Each entry is one of:
+     *   - { kind: 'group', id, name, sort_order, parent_group_id, children }
+     *   - { kind: 'location', id, name, type, sort_order, group_id, ... }
+     *   - { kind: 'deck',  id, name, sort_order, group_id, format, ... }
+     * (`id` for a deck is the shadow Location's id; `deck_id` is the deck's
+     * own id, used for navigation to DeckView.)
      */
     sidebarItems: [],
-    /** Full decks list (flat — already split across groups by group_id). */
-    decks: [],
     /**
      * Review-queue summary: { card_count } when there are review-flagged
      * copies, otherwise null. Driven by the backend so the row only
@@ -99,52 +100,37 @@ export const useCollectionStore = defineStore('collection', {
 
   getters: {
     /**
-     * Flat array of every location, in render order. Used by location
-     * dropdowns in CardListPanel, ImportModal, and DetailSidebar — they
-     * don't care about grouping.
+     * Flat array of every physical-storage location (drawers/binders), in
+     * render order, recursing through nested groups. Decks are excluded —
+     * they're not valid card-move destinations (server-side validation
+     * already enforces this in CollectionController). Consumed by location
+     * dropdowns in CardListPanel, ImportModal, and DetailSidebar.
      */
     locations(state) {
-      return state.sidebarItems.flatMap((item) =>
-        item.kind === 'group' ? item.locations : [item],
-      )
-    },
-
-    /** Groups extracted from sidebarItems in their current order. */
-    groups(state) {
-      return state.sidebarItems.filter((item) => item.kind === 'group')
-    },
-
-    /**
-     * Sidebar items with each deck merged into its group.locations list (or
-     * appearing at the top level when group_id is null), interleaved by
-     * sort_order. Decks carry `kind: 'deck'`. This is the render-time list.
-     */
-    sidebarItemsMerged(state) {
-      const decksByGroup = new Map()
-      const topLevelDecks = []
-      for (const d of state.decks) {
-        const item = { ...d, kind: 'deck' }
-        if (d.group_id) {
-          if (!decksByGroup.has(d.group_id)) decksByGroup.set(d.group_id, [])
-          decksByGroup.get(d.group_id).push(item)
-        } else {
-          topLevelDecks.push(item)
+      const out = []
+      const walk = (items) => {
+        for (const item of items) {
+          if (item.kind === 'group') walk(item.children || [])
+          else if (item.kind === 'location') out.push(item)
         }
       }
+      walk(state.sidebarItems)
+      return out
+    },
 
-      const merged = state.sidebarItems.map((item) => {
-        if (item.kind !== 'group') return item
-        const groupDecks = decksByGroup.get(item.id) || []
-        if (!groupDecks.length) return item
-        const combined = [...item.locations, ...groupDecks]
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-        return { ...item, locations: combined }
-      })
-
-      if (topLevelDecks.length) {
-        return [...merged, ...topLevelDecks]
+    /** All groups, flattened depth-first across nesting levels. */
+    groups(state) {
+      const out = []
+      const walk = (items) => {
+        for (const item of items) {
+          if (item.kind === 'group') {
+            out.push(item)
+            walk(item.children || [])
+          }
+        }
       }
-      return merged
+      walk(state.sidebarItems)
+      return out
     },
 
     parsedSearch(state) {
@@ -175,7 +161,6 @@ export const useCollectionStore = defineStore('collection', {
       const { data } = await api.get('/location-groups')
       this.sidebarItems = data.items
       this.totalCount = data.total_count
-      this.decks = data.decks || []
       this.review = data.review || null
     },
 
@@ -185,12 +170,11 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchGroups()
     },
 
+    // Decks now live inside the unified sidebar tree, so refreshing decks is
+    // identical to refreshing groups. Kept as an alias so existing callers
+    // (DeckView, deck.js entry mutations) don't need to change.
     async fetchDecks() {
-      // fetchGroups already includes decks in its response, but expose a
-      // standalone action so DeckView can refresh the list after an edit
-      // without re-fetching the entire sidebar payload.
-      const { data } = await api.get('/decks')
-      this.decks = data
+      await this.fetchGroups()
     },
 
     async createDeck(payload) {
@@ -248,20 +232,23 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchGroups()
     },
 
-    async createGroup(name) {
+    async createGroup(payload) {
+      // Accepts either a plain name string (legacy) or { name, parent_group_id }.
+      const body = typeof payload === 'string' ? { name: payload } : payload
       this.loading = true
       try {
-        await api.post('/location-groups', { name })
+        await api.post('/location-groups', body)
         await this.fetchGroups()
       } finally {
         this.loading = false
       }
     },
 
-    async updateGroup(id, name) {
+    async updateGroup(id, payload) {
+      const body = typeof payload === 'string' ? { name: payload } : payload
       this.loading = true
       try {
-        await api.put(`/location-groups/${id}`, { name })
+        await api.put(`/location-groups/${id}`, body)
         await this.fetchGroups()
       } finally {
         this.loading = false
@@ -290,23 +277,26 @@ export const useCollectionStore = defineStore('collection', {
      * already mutated the reactive arrays, so the UI is already correct —
      * we just need the server to match. On failure, surface the error and
      * refetch to snap back.
+     *
+     * The payload mirrors the recursive sidebar tree: each group item has a
+     * `children` array containing nested locations, decks, and groups.
      */
     async reorderAll() {
-      const payload = {
-        items: this.sidebarItems.map((item) => {
+      const toPayload = (items) =>
+        (items || []).map((item) => {
           if (item.kind === 'group') {
             return {
               kind: 'group',
               id: item.id,
-              location_ids: item.locations.map((l) => l.id),
+              children: toPayload(item.children),
             }
           }
-          return { kind: 'location', id: item.id }
-        }),
-      }
+          return { kind: item.kind, id: item.id }
+        })
+
       this.loading = true
       try {
-        await api.post('/location-groups/reorder', payload)
+        await api.post('/location-groups/reorder', { items: toPayload(this.sidebarItems) })
       } catch (e) {
         this.error = e.response?.data?.message || 'Failed to reorder locations'
         await this.fetchGroups()

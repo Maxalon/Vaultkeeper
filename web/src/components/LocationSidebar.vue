@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { provide, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { vDraggable } from 'vue-draggable-plus'
 import { useCollectionStore } from '../stores/collection'
@@ -11,12 +11,11 @@ import ImportDeckModal from './ImportDeckModal.vue'
 import ImportDeckCsvModal from './ImportDeckCsvModal.vue'
 import BulkImportDeckModal from './BulkImportDeckModal.vue'
 import AssembleDeckModal from './AssembleDeckModal.vue'
+import GroupModal from './GroupModal.vue'
+import SidebarGroup from './SidebarGroup.vue'
+import SidebarRow from './SidebarRow.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
-import IconBinder from '../assets/icons/binder.svg'
-import IconDeck from '../assets/icons/deck.svg'
-import IconEdit from '../assets/icons/edit.svg'
-import IconChevron from '../assets/chevron-down.svg'
 
 defineProps({
   collapsed: { type: Boolean, default: false },
@@ -57,23 +56,18 @@ function onResizePointerDown(event) {
   handle.addEventListener('pointercancel', onUp)
 }
 
-const mergedItems = computed(() => collection.sidebarItemsMerged)
-
 function activeDeckId() {
   return route.name === 'deck' ? Number(route.params.id) : null
 }
 
 function openDeck(deck) {
-  router.push({ name: 'deck', params: { id: deck.id } })
+  router.push({ name: 'deck', params: { id: deck.deck_id } })
 }
 
 function goToReview() {
   if (route.name !== 'review') router.push({ name: 'review' })
 }
 
-function formatShort(f) {
-  return ({ commander: 'CMDR', oathbreaker: 'OATH', pauper: 'PAU', standard: 'STD', modern: 'MOD' })[f] || (f || '').toUpperCase()
-}
 const importOpen = ref(false)
 const deckImportOpen = ref(false)
 const csvDeckImportOpen = ref(false)
@@ -86,6 +80,7 @@ const deckImportMenuOpen = ref(false)
 const assembleDeck = ref(null)
 const modalOpen = ref(false)
 const editingLocation = ref(null)
+const groupModalOpen = ref(false)
 
 function onImportAssemble(deck) {
   assembleDeck.value = deck
@@ -114,14 +109,6 @@ function onDocClick(e) {
 onMounted(() => document.addEventListener('click', onDocClick))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
-const creatingGroup = ref(false)
-const newGroupName = ref('')
-const groupInputRef = ref(null)
-
-const editingGroupId = ref(null)
-const editingGroupName = ref('')
-const groupRenameInputRef = ref(null)
-
 function isActive(loc) {
   return route.name === 'collection' && loc.id === collection.activeLocationId
 }
@@ -149,27 +136,8 @@ function closeModal() {
 
 function toggleCollapse(groupId) { collection.toggleGroupCollapse(groupId) }
 function isCollapsed(groupId) { return collection.isGroupCollapsed(groupId) }
-// `group.locations` after sidebarItemsMerged() interleaves locations and
-// decks (kind='location' or kind='deck'). Locations carry `card_count`,
-// decks carry `entry_count` (mainboard size) — sum both kinds so a group
-// of imported decks doesn't read 0.
-function groupCardCount(group) {
-  return group.locations.reduce(
-    (sum, l) => sum + (l.kind === 'deck' ? (l.entry_count || 0) : (l.card_count || 0)),
-    0,
-  )
-}
-function groupCounterValue(group) {
-  if (settings.sidebarGroupCounter === 'locations') return group.locations.length
-  return groupCardCount(group)
-}
-function shouldShowLocCount(loc) {
-  if (loc.kind === 'deck') return settings.sidebarShowCountDeck
-  if (loc.type === 'drawer') return settings.sidebarShowCountDrawer
-  if (loc.type === 'binder') return settings.sidebarShowCountBinder
-  return true
-}
-async function deleteLocation(loc) {
+
+async function deleteRow(loc) {
   if (loc.kind === 'deck') {
     const ok = await confirmDialog({
       title: 'Delete deck?',
@@ -178,7 +146,7 @@ async function deleteLocation(loc) {
       destructive: true,
     })
     if (!ok) return
-    await collection.deleteDeck(loc.id)
+    await collection.deleteDeck(loc.deck_id)
     return
   }
   const cardCount = loc.card_count ?? 0
@@ -203,87 +171,27 @@ async function deleteLocation(loc) {
   await collection.deleteLocation(loc.id, { deleteEntries })
 }
 
-async function startCreateGroup() {
-  creatingGroup.value = true
-  newGroupName.value = ''
-  await nextTick()
-  groupInputRef.value?.focus()
-}
-async function confirmCreateGroup() {
-  const name = newGroupName.value.trim()
-  if (name) await collection.createGroup(name)
-  creatingGroup.value = false
-  newGroupName.value = ''
-}
-function cancelCreateGroup() {
-  creatingGroup.value = false
-  newGroupName.value = ''
-}
+provide('sidebarCtx', {
+  isActive,
+  activate,
+  openDeck,
+  openEdit,
+  deleteRow,
+  isCollapsed,
+  toggleCollapse,
+  activeDeckId,
+})
 
-async function startEditGroup(group) {
-  editingGroupId.value = group.id
-  editingGroupName.value = group.name
-  await nextTick()
-  groupRenameInputRef.value?.focus?.()
-  groupRenameInputRef.value?.select?.()
-}
-async function confirmEditGroup() {
-  const name = editingGroupName.value.trim()
-  if (name && name !== collection.groups.find((g) => g.id === editingGroupId.value)?.name) {
-    await collection.updateGroup(editingGroupId.value, name)
-  }
-  editingGroupId.value = null
-  editingGroupName.value = ''
-}
-function cancelEditGroup() {
-  editingGroupId.value = null
-  editingGroupName.value = ''
-}
-
-async function deleteGroup(group) {
-  if (!confirm(`Delete group "${group.name}"? Its locations will become ungrouped.`)) return
-  await collection.deleteGroup(group.id)
-}
-
-function onDragEnd() { collection.reorderAll() }
-
-function itemKey(item) { return `${item.kind}:${item.id}` }
-function onlyAcceptLocations(_to, _from, dragEl) {
-  return !dragEl.classList.contains('group-section')
-}
-function onGroupAdd(evt, group) {
-  // vue-draggable-plus exposes the dragged item's data on evt.data
-  // (replacing vuedraggable's evt.item._underlying_vm_).
-  const added = evt.data
-  if (!added) return
-  const idx = group.locations.indexOf(added)
-  if (idx === -1 || idx === group.locations.length - 1) return
-  group.locations.splice(idx, 1)
-  group.locations.push(added)
-}
-
-// Sortable options shared by every draggable on the sidebar. Sortable's
-// option names are camelCase when supplied via JS (vs the kebab-case
-// component props in vuedraggable v4).
 const outerOptions = {
   group: { name: 'sidebar', pull: true, put: true },
   handle: '.drag-handle',
   animation: 150,
   ghostClass: 'sortable-ghost',
   chosenClass: 'sortable-chosen',
-  onEnd: onDragEnd,
+  onEnd: () => collection.reorderAll(),
 }
-function innerOptions(group) {
-  return {
-    group: { name: 'sidebar', pull: true, put: onlyAcceptLocations },
-    handle: '.drag-handle',
-    animation: 150,
-    ghostClass: 'sortable-ghost',
-    chosenClass: 'sortable-chosen',
-    onEnd: onDragEnd,
-    onAdd: (evt) => onGroupAdd(evt, group),
-  }
-}
+
+function itemKey(item) { return `${item.kind}:${item.id}` }
 </script>
 
 <template>
@@ -336,168 +244,19 @@ function innerOptions(group) {
 
       <div
         class="sidebar-dropzone"
-        v-draggable="[mergedItems, outerOptions]"
+        v-draggable="[collection.sidebarItems, outerOptions]"
       >
-        <template v-for="item in mergedItems" :key="itemKey(item)">
-          <div v-if="item.kind === 'group'" class="group-section">
-            <div
-              class="group-header"
-              :class="{ collapsed: isCollapsed(item.id) }"
-              @click="toggleCollapse(item.id)"
-            >
-              <span v-if="settings.sidebarShowDrag" class="drag drag-handle group-handle" @click.stop title="Drag">⠿</span>
-              <span class="chev" :class="{ rotated: !isCollapsed(item.id) }">
-                <IconChevron />
-              </span>
-              <template v-if="editingGroupId === item.id">
-                <input
-                  ref="groupRenameInputRef"
-                  class="group-rename-input"
-                  name="group-name"
-                  type="text"
-                  autocomplete="off"
-                  v-model="editingGroupName"
-                  @click.stop
-                  @keydown.enter.stop="confirmEditGroup"
-                  @keydown.esc.stop="cancelEditGroup"
-                  @blur="confirmEditGroup"
-                />
-              </template>
-              <template v-else>
-                <span class="label">{{ item.name }}</span>
-              </template>
-              <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ groupCounterValue(item) }}</span>
-              <span class="group-actions" @click.stop>
-                <button v-if="settings.sidebarShowEdit" type="button" class="edit-btn" @click="startEditGroup(item)" title="Rename">
-                  <IconEdit />
-                </button>
-                <button v-if="settings.sidebarShowDelete" type="button" class="delete-btn" @click="deleteGroup(item)" title="Delete">×</button>
-              </span>
-            </div>
-            <div
-              class="group-locations"
-              v-draggable="[item.locations, innerOptions(item)]"
-            >
-              <template v-for="loc in item.locations" :key="loc.id">
-                <button
-                  v-if="loc.kind === 'deck'"
-                  v-show="!isCollapsed(item.id)"
-                  type="button"
-                  class="loc-row sidebar-item nested sidebar-deck"
-                  :class="{ active: activeDeckId() === loc.id }"
-                  @click="openDeck(loc)"
-                >
-                  <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
-                  <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
-                  <span class="label">{{ loc.name }}</span>
-                  <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(loc.format) }}</span>
-                  <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.entry_count }}</span>
-                  <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
-                    <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
-                      <IconEdit />
-                    </button>
-                  </span>
-                  <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
-                    <button type="button" class="delete-btn" @click="deleteLocation(loc)" title="Delete">×</button>
-                  </span>
-                </button>
-                <button
-                  v-else
-                  v-show="!isCollapsed(item.id)"
-                  type="button"
-                  class="loc-row sidebar-item nested"
-                  :class="{ active: isActive(loc) }"
-                  @click="activate(loc)"
-                >
-                  <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
-                  <span class="set-sym loc-icon" aria-hidden="true">
-                    <IconDrawer v-if="loc.type === 'drawer'" />
-                    <IconBinder v-else-if="loc.type === 'binder'" />
-                    <IconDeck v-else-if="loc.type === 'deck'" />
-                  </span>
-                  <span class="label">{{ loc.name }}</span>
-                  <span v-if="shouldShowLocCount(loc)" class="num">{{ loc.card_count }}</span>
-                  <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
-                    <button type="button" class="edit-btn" @click="openEdit(loc)" title="Edit">
-                      <IconEdit />
-                    </button>
-                  </span>
-                  <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
-                    <button type="button" class="delete-btn" @click="deleteLocation(loc)" title="Delete">×</button>
-                  </span>
-                </button>
-              </template>
-            </div>
-          </div>
-
-          <button
-            v-else-if="item.kind === 'deck'"
-            type="button"
-            class="loc-row sidebar-item sidebar-deck"
-            :class="{ active: activeDeckId() === item.id }"
-            @click="openDeck(item)"
-          >
-            <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
-            <span class="set-sym loc-icon" aria-hidden="true"><IconDeck /></span>
-            <span class="label">{{ item.name }}</span>
-            <span v-if="settings.sidebarShowFormatBadge" class="format-badge">{{ formatShort(item.format) }}</span>
-            <span v-if="shouldShowLocCount(item)" class="num">{{ item.entry_count }}</span>
-            <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
-              <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
-                <IconEdit />
-              </button>
-            </span>
-            <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
-              <button type="button" class="delete-btn" @click="deleteLocation(item)" title="Delete">×</button>
-            </span>
-          </button>
-
-          <button
-            v-else
-            type="button"
-            class="loc-row sidebar-item"
-            :class="{ active: isActive(item) }"
-            @click="activate(item)"
-          >
-            <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>
-            <span class="set-sym loc-icon" aria-hidden="true">
-              <IconDrawer v-if="item.type === 'drawer'" />
-              <IconBinder v-else-if="item.type === 'binder'" />
-              <IconDeck v-else-if="item.type === 'deck'" />
-            </span>
-            <span class="label">{{ item.name }}</span>
-            <span v-if="shouldShowLocCount(item)" class="num">{{ item.card_count }}</span>
-            <span v-if="settings.sidebarShowEdit" class="edit" @click.stop>
-              <button type="button" class="edit-btn" @click="openEdit(item)" title="Edit">
-                <IconEdit />
-              </button>
-            </span>
-            <span v-if="settings.sidebarShowDelete" class="del" @click.stop>
-              <button type="button" class="delete-btn" @click="deleteLocation(item)" title="Delete">×</button>
-            </span>
-          </button>
+        <template v-for="item in collection.sidebarItems" :key="itemKey(item)">
+          <SidebarGroup v-if="item.kind === 'group'" :group="item" />
+          <SidebarRow v-else :item="item" />
         </template>
       </div>
     </nav>
 
     <footer>
-      <div v-if="creatingGroup" class="inline-group-input">
-        <input
-          ref="groupInputRef"
-          name="new-group-name"
-          autocomplete="off"
-          v-model="newGroupName"
-          type="text"
-          placeholder="Group name…"
-          maxlength="100"
-          @keydown.enter="confirmCreateGroup"
-          @keydown.esc="cancelCreateGroup"
-          @blur="cancelCreateGroup"
-        />
-      </div>
       <div class="footer-buttons">
         <button type="button" class="mini-btn" @click="openCreate">+ Location</button>
-        <button type="button" class="mini-btn" @click="startCreateGroup">+ Group</button>
+        <button type="button" class="mini-btn" @click="groupModalOpen = true">+ Group</button>
       </div>
       <button type="button" class="import-btn" @click="importOpen = true">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
@@ -554,6 +313,7 @@ function innerOptions(group) {
       @close="closeAssembleModal"
     />
     <LocationModal v-if="modalOpen" :location="editingLocation" @close="closeModal" />
+    <GroupModal v-if="groupModalOpen" @close="groupModalOpen = false" />
 
     <div
       v-if="!collapsed"
@@ -653,7 +413,9 @@ function innerOptions(group) {
   flex-direction: column;
 }
 
-/* ── Sidebar item — shared by All Cards, top-level loc, and nested loc ── */
+/* The All Cards / Pending row use the same .sidebar-item class that
+   SidebarRow ships scoped styles for; we duplicate the essentials here so
+   they keep working when rendered directly in this template. */
 .sidebar-item {
   position: relative;
   display: flex;
@@ -698,8 +460,6 @@ function innerOptions(group) {
   color: var(--ink-50);
   flex-shrink: 0;
 }
-.sidebar-item.nested .set-sym { color: var(--ink-30); }
-.sidebar-item.nested.active .set-sym { color: var(--ink-70); }
 .sidebar-item .label {
   flex: 1;
   overflow: hidden;
@@ -723,236 +483,11 @@ function innerOptions(group) {
   color: #1a1408;
   font-weight: 600;
 }
-
 .sidebar-item.top {
   font-weight: 500;
   margin-bottom: 4px;
 }
 
-.sidebar-deck .format-badge {
-  font-family: var(--font-mono), monospace;
-  font-size: 9px;
-  color: var(--ink-50);
-  background: var(--bg-2);
-  padding: 1px 5px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-}
-
-/* Hover-revealed drag handle + edit + delete (shared between top-level + nested rows) */
-.sidebar-item .drag,
-.sidebar-item .edit,
-.sidebar-item .del {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-30);
-  opacity: 0;
-  transition: opacity 0.12s ease, width 0.15s ease, margin 0.15s ease, color 0.1s ease;
-  flex-shrink: 0;
-  overflow: hidden;
-  background: transparent;
-  border: 0;
-}
-.sidebar-item .drag {
-  width: 0;
-  margin-left: -6px;
-  margin-right: 0;
-  cursor: grab;
-  font-size: 14px;
-  user-select: none;
-  padding: 0;
-}
-.sidebar-item .edit,
-.sidebar-item .del {
-  width: 0;
-  margin-left: 0;
-  margin-right: -4px;
-  padding: 0;
-}
-.sidebar-item:hover .drag {
-  opacity: 0.6;
-  width: 10px;
-  margin-right: -2px;
-}
-.sidebar-item:hover .edit,
-.sidebar-item:hover .del {
-  opacity: 0.6;
-  width: 14px;
-  margin-left: 2px;
-}
-.sidebar-item .drag:hover,
-.sidebar-item .edit:hover,
-.sidebar-item .del:hover {
-  opacity: 1;
-  color: var(--ink-100);
-}
-.sidebar-item .del:hover { color: #d46a6a; }
-.sidebar-item .edit-btn,
-.sidebar-item .delete-btn {
-  background: transparent;
-  border: 0;
-  color: inherit;
-  padding: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-.sidebar-item .delete-btn {
-  font-size: 16px;
-  line-height: 1;
-}
-
-/* ── Group section ──────────────────────────────────────────────── */
-.group-section {
-  display: flex;
-  flex-direction: column;
-  margin-top: 3px;
-}
-.group-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  min-height: 28px;
-  box-sizing: border-box;
-  border-radius: var(--radius-sm);
-  color: var(--ink-70);
-  font-size: 12px;
-  line-height: 1.2;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: color 0.1s ease, background 0.1s ease;
-  user-select: none;
-}
-.group-header.collapsed {
-  padding: 2px 10px;
-  min-height: 20px;
-}
-.group-header:hover {
-  color: var(--ink-100);
-  background: var(--bg-2);
-}
-.group-header .chev {
-  display: inline-flex;
-  width: 12px;
-  height: 12px;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-50);
-  transition: transform 0.15s ease;
-  transform: rotate(-90deg);
-}
-.group-header .chev.rotated { transform: rotate(0deg); }
-.group-header .label {
-  flex: 1;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.group-header .num {
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  color: var(--ink-50);
-  font-weight: 500;
-  padding: 1px 8px;
-  background: var(--bg-2);
-  border-radius: 999px;
-}
-.group-rename-input {
-  flex: 1;
-  background: var(--bg-0);
-  border: 1px solid var(--amber-lo);
-  color: var(--ink-100);
-  padding: 3px 6px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 2px;
-  outline: none;
-  min-width: 0;
-}
-.group-actions {
-  display: none;
-  flex-shrink: 0;
-  gap: 4px;
-  align-items: center;
-}
-.group-header:hover .group-actions { display: flex; }
-.group-header .drag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ink-30);
-  opacity: 0;
-  width: 0;
-  margin-left: -6px;
-  margin-right: 0;
-  cursor: grab;
-  font-size: 12px;
-  line-height: 1;
-  user-select: none;
-  padding: 0;
-  flex-shrink: 0;
-  overflow: hidden;
-  background: transparent;
-  border: 0;
-  transition: opacity 0.12s ease, width 0.15s ease, margin 0.15s ease, color 0.1s ease;
-}
-.group-header:hover .drag {
-  opacity: 0.6;
-  width: 10px;
-  margin-right: -2px;
-}
-.group-header .drag:hover {
-  opacity: 1;
-  color: var(--ink-100);
-}
-.group-actions .edit-btn,
-.group-actions .delete-btn {
-  font-size: 12px;
-  padding: 1px;
-}
-.group-actions .edit-btn :where(svg) {
-  width: 10px;
-  height: 10px;
-}
-.edit-btn,
-.delete-btn {
-  background: transparent;
-  border: 0;
-  color: var(--ink-30);
-  padding: 2px;
-  border-radius: 3px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  line-height: 1;
-}
-.edit-btn:hover { color: var(--ink-100); }
-.delete-btn:hover { color: #d46a6a; }
-
-/* Nested-row tree connector lines */
-.group-locations {
-  position: relative;
-  padding-left: 12px;
-  margin-top: 2px;
-  min-height: 8px;
-}
-.group-header.collapsed + .group-locations {
-  display: none;
-}
-.group-locations::before {
-  content: '';
-  position: absolute;
-  left: 16px;
-  top: 4px;
-  bottom: 4px;
-  width: 1px;
-  background: repeating-linear-gradient(to bottom, var(--hairline) 0 3px, transparent 3px 6px);
-}
 .sidebar-dropzone {
   min-height: 40px;
   padding-bottom: 40px;
@@ -990,16 +525,6 @@ footer::before {
   pointer-events: none;
 }
 
-.inline-group-input input {
-  width: 100%;
-  background: var(--bg-0);
-  border: 1px solid var(--amber-lo);
-  color: var(--ink-100);
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 3px;
-  outline: none;
-}
 .footer-buttons {
   display: flex;
   gap: 6px;

@@ -59,12 +59,10 @@ function clearDragState() {
 }
 
 onMounted(async () => {
-  await collection.fetchLocations()
-  // fetchDecks runs inside the collection store (see Part 8). Guard in case
-  // that method is added later — call only if present.
-  if (typeof collection.fetchDecks === 'function') {
-    await collection.fetchDecks()
-  }
+  // The unified sidebar payload includes deck shadow rows with their
+  // entry_count and commander preview, so a single fetchGroups gives both
+  // the sidebar contents and the deck list.
+  await collection.fetchGroups()
   await loadAll(route.params.id)
   document.addEventListener('dragend', clearDragState)
   document.addEventListener('drop', clearDragState)
