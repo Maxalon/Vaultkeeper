@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../stores/settings'
 import { useAuthStore } from '../stores/auth'
 import VaultMark from '../components/VaultMark.vue'
+import HelpHint from '../components/HelpHint.vue'
 
 const router = useRouter()
 const settings = useSettingsStore()
@@ -59,7 +60,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Strip Layout</span>
-              <span class="info" tabindex="0" data-tip="A is the typed-name treatment; B places a corner quantity badge over the card art.">?</span>
+              <HelpHint text="A is the typed-name treatment; B places a corner quantity badge over the card art." />
             </div>
             <div class="seg">
               <button
@@ -74,7 +75,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Hover Behaviour</span>
-              <span class="info" tabindex="0" data-tip="Expand grows the strip in place to reveal the full card. Peek pops the card up next to its row without disturbing the grid.">?</span>
+              <HelpHint text="Expand grows the strip in place to reveal the full card. Peek pops the card up next to its row without disturbing the grid." />
             </div>
             <div class="seg">
               <button
@@ -89,7 +90,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Density</span>
-              <span class="info" tabindex="0" data-tip="Controls strip height, gap, and card width.">?</span>
+              <HelpHint text="Controls strip height, gap, and card width." />
             </div>
             <div class="seg">
               <button
@@ -109,7 +110,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Edit button</span>
-              <span class="info" tabindex="0" data-tip="Reveal the edit pencil on hover for each location strip.">?</span>
+              <HelpHint text="Reveal the edit pencil on hover for each location strip." />
             </div>
             <button
               type="button"
@@ -123,7 +124,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Delete button</span>
-              <span class="info" tabindex="0" data-tip="Reveal a delete (×) button on hover next to the edit pencil.">?</span>
+              <HelpHint text="Reveal a delete (×) button on hover next to the edit pencil." />
             </div>
             <button
               type="button"
@@ -137,7 +138,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Drag handle</span>
-              <span class="info" tabindex="0" data-tip="Reveal the ⠿ drag handle on hover. Hide to lock the sidebar order.">?</span>
+              <HelpHint text="Reveal the ⠿ drag handle on hover. Hide to lock the sidebar order." />
             </div>
             <button
               type="button"
@@ -151,7 +152,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Deck format tag</span>
-              <span class="info" tabindex="0" data-tip="Show the small format badge (CMDR, STD, …) next to deck names in the sidebar.">?</span>
+              <HelpHint text="Show the small format badge (CMDR, STD, …) next to deck names in the sidebar." />
             </div>
             <button
               type="button"
@@ -165,7 +166,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Card count · Drawers</span>
-              <span class="info" tabindex="0" data-tip="Show the card-count pill on drawer rows.">?</span>
+              <HelpHint text="Show the card-count pill on drawer rows." />
             </div>
             <button
               type="button"
@@ -179,7 +180,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Card count · Binders</span>
-              <span class="info" tabindex="0" data-tip="Show the card-count pill on binder rows.">?</span>
+              <HelpHint text="Show the card-count pill on binder rows." />
             </div>
             <button
               type="button"
@@ -193,7 +194,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Card count · Decks</span>
-              <span class="info" tabindex="0" data-tip="Show the card-count pill on deck rows.">?</span>
+              <HelpHint text="Show the card-count pill on deck rows." />
             </div>
             <button
               type="button"
@@ -207,7 +208,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Group counter</span>
-              <span class="info" tabindex="0" data-tip="Cards: total cards across the group's locations. Locations: number of locations in the group. Off: hide the counter.">?</span>
+              <HelpHint text="Cards: total cards across the group's locations. Locations: number of locations in the group. Off: hide the counter." />
             </div>
             <div class="seg">
               <button
@@ -227,7 +228,7 @@ const groupCounterOptions = [
           <div class="row">
             <div class="row-label">
               <span class="row-title">Sign out</span>
-              <span class="info" tabindex="0" data-tip="Sign out of this device. Your settings stay on this browser.">?</span>
+              <HelpHint text="Sign out of this device. Your settings stay on this browser." />
             </div>
             <button class="logout" @click="logout">Sign Out</button>
           </div>
@@ -338,69 +339,6 @@ const groupCounterOptions = [
   color: var(--ink-100);
   letter-spacing: 0.01em;
   white-space: nowrap;
-}
-
-/* Subtle question-mark with tooltip on hover */
-.info {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 1px solid var(--ink-30);
-  color: var(--ink-50);
-  font-size: 9px;
-  font-weight: 600;
-  font-family: var(--font-sans), sans-serif;
-  line-height: 1;
-  cursor: help;
-  user-select: none;
-  outline: none;
-  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
-}
-.info:hover,
-.info:focus-visible {
-  color: var(--ink-100);
-  border-color: var(--ink-70);
-  background: var(--bg-2);
-}
-.info:hover::after,
-.info:focus-visible::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: 260px;
-  padding: 8px 10px;
-  background: var(--bg-0);
-  color: var(--ink-100);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  white-space: normal;
-  text-align: left;
-  z-index: 20;
-  pointer-events: none;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-}
-.info:hover::before,
-.info:focus-visible::before {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: var(--hairline-strong);
-  z-index: 20;
-  pointer-events: none;
 }
 
 /* Compact segmented control */

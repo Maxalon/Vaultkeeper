@@ -3,11 +3,13 @@ import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import { useDeckEntryActions } from '../../composables/useDeckEntryActions'
 import CardDetailBody from '../CardDetailBody.vue'
+import HelpHint from '../HelpHint.vue'
 import PrintingPickerModal from '../PrintingPickerModal.vue'
 import ZoneSelector from './ZoneSelector.vue'
 import CategoryInput from './CategoryInput.vue'
 import QuantityStepper from './QuantityStepper.vue'
 import PhysicalCopyDropdown from './PhysicalCopyDropdown.vue'
+import AddCopiesModal from './AddCopiesModal.vue'
 
 const deck = useDeckStore()
 
@@ -51,68 +53,64 @@ function onZoneChange(zone) {
 }
 
 /**
- * Find the (scryfall_id, zone)-matching wanted sibling for the
- * current entry, if any. Used by +1/-1 to route quantity changes
- * to the wanted side first — bound CE-backed quantity only moves
- * via the explicit inline-picker "I bought it" path.
+ * Find the bound + wanted siblings for the active entry's
+ * (scryfall_id, zone) pair. The active entry might be either side
+ * (depends on which row was clicked) — sibling resolution unifies
+ * the two stepper handlers below.
  */
-function findWantedSibling(e) {
-  if (!e) return null
-  return deck.entries.find(
-    (r) => r.id !== e.id
-        && r.scryfall_id === e.scryfall_id
-        && r.zone === e.zone
-        && r.physical_copy_id == null
-        && r.wanted != null,
+function siblings(e) {
+  if (!e) return { bound: null, wanted: null }
+  const peers = deck.entries.filter(
+    (r) => r.scryfall_id === e.scryfall_id && r.zone === e.zone,
+  )
+  const bound  = peers.find((r) => r.physical_copy_id != null) || null
+  const wanted = peers.find(
+    (r) => r.physical_copy_id == null && r.wanted != null,
   ) || null
+  return { bound, wanted }
 }
 
-function onIncrement() {
+const sibs       = computed(() => siblings(entry.value))
+const wantedQty  = computed(() => sibs.value.wanted?.quantity ?? 0)
+const ownedQty   = computed(() => sibs.value.bound?.quantity  ?? 0)
+
+function onWantedInc() {
   if (!entry.value || !deckId.value) return
-  const e = entry.value
-  // Unbound entry (wanted-only or unset): just bump it.
-  if (e.physical_copy_id == null) {
-    deck.updateEntry(deckId.value, e.id, { quantity: e.quantity + 1 })
-    return
-  }
-  // Bound entry: bump the wanted sibling, or mint one when none exists.
-  const sibling = findWantedSibling(e)
-  if (sibling) {
-    deck.updateEntry(deckId.value, sibling.id, { quantity: sibling.quantity + 1 })
+  deck.growWanted(deckId.value, entry.value.scryfall_id, entry.value.zone)
+}
+
+function onWantedDec() {
+  const w = sibs.value.wanted
+  if (!w || !deckId.value) return
+  if (w.quantity <= 1) {
+    // Wanted-only rows have no bound CE, so deletion has no observer
+    // side-effects (no review queue noise).
+    deck.removeEntry(deckId.value, w.id)
   } else {
-    deck.growWanted(deckId.value, e.scryfall_id, e.zone)
+    deck.updateEntry(deckId.value, w.id, { quantity: w.quantity - 1 })
   }
 }
 
-function onDecrement() {
-  if (!entry.value || !deckId.value) return
-  const e = entry.value
-  // Unbound entry: −1 hits this row directly. At qty=1, removing
-  // the row deletes it (no observer side-effects since it's wanted-only).
-  if (e.physical_copy_id == null) {
-    if (e.quantity <= 1) {
-      deck.removeEntry(deckId.value, e.id)
-    } else {
-      deck.updateEntry(deckId.value, e.id, { quantity: e.quantity - 1 })
-    }
-    return
+function onOwnedDec() {
+  const b = sibs.value.bound
+  if (!b || !deckId.value) return
+  if (b.quantity <= 1) {
+    // removeEntry's default path queues the freed CE for review with
+    // reason `no_location` (DeckEntryObserver). The store also pops a
+    // toast with a "Sold / discarded" override, and the user can open
+    // /review to finalize the routing.
+    deck.removeEntry(deckId.value, b.id)
+  } else {
+    // Shrinking a bound slot triggers the same review-queue path via
+    // the observer's relocateIfInDeckLocation hook.
+    deck.updateEntry(deckId.value, b.id, { quantity: b.quantity - 1 })
   }
-  // Bound entry with a wanted sibling: peel the sibling first, deleting
-  // it at qty=1.
-  const sibling = findWantedSibling(e)
-  if (sibling) {
-    if (sibling.quantity <= 1) {
-      deck.removeEntry(deckId.value, sibling.id)
-    } else {
-      deck.updateEntry(deckId.value, sibling.id, { quantity: sibling.quantity - 1 })
-    }
-    return
-  }
-  // Purely-bound entry, no wanted sibling: existing observer-driven
-  // path (queues the freed copy to the review/pending bucket).
-  if (e.quantity > 1) {
-    deck.updateEntry(deckId.value, e.id, { quantity: e.quantity - 1 })
-  }
+}
+
+const showAddCopies = ref(false)
+function onOwnedInc() {
+  if (!entry.value) return
+  showAddCopies.value = true
 }
 
 function runAction(action) {
@@ -188,12 +186,38 @@ function onPickPrinting(scryfallId) {
       </section>
 
       <section class="vk-detail-section">
-        <h4>Quantity</h4>
-        <QuantityStepper
-          :value="entry.quantity"
-          @dec="onDecrement"
-          @inc="onIncrement"
-        />
+        <div class="qty-row">
+          <div class="qty-cell">
+            <h4 class="qty-label">
+              <span>Wanted</span>
+              <HelpHint
+                text="Cards on your wishlist for this deck. + adds one to your wishlist; − removes one. When you actually buy a wanted copy, use the Owned + button to convert it into an owned copy."
+              />
+            </h4>
+            <QuantityStepper
+              :value="wantedQty"
+              :min="0"
+              :dec-disabled="wantedQty === 0"
+              @inc="onWantedInc"
+              @dec="onWantedDec"
+            />
+          </div>
+          <div class="qty-cell">
+            <h4 class="qty-label">
+              <span>Owned</span>
+              <HelpHint
+                text="Physical copies of this card sitting in this deck. − removes one and routes the freed copy to the Review screen so you can decide where it goes (binder, sold, etc.). + opens a dialog where you can add new copies and pick a source for each."
+              />
+            </h4>
+            <QuantityStepper
+              :value="ownedQty"
+              :min="0"
+              :dec-disabled="ownedQty === 0"
+              @inc="onOwnedInc"
+              @dec="onOwnedDec"
+            />
+          </div>
+        </div>
       </section>
 
       <section v-if="!isBound" class="vk-detail-section">
@@ -212,6 +236,18 @@ function onPickPrinting(scryfallId) {
       :card-name="entry.scryfall_card?.name || ''"
       :selected-printing-id="entry.scryfall_id"
       @select="onPickPrinting"
+    />
+
+    <AddCopiesModal
+      v-if="showAddCopies"
+      :deck="deck.deck"
+      :bound="sibs.bound"
+      :wanted="sibs.wanted"
+      :card="entry.scryfall_card"
+      :scryfall-id="entry.scryfall_id"
+      :zone="entry.zone"
+      :category="entry.category"
+      @close="showAddCopies = false"
     />
   </aside>
 </template>
@@ -301,6 +337,17 @@ function onPickPrinting(scryfallId) {
   color: var(--ink-50);
   margin: 0 0 10px;
   font-family: var(--font-sans), sans-serif;
+}
+
+.qty-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.qty-cell .qty-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .role-actions {

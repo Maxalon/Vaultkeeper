@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCollectionStore } from '../stores/collection'
+import HelpHint from './HelpHint.vue'
 
 // `assemble` fires after a successful import when the user pre-ticked
 // the "already assembled" toggle. Carries the new deck's id + name so
@@ -215,13 +216,9 @@ function requestAssemble() {
           />
           <span class="assembled-label">
             This deck is already assembled
-            <span
-              class="assembled-hint"
-              tabindex="0"
-              role="img"
-              aria-label="Tick this if you physically own the cards in this deck. We'll log them in your collection under 'Deck: <name>' so they don't show up in your bulk or binders."
-              title="Tick this if you physically own the cards in this deck. We'll log them in your collection under 'Deck: <name>' so they don't show up in your bulk or binders."
-            >?</span>
+            <HelpHint
+              text="Tick this if you physically own the cards in this deck. We'll log them in your collection under 'Deck: <name>' so they don't show up in your bulk or binders."
+            />
           </span>
         </label>
 
@@ -357,21 +354,6 @@ function requestAssemble() {
   align-items: center;
   gap: 6px;
 }
-.assembled-hint {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--bg-0);
-  color: var(--ink-50);
-  font-size: 10px;
-  font-weight: 700;
-  cursor: help;
-  border: 1px solid var(--hairline);
-}
-.assembled-hint:focus { outline: 1px solid var(--amber); outline-offset: 1px; }
 .error { color: var(--cond-dmg); margin: 4px 0 12px; font-size: 12px; }
 .actions {
   display: flex;

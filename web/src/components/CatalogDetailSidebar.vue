@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useDeckStore } from '../stores/deck'
 import CardDetailBody from './CardDetailBody.vue'
+import HelpHint from './HelpHint.vue'
 import PrintingPickerModal from './PrintingPickerModal.vue'
 
 const catalog = useCatalogStore()
@@ -109,8 +110,8 @@ function pickInBrowser(scryfallId) {
             class="browse-btn"
             :disabled="loading"
             @click="openBrowser"
-            title="Browse printings as card images"
           >Browse images…</button>
+          <HelpHint text="Open a grid of every printing of this card so you can pick the artwork." />
         </header>
         <div v-if="loading" class="loading-printings">Loading printings…</div>
         <ul v-else>
