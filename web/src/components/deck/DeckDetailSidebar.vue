@@ -144,17 +144,16 @@ function onPickPrinting(scryfallId) {
 <template>
   <aside v-if="entry" class="vk-detail vk-detail--deck">
     <header class="vk-detail-header">
-      <button class="close" type="button" @click="close" title="Close" aria-label="Close">✕</button>
-    </header>
-
-    <div class="vk-detail-body">
       <button
         v-if="!isBound && oracleId"
         type="button"
         class="choose-printing-btn"
         @click="openPrintingPicker"
-      >Choose printing…</button>
+      >Choose printing</button>
+      <button class="close" type="button" @click="close" title="Close" aria-label="Close">✕</button>
+    </header>
 
+    <div class="vk-detail-body">
       <div class="card-wrap" :class="{ 'illegal-glow': isIllegal }">
         <CardDetailBody :card="entry.scryfall_card" />
         <span v-if="isGc" class="gc-badge">GC</span>
@@ -278,10 +277,11 @@ function onPickPrinting(scryfallId) {
 }
 
 .vk-detail-header {
-  padding: 10px 12px 0;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  gap: 8px;
   flex-shrink: 0;
 }
 .close {
@@ -308,8 +308,8 @@ function onPickPrinting(scryfallId) {
 }
 
 .choose-printing-btn {
-  display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   background: var(--bg-0);
   border: 1px solid var(--amber-lo, #8a7436);
   color: var(--amber, #c9a552);
@@ -318,7 +318,6 @@ function onPickPrinting(scryfallId) {
   padding: 8px 6px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  margin-bottom: 12px;
   transition: background 0.1s ease, color 0.1s ease;
 }
 .choose-printing-btn:hover {
