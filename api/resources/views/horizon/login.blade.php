@@ -18,7 +18,7 @@
         </div>
     @endif
 
-    <form method="POST" action="/horizon-login" autocomplete="off">
+    <form method="POST" action="/login" autocomplete="off">
         @csrf
         @if (request()->filled('next'))
             <input type="hidden" name="next" value="{{ request()->query('next') }}">
