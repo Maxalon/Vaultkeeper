@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../lib/api'
+import { usePricesStore } from './prices'
 import {
   parseSearch as parseSearchGeneric,
   serializeQuery as serializeQueryGeneric,
@@ -262,6 +263,7 @@ export const useCollectionStore = defineStore('collection', {
     async resolveReview(assignments) {
       const { data } = await api.post('/review/resolve', { assignments })
       await this.fetchGroups()
+      usePricesStore().scheduleRefresh({ collectionLocation: this.activeLocationId })
       return data
     },
 
@@ -493,6 +495,7 @@ export const useCollectionStore = defineStore('collection', {
         if (payload.location_id !== undefined) {
           this.fetchLocations()
         }
+        usePricesStore().scheduleRefresh({ collectionLocation: this.activeLocationId })
         return data
       })
     },
@@ -527,6 +530,7 @@ export const useCollectionStore = defineStore('collection', {
         this.selectedIds = []
         this.selecting = false
         await Promise.all([this.fetchLocations(), this.fetchEntries()])
+        usePricesStore().scheduleRefresh({ collectionLocation: this.activeLocationId })
       } finally {
         this.loading = false
       }
@@ -542,6 +546,7 @@ export const useCollectionStore = defineStore('collection', {
         this.entries = this.entries.filter((e) => e.id !== id)
         if (this.activeEntryId === id) this.closeActiveEntry()
         this.fetchLocations()
+        usePricesStore().scheduleRefresh({ collectionLocation: this.activeLocationId })
       })
     },
   },

@@ -85,5 +85,47 @@ export const usePricesStore = defineStore('prices', {
         this.deckTotalsByDeckId = rest
       }
     },
+
+    /**
+     * Debounced post-mutation refresh. Call from any store action that
+     * touches data feeding the totals so the StatsBar / deck-header
+     * pills don't drift from the underlying state.
+     *
+     *   { collectionLocation: null | number | 'unassigned' }
+     *     → refresh /api/collection/totals for that scope
+     *   { deckId: number }
+     *     → refresh /api/decks/{deckId}/totals
+     *
+     * Bursts of rapid mutations (e.g. four +1s) collapse into one fetch
+     * per scope per 250ms window. Per-scope timers so unrelated scopes
+     * don't cancel each other.
+     */
+    scheduleRefresh({ collectionLocation, deckId } = {}) {
+      if (!this._refreshTimers) this._refreshTimers = {}
+
+      if (collectionLocation !== undefined) {
+        const key = `c:${collectionLocation === null ? 'all' : collectionLocation}`
+        if (this._refreshTimers[key]) clearTimeout(this._refreshTimers[key])
+        this._refreshTimers[key] = setTimeout(() => {
+          delete this._refreshTimers[key]
+          // Mirror the call shape of CollectionView's refreshTotals: null
+          // gets the all-cards endpoint, anything else is forwarded as-is.
+          if (collectionLocation === null) {
+            this.fetchCollectionTotals().catch(() => {})
+          } else {
+            this.fetchCollectionTotals(collectionLocation).catch(() => {})
+          }
+        }, 250)
+      }
+
+      if (deckId != null) {
+        const key = `d:${deckId}`
+        if (this._refreshTimers[key]) clearTimeout(this._refreshTimers[key])
+        this._refreshTimers[key] = setTimeout(() => {
+          delete this._refreshTimers[key]
+          this.fetchDeckTotals(deckId).catch(() => {})
+        }, 250)
+      }
+    },
   },
 })
