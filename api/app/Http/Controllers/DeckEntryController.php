@@ -663,11 +663,16 @@ class DeckEntryController extends Controller
 
     private function applySort($query, string $sort)
     {
+        // cmc / color_identity live on scryfall_oracles after issue #33;
+        // those sorts hop through scryfall_cards.oracle_id to reach the
+        // oracle row. rarity and name stay per-printing on scryfall_cards.
         return match ($sort) {
             'cmc'      => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
-                                ->orderBy('scryfall_cards.cmc')->select('deck_entries.*'),
+                                ->join('scryfall_oracles', 'scryfall_oracles.oracle_id', '=', 'scryfall_cards.oracle_id')
+                                ->orderBy('scryfall_oracles.cmc')->select('deck_entries.*'),
             'color'    => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
-                                ->orderBy('scryfall_cards.color_identity')->select('deck_entries.*'),
+                                ->join('scryfall_oracles', 'scryfall_oracles.oracle_id', '=', 'scryfall_cards.oracle_id')
+                                ->orderBy('scryfall_oracles.color_identity')->select('deck_entries.*'),
             'rarity'   => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
                                 ->orderBy('scryfall_cards.rarity')->select('deck_entries.*'),
             'category' => $query->orderBy('category'),

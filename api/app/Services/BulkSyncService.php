@@ -396,15 +396,25 @@ class BulkSyncService
         $batch = [];
         $rawBatch = [];
         $priceBatch = [];
+        // Oracle-invariant fields write to scryfall_oracles directly during
+        // this pass — first card seen per oracle_id wins. Rep fields and
+        // aggregates on the oracle row are placeholders here; syncOracleTable
+        // overwrites them after handleMigrations + pruneStaleCards.
+        $oracleData = [];
         $processed = 0;
         $total = count($cards);
 
         foreach ($cards as $card) {
-            $row = $this->applyBulkCardData($card, $now);
-            if ($row === null) {
+            $payload = $this->applyBulkCardData($card, $now);
+            if ($payload === null) {
                 continue;
             }
-            $batch[] = $row;
+            $batch[] = $payload['card'];
+
+            $oid = $payload['oracle']['oracle_id'];
+            if (! isset($oracleData[$oid])) {
+                $oracleData[$oid] = $payload['oracle'];
+            }
 
             // Raw companion row — only emit when all_parts is present;
             // a NULL all_parts is indistinguishable from "no raw row
@@ -455,9 +465,16 @@ class BulkSyncService
             $this->prices->upsertRows($priceBatch);
         }
 
+        // Flush the deduped per-oracle batch to scryfall_oracles. Oracle-
+        // invariant fields land here authoritatively; rep + aggregates
+        // are still placeholders until syncOracleTable runs.
+        foreach (array_chunk(array_values($oracleData), self::UPSERT_CHUNK) as $chunk) {
+            $this->flushScryfallOracles($chunk);
+        }
+
         // Free the in-memory array before the JOIN — pgsql/mysql client
         // memory + 2 GB array side-by-side is wasteful.
-        unset($cards);
+        unset($cards, $oracleData);
 
         $this->refreshOurCardCounts();
 
@@ -470,11 +487,18 @@ class BulkSyncService
     }
 
     /**
-     * Map a single Scryfall bulk card object onto a scryfall_cards row array,
-     * ready for upsert. Returns null when the input is missing required fields.
+     * Map a single Scryfall bulk card object onto two row arrays — one for
+     * scryfall_cards (per-printing) and one for scryfall_oracles (oracle-
+     * invariant). Returns null when the input is missing required fields.
+     *
+     * The oracle row carries provisional values for rep / aggregate columns
+     * (default_*, image_*_back, name, layout, printing_count, max_released_at,
+     * is_playtest_any, excluded_from_catalog) — those satisfy NOT NULL on
+     * insert and get overwritten by syncOracleTable's UPDATE pass after
+     * handleMigrations + pruneStaleCards have settled the printing set.
      *
      * @param  array<string, mixed>  $c
-     * @return array<string, mixed>|null
+     * @return array{card: array<string, mixed>, oracle: array<string, mixed>}|null
      */
     public function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
     {
@@ -577,48 +601,132 @@ class BulkSyncService
         $variation  = (bool) ($c['variation']  ?? false);
         $oversized  = (bool) ($c['oversized']  ?? false);
         $setType    = $c['set_type'] ?? null;
+        $layout     = $layout ?? 'normal';
+        $setCode    = strtolower($c['set']);
+        $collector  = (string) ($c['collector_number'] ?? '');
+        $rarity     = $c['rarity'] ?? 'common';
+        $isPlaytest =
+            in_array('playtest', (array) ($c['promo_types'] ?? []), true)
+            // Fallback for Mystery Booster Playtest sets, which mark
+            // cards via set membership rather than promo_types.
+            || in_array($c['set'] ?? '', self::PLAYTEST_SET_CODES, true);
+        $partnerScope = $this->derivePartnerScope(
+            (array) ($c['keywords'] ?? []),
+            $faceFields['oracle_text'] ?? ($c['oracle_text'] ?? null),
+        );
+        $gameChanger = (bool) ($c['game_changer'] ?? false);
+        $canonColorIdentity = $this->canonicaliseColors($colorIdentity);
 
-        return array_merge($faceFields, [
-            'scryfall_id'      => $c['id'],
-            'oracle_id'        => $oracleId,
-            'name'             => $c['name'],
-            'set_code'         => strtolower($c['set']),
-            'collector_number' => (string) ($c['collector_number'] ?? ''),
-            'rarity'           => $c['rarity'] ?? 'common',
-            'layout'           => $layout ?? 'normal',
-            'is_dfc'           => $isDfc,
-            'cmc'              => isset($c['cmc']) ? (float) $c['cmc'] : null,
-            'colors'           => json_encode(array_values($colors)),
-            'color_identity'   => json_encode($this->canonicaliseColors($colorIdentity)),
-            'produced_mana'    => isset($c['produced_mana']) ? json_encode(array_values($c['produced_mana'])) : null,
-            'legalities'       => isset($c['legalities']) ? json_encode($c['legalities']) : null,
-            'keywords'         => isset($c['keywords']) ? json_encode($c['keywords']) : null,
-            'finishes'         => isset($c['finishes']) ? json_encode(array_values($c['finishes'])) : null,
-            'supertypes'       => json_encode($parsedTypes['supertypes']),
-            'types'            => json_encode($parsedTypes['types']),
-            'subtypes'         => json_encode($parsedTypes['subtypes']),
-            'released_at'      => $c['released_at'] ?? null,
-            'promo'            => $promo,
-            'variation'        => $variation,
-            'set_type'         => $setType,
-            'oversized'        => $oversized,
+        // Per-printing scryfall_cards row — oracle-invariant fields
+        // (cmc / colors / type_line / oracle_text / legalities / keywords /
+        // edhrec_rank / reserved / supertypes / types / subtypes) all live
+        // on scryfall_oracles now; see issue #33.
+        $card = [
+            'scryfall_id'         => $c['id'],
+            'oracle_id'           => $oracleId,
+            'name'                => $c['name'],
+            'set_code'            => $setCode,
+            'collector_number'    => $collector,
+            'rarity'              => $rarity,
+            'layout'              => $layout,
+            'is_dfc'              => $isDfc,
+            'image_small'         => $faceFields['image_small'],
+            'image_normal'        => $faceFields['image_normal'],
+            'image_large'         => $faceFields['image_large'],
+            'image_small_back'    => $faceFields['image_small_back'],
+            'image_normal_back'   => $faceFields['image_normal_back'],
+            'image_large_back'    => $faceFields['image_large_back'],
+            'mana_cost_back'      => $faceFields['mana_cost_back'],
+            'type_line_back'      => $faceFields['type_line_back'],
+            'oracle_text_back'    => $faceFields['oracle_text_back'],
+            'printed_text'        => $faceFields['printed_text'],
+            'printed_text_back'   => $faceFields['printed_text_back'],
+            'produced_mana'       => isset($c['produced_mana']) ? json_encode(array_values($c['produced_mana'])) : null,
+            'finishes'            => isset($c['finishes']) ? json_encode(array_values($c['finishes'])) : null,
+            'released_at'         => $c['released_at'] ?? null,
+            'promo'               => $promo,
+            'variation'           => $variation,
+            'set_type'            => $setType,
+            'oversized'           => $oversized,
             'is_default_eligible' => $this->deriveDefaultEligible($c),
-            'is_playtest'         =>
-                in_array('playtest', (array) ($c['promo_types'] ?? []), true)
-                // Fallback for Mystery Booster Playtest sets, which mark
-                // cards via set membership rather than promo_types.
-                || in_array($c['set'] ?? '', self::PLAYTEST_SET_CODES, true),
-            'edhrec_rank'      => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
-            'reserved'         => (bool) ($c['reserved'] ?? false),
-            'commander_game_changer' => (bool) ($c['game_changer'] ?? false),
-            'partner_scope'    => $this->derivePartnerScope(
-                (array) ($c['keywords'] ?? []),
-                $faceFields['oracle_text'] ?? ($c['oracle_text'] ?? null),
-            ),
-            'last_synced_at'   => $now,
-            'created_at'       => $now,
-            'updated_at'       => $now,
-        ]);
+            'is_playtest'         => $isPlaytest,
+            'commander_game_changer' => $gameChanger,
+            'partner_scope'       => $partnerScope,
+            'last_synced_at'      => $now,
+            'created_at'          => $now,
+            'updated_at'          => $now,
+        ];
+
+        // Oracle row — oracle-invariant fields are authoritative; rep /
+        // aggregate fields (default_*, image_*_back, name, layout flags,
+        // printing_count, max_released_at, is_playtest_any,
+        // excluded_from_catalog) carry provisional values that
+        // syncOracleTable's UPDATE pass overwrites.
+        $oracle = [
+            'oracle_id'                => $oracleId,
+            // Provisional rep fields — first card seen wins; syncOracleTable
+            // resolves to the actual rep printing.
+            'default_scryfall_id'      => $c['id'],
+            'default_set_code'         => $setCode,
+            'default_collector_number' => $collector,
+            'default_released_at'      => $c['released_at'] ?? null,
+            'default_rarity'           => $rarity,
+            'default_image_small'      => $faceFields['image_small'],
+            'default_image_normal'     => $faceFields['image_normal'],
+            'default_image_large'      => $faceFields['image_large'],
+            // Oracle-invariant fields (authoritative).
+            'name'                     => $c['name'],
+            'layout'                   => $layout,
+            'is_dfc'                   => $isDfc,
+            'mana_cost'                => $faceFields['mana_cost'],
+            'cmc'                      => isset($c['cmc']) ? (float) $c['cmc'] : null,
+            'colors'                   => json_encode(array_values($colors)),
+            'color_identity'           => json_encode($canonColorIdentity),
+            'type_line'                => $faceFields['type_line'],
+            'supertypes'               => json_encode($parsedTypes['supertypes']),
+            'types'                    => json_encode($parsedTypes['types']),
+            'subtypes'                 => json_encode($parsedTypes['subtypes']),
+            'oracle_text'              => $faceFields['oracle_text'],
+            'printed_text'             => $faceFields['printed_text'],
+            'power'                    => $faceFields['power'],
+            'toughness'                => $faceFields['toughness'],
+            'loyalty'                  => $faceFields['loyalty'],
+            'legalities'               => isset($c['legalities']) ? json_encode($c['legalities']) : null,
+            'keywords'                 => isset($c['keywords']) ? json_encode($c['keywords']) : null,
+            'edhrec_rank'              => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
+            'reserved'                 => (bool) ($c['reserved'] ?? false),
+            'commander_game_changer'   => $gameChanger,
+            'partner_scope'            => $partnerScope,
+            // Back-face oracle-invariant fields.
+            'mana_cost_back'           => $faceFields['mana_cost_back'],
+            'type_line_back'           => $faceFields['type_line_back'],
+            'oracle_text_back'         => $faceFields['oracle_text_back'],
+            'printed_text_back'        => $faceFields['printed_text_back'],
+            // Provisional rep-image-back; resolved by syncOracleTable.
+            'image_small_back'         => $faceFields['image_small_back'],
+            'image_normal_back'        => $faceFields['image_normal_back'],
+            'image_large_back'         => $faceFields['image_large_back'],
+            // Layout flags — derived from layout (oracle-invariant).
+            'is_transform'             => $layout === 'transform',
+            'is_mdfc'                  => $layout === 'modal_dfc',
+            'is_flip'                  => $layout === 'flip',
+            'is_meld'                  => $layout === 'meld',
+            'is_split'                 => $layout === 'split',
+            'is_leveler'               => $layout === 'leveler',
+            // Bit-masks — derived from canonicalised colors.
+            'color_identity_bits'      => self::buildColorBits($canonColorIdentity),
+            'colors_bits'              => self::buildColorBits(array_values($colors)),
+            // Provisional aggregates — overwritten by syncOracleTable.
+            'printing_count'           => 1,
+            'max_released_at'          => $c['released_at'] ?? null,
+            'is_playtest_any'          => $isPlaytest,
+            'excluded_from_catalog'    => false,
+            'last_synced_at'           => $now,
+            'created_at'               => $now,
+            'updated_at'               => $now,
+        ];
+
+        return ['card' => $card, 'oracle' => $oracle];
     }
 
     /**
@@ -762,18 +870,40 @@ class BulkSyncService
             ['scryfall_id'],
             [
                 'oracle_id', 'name', 'set_code', 'collector_number', 'rarity',
-                'layout', 'is_dfc', 'mana_cost', 'cmc', 'colors',
-                'color_identity', 'produced_mana', 'type_line', 'oracle_text', 'power',
-                'toughness', 'loyalty', 'legalities', 'keywords', 'finishes',
+                'layout', 'is_dfc', 'produced_mana', 'finishes',
                 'image_small', 'image_normal', 'image_large',
                 'image_small_back', 'image_normal_back', 'image_large_back',
                 'mana_cost_back', 'type_line_back', 'oracle_text_back',
                 'printed_text', 'printed_text_back',
-                'supertypes', 'types', 'subtypes',
                 'released_at', 'promo', 'variation', 'set_type',
                 'oversized', 'is_default_eligible', 'is_playtest',
-                'edhrec_rank', 'reserved',
                 'commander_game_changer', 'partner_scope',
+                'last_synced_at', 'updated_at',
+            ],
+        );
+    }
+
+    /**
+     * Batch upsert helper for scryfall_oracles. Updates only the fields
+     * we know are oracle-invariant — leaves rep/aggregate columns alone
+     * on collision so a partial chunk of a re-run doesn't clobber the
+     * resolved rep before syncOracleTable runs.
+     */
+    public function flushScryfallOracles(array $rows): void
+    {
+        \App\Models\ScryfallOracle::upsert(
+            $rows,
+            ['oracle_id'],
+            [
+                'name', 'layout', 'is_dfc',
+                'mana_cost', 'cmc', 'colors', 'color_identity',
+                'type_line', 'supertypes', 'types', 'subtypes',
+                'oracle_text', 'printed_text', 'power', 'toughness', 'loyalty',
+                'legalities', 'keywords', 'edhrec_rank', 'reserved',
+                'commander_game_changer', 'partner_scope',
+                'mana_cost_back', 'type_line_back', 'oracle_text_back', 'printed_text_back',
+                'is_transform', 'is_mdfc', 'is_flip', 'is_meld', 'is_split', 'is_leveler',
+                'color_identity_bits', 'colors_bits',
                 'last_synced_at', 'updated_at',
             ],
         );
@@ -1027,7 +1157,15 @@ class BulkSyncService
         $hasMore = true;
         $now = now();
         $batch = [];
+        $oracleData = [];
         $count = 0;
+
+        // applyBulkCardData parses type_line via the multi-word subtype
+        // matcher; bulk sync warms it once at the top of syncBulkCards
+        // but the targeted single-set path runs in isolation.
+        if ($this->multiWordSubtypes === []) {
+            $this->loadMultiWordSubtypes();
+        }
 
         while ($hasMore) {
             try {
@@ -1038,9 +1176,13 @@ class BulkSyncService
             }
 
             foreach ((array) ($resp['data'] ?? []) as $card) {
-                $row = $this->applyBulkCardData($card, $now);
-                if ($row !== null) {
-                    $batch[] = $row;
+                $payload = $this->applyBulkCardData($card, $now);
+                if ($payload !== null) {
+                    $batch[] = $payload['card'];
+                    $oid = $payload['oracle']['oracle_id'];
+                    if (! isset($oracleData[$oid])) {
+                        $oracleData[$oid] = $payload['oracle'];
+                    }
                 }
                 if (count($batch) >= self::UPSERT_CHUNK) {
                     $this->flushScryfallCards($batch);
@@ -1056,6 +1198,10 @@ class BulkSyncService
         if ($batch) {
             $this->flushScryfallCards($batch);
             $count += count($batch);
+        }
+
+        foreach (array_chunk(array_values($oracleData), self::UPSERT_CHUNK) as $chunk) {
+            $this->flushScryfallOracles($chunk);
         }
 
         // Refresh just this set's count.
@@ -1180,166 +1326,132 @@ class BulkSyncService
     }
 
     /**
-     * Re-derive supertypes/types/subtypes from type_line for any
-     * scryfall_cards row that has a type_line but missing parsed columns.
+     * Resolve scryfall_oracles' rep + aggregate columns. Run after
+     * handleMigrations + pruneStaleCards so it sees the post-merge,
+     * post-prune printing set.
      *
-     * Targets legacy rows synced before parseTypeLine() existed (or before
-     * the paper-only filter started excluding digital-only Alchemy cards
-     * from re-syncs) — those rows still carry valid type_line strings but
-     * have NULL in supertypes/types/subtypes, which then propagates into
-     * scryfall_oracles and breaks t:/type:/subtype: filters.
+     * Oracle-invariant fields (cmc, type_line, oracle_text, legalities,
+     * keywords, …) were already written authoritatively to
+     * scryfall_oracles by syncBulkCards; this method only:
+     *   1. deletes orphan oracles (no surviving printing);
+     *   2. UPDATEs rep fields (default_*, image_*_back, name, layout +
+     *      derived layout flags) by joining a window-ranked subquery
+     *      over scryfall_cards;
+     *   3. UPDATEs aggregates (printing_count, max_released_at,
+     *      is_playtest_any, excluded_from_catalog);
+     *   4. recomputes color_identity_bits / colors_bits from the
+     *      now-canonical color JSON columns (in case a test or repair
+     *      flow wrote color_identity without bits).
      *
-     * Idempotent: only touches rows where at least one of the three parsed
-     * columns is NULL. Runs in chunks via the auto-increment id so it scales.
-     *
-     * @return int  rows updated
-     */
-    public function backfillCardTypes(): int
-    {
-        if ($this->multiWordSubtypes === []) {
-            $this->loadMultiWordSubtypes();
-        }
-
-        $updated = 0;
-        ScryfallCard::query()
-            ->whereNotNull('type_line')
-            ->where(function ($q) {
-                $q->whereNull('supertypes')
-                  ->orWhereNull('types')
-                  ->orWhereNull('subtypes');
-            })
-            ->select('id', 'type_line')
-            ->chunkById(self::UPSERT_CHUNK, function ($cards) use (&$updated) {
-                $now = now();
-                foreach ($cards as $card) {
-                    $parsed = $this->parseTypeLine(
-                        (string) $card->type_line,
-                        $this->multiWordSubtypes,
-                    );
-                    DB::table('scryfall_cards')
-                        ->where('id', $card->id)
-                        ->update([
-                            'supertypes' => json_encode($parsed['supertypes']),
-                            'types'      => json_encode($parsed['types']),
-                            'subtypes'   => json_encode($parsed['subtypes']),
-                            'updated_at' => $now,
-                        ]);
-                    $updated++;
-                }
-            });
-
-        if ($updated > 0) {
-            Log::info("BulkSyncService::backfillCardTypes — backfilled {$updated} cards");
-        }
-
-        return $updated;
-    }
-
-    /**
-     * Rebuild scryfall_oracles from scryfall_cards. One row per oracle_id.
-     *
-     * - Picks the default representative printing with the same priority
-     *   order the controller used to resolve on every query (minus the
-     *   user-specific "owned wins" tier — default rep is user-agnostic).
-     * - Aggregates printing_count, max_released_at, is_playtest_any, and
-     *   excluded_from_catalog (set_type hard-exclude rolled up to oracle
-     *   grain) so the search path doesn't need the sets LEFT JOIN anymore.
-     * - Computes color_identity_bits / colors_bits via JSON_CONTAINS so
-     *   parser color clauses collapse to a single integer op.
-     *
-     * Idempotent: TRUNCATE + INSERT SELECT. Run after handleMigrations so
-     * post-merge scryfall_ids are reflected in default_scryfall_id.
+     * Idempotent. Issue #30 set up scryfall_oracles; issue #33 dropped
+     * the oracle-invariant columns from scryfall_cards and split the
+     * write path so rep + aggregate stay computable here without
+     * needing those columns on the source table.
      *
      * @return array{oracles: int}
      */
     public function syncOracleTable(): array
     {
-        // Defensive: legacy rows (digital-only Alchemy cards synced before
-        // the paper-only filter, or rows predating the type-line parser)
-        // can sit in scryfall_cards with NULL parsed-type columns. The
-        // INSERT-SELECT below copies those NULLs straight into
-        // scryfall_oracles and breaks every t:/type:/subtype: filter, so
-        // re-derive them from type_line first.
-        $this->backfillCardTypes();
-
         $excludedList = "'" . implode("','", self::INELIGIBLE_SET_TYPES) . "'";
 
-        DB::statement('TRUNCATE TABLE scryfall_oracles');
+        // 1. Orphan cleanup — oracles whose every printing was pruned
+        //    by pruneStaleCards (or removed via handleMigrations) no
+        //    longer have a scryfall_cards row.
+        DB::statement(<<<'SQL'
+            DELETE so FROM scryfall_oracles so
+            LEFT JOIN scryfall_cards sc ON sc.oracle_id = so.oracle_id
+            WHERE sc.scryfall_id IS NULL
+        SQL);
 
-        DB::statement(<<<SQL
+        // 2. Insert skeleton rows for any oracle that exists in
+        //    scryfall_cards but not yet in scryfall_oracles (e.g., when
+        //    syncOracleTable runs outside the syncBulkCards path —
+        //    targeted set syncs, tests). The skeleton carries the
+        //    oracle_id only; the UPDATE below fills in the rep and
+        //    aggregate columns. Oracle-invariant columns stay at their
+        //    table defaults (NULL JSON, empty strings) — production
+        //    callers always go through syncBulkCards first, so this is
+        //    purely a safety net for partial flows.
+        DB::statement(<<<'SQL'
             INSERT INTO scryfall_oracles (
                 oracle_id,
-                default_scryfall_id, default_set_code, default_collector_number,
-                default_released_at, default_rarity,
-                default_image_small, default_image_normal, default_image_large,
-                name, layout, is_dfc, mana_cost, cmc, colors, color_identity,
-                type_line, supertypes, types, subtypes,
-                oracle_text, printed_text, power, toughness, loyalty,
-                legalities, keywords, edhrec_rank, reserved,
-                commander_game_changer, partner_scope,
-                mana_cost_back, type_line_back, oracle_text_back, printed_text_back,
-                image_small_back, image_normal_back, image_large_back,
-                printing_count, max_released_at,
-                is_playtest_any, excluded_from_catalog,
-                is_transform, is_mdfc, is_flip, is_meld, is_split, is_leveler,
-                color_identity_bits, colors_bits,
-                last_synced_at, created_at, updated_at
+                default_scryfall_id, default_set_code, default_collector_number, default_rarity,
+                name, layout, is_dfc,
+                printing_count,
+                created_at, updated_at
             )
-            SELECT
-                reps.oracle_id,
-                reps.scryfall_id, reps.set_code, reps.collector_number,
-                reps.released_at, reps.rarity,
-                reps.image_small, reps.image_normal, reps.image_large,
-                reps.name, reps.layout, reps.is_dfc, reps.mana_cost, reps.cmc,
-                reps.colors, reps.color_identity,
-                reps.type_line, reps.supertypes, reps.types, reps.subtypes,
-                reps.oracle_text, reps.printed_text,
-                reps.power, reps.toughness, reps.loyalty,
-                reps.legalities, reps.keywords, reps.edhrec_rank, reps.reserved,
-                reps.commander_game_changer, reps.partner_scope,
-                reps.mana_cost_back, reps.type_line_back,
-                reps.oracle_text_back, reps.printed_text_back,
-                reps.image_small_back, reps.image_normal_back, reps.image_large_back,
-                aggs.printing_count, aggs.max_released_at,
-                aggs.is_playtest_any, aggs.excluded_from_catalog,
-                (reps.layout = 'transform'),
-                (reps.layout = 'modal_dfc'),
-                (reps.layout = 'flip'),
-                (reps.layout = 'meld'),
-                (reps.layout = 'split'),
-                (reps.layout = 'leveler'),
-                (COALESCE(JSON_CONTAINS(reps.color_identity, '"W"'), 0) * 1
-                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"U"'), 0) * 2
-                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"B"'), 0) * 4
-                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"R"'), 0) * 8
-                 + COALESCE(JSON_CONTAINS(reps.color_identity, '"G"'), 0) * 16),
-                (COALESCE(JSON_CONTAINS(reps.colors, '"W"'), 0) * 1
-                 + COALESCE(JSON_CONTAINS(reps.colors, '"U"'), 0) * 2
-                 + COALESCE(JSON_CONTAINS(reps.colors, '"B"'), 0) * 4
-                 + COALESCE(JSON_CONTAINS(reps.colors, '"R"'), 0) * 8
-                 + COALESCE(JSON_CONTAINS(reps.colors, '"G"'), 0) * 16),
-                NOW(), NOW(), NOW()
-            FROM (
-                SELECT sc.*,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY sc.oracle_id
-                           ORDER BY
-                               CASE WHEN sc.is_default_eligible THEN 0 ELSE 1 END,
-                               sc.promo ASC,
-                               COALESCE(sc.released_at, ms.released_at) DESC,
-                               sc.set_code ASC,
-                               -- collector_number can be '14p', '★123',
-                               -- 'prerelease'… extract leading/embedded
-                               -- digits via REGEXP_SUBSTR so strict-mode
-                               -- INSERT doesn't trip on the cast. NULLs
-                               -- sort last under ASC when paired with a
-                               -- string fallback.
-                               CAST(REGEXP_SUBSTR(sc.collector_number, '[0-9]+') AS UNSIGNED) ASC,
-                               sc.collector_number ASC
-                       ) AS rn
-                FROM scryfall_cards sc
-                LEFT JOIN sets ms ON ms.code = sc.set_code
-            ) reps
+            SELECT DISTINCT
+                sc.oracle_id,
+                sc.scryfall_id, sc.set_code, sc.collector_number, sc.rarity,
+                sc.name, sc.layout, sc.is_dfc,
+                0,
+                NOW(), NOW()
+            FROM scryfall_cards sc
+            LEFT JOIN scryfall_oracles so ON so.oracle_id = sc.oracle_id
+            WHERE so.oracle_id IS NULL
+            GROUP BY sc.oracle_id
+        SQL);
+
+        // 3. Rep UPDATE — pick the best representative printing per
+        //    oracle and copy its identifiers / images / layout onto
+        //    scryfall_oracles. Same priority order the controller used
+        //    pre-#30 (minus the user-specific "owned wins" tier).
+        DB::statement(<<<'SQL'
+            UPDATE scryfall_oracles so
+            JOIN (
+                SELECT * FROM (
+                    SELECT
+                        sc.oracle_id, sc.scryfall_id, sc.set_code, sc.collector_number,
+                        sc.released_at, sc.rarity, sc.name, sc.layout, sc.is_dfc,
+                        sc.image_small, sc.image_normal, sc.image_large,
+                        sc.image_small_back, sc.image_normal_back, sc.image_large_back,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY sc.oracle_id
+                            ORDER BY
+                                CASE WHEN sc.is_default_eligible THEN 0 ELSE 1 END,
+                                sc.promo ASC,
+                                COALESCE(sc.released_at, ms.released_at) DESC,
+                                sc.set_code ASC,
+                                -- collector_number can be '14p', '★123',
+                                -- 'prerelease'… extract digits via
+                                -- REGEXP_SUBSTR so strict-mode UPDATE
+                                -- doesn't trip on the cast.
+                                CAST(REGEXP_SUBSTR(sc.collector_number, '[0-9]+') AS UNSIGNED) ASC,
+                                sc.collector_number ASC
+                        ) AS rn
+                    FROM scryfall_cards sc
+                    LEFT JOIN sets ms ON ms.code = sc.set_code
+                ) ranked
+                WHERE rn = 1
+            ) rep ON rep.oracle_id = so.oracle_id
+            SET so.default_scryfall_id      = rep.scryfall_id,
+                so.default_set_code         = rep.set_code,
+                so.default_collector_number = rep.collector_number,
+                so.default_released_at      = rep.released_at,
+                so.default_rarity           = rep.rarity,
+                so.default_image_small      = rep.image_small,
+                so.default_image_normal     = rep.image_normal,
+                so.default_image_large      = rep.image_large,
+                so.image_small_back         = rep.image_small_back,
+                so.image_normal_back        = rep.image_normal_back,
+                so.image_large_back         = rep.image_large_back,
+                so.name                     = rep.name,
+                so.layout                   = rep.layout,
+                so.is_dfc                   = rep.is_dfc,
+                so.is_transform             = (rep.layout = 'transform'),
+                so.is_mdfc                  = (rep.layout = 'modal_dfc'),
+                so.is_flip                  = (rep.layout = 'flip'),
+                so.is_meld                  = (rep.layout = 'meld'),
+                so.is_split                 = (rep.layout = 'split'),
+                so.is_leveler               = (rep.layout = 'leveler'),
+                so.updated_at               = NOW()
+        SQL);
+
+        // 4. Aggregate UPDATE — printing_count, max_released_at,
+        //    is_playtest_any, excluded_from_catalog. Set-type / digital
+        //    rollup is the only place we still need the sets JOIN.
+        DB::statement(<<<SQL
+            UPDATE scryfall_oracles so
             JOIN (
                 SELECT
                     sc.oracle_id,
@@ -1361,13 +1473,35 @@ class BulkSyncService
                 FROM scryfall_cards sc
                 LEFT JOIN sets ms ON ms.code = sc.set_code
                 GROUP BY sc.oracle_id
-            ) aggs ON aggs.oracle_id = reps.oracle_id
-            WHERE reps.rn = 1
-SQL
-        );
+            ) aggs ON aggs.oracle_id = so.oracle_id
+            SET so.printing_count        = aggs.printing_count,
+                so.max_released_at       = aggs.max_released_at,
+                so.is_playtest_any       = aggs.is_playtest_any,
+                so.excluded_from_catalog = aggs.excluded_from_catalog
+SQL);
+
+        // 5. Bit-mask refresh — recompute from the canonical color JSON
+        //    columns. Cheap and idempotent; protects against stale bits
+        //    if a colors / color_identity write went through any path
+        //    other than syncBulkCards.
+        DB::statement(<<<'SQL'
+            UPDATE scryfall_oracles
+            SET color_identity_bits =
+                    (COALESCE(JSON_CONTAINS(color_identity, '"W"'), 0) * 1
+                   + COALESCE(JSON_CONTAINS(color_identity, '"U"'), 0) * 2
+                   + COALESCE(JSON_CONTAINS(color_identity, '"B"'), 0) * 4
+                   + COALESCE(JSON_CONTAINS(color_identity, '"R"'), 0) * 8
+                   + COALESCE(JSON_CONTAINS(color_identity, '"G"'), 0) * 16),
+                colors_bits =
+                    (COALESCE(JSON_CONTAINS(colors, '"W"'), 0) * 1
+                   + COALESCE(JSON_CONTAINS(colors, '"U"'), 0) * 2
+                   + COALESCE(JSON_CONTAINS(colors, '"B"'), 0) * 4
+                   + COALESCE(JSON_CONTAINS(colors, '"R"'), 0) * 8
+                   + COALESCE(JSON_CONTAINS(colors, '"G"'), 0) * 16)
+        SQL);
 
         $count = (int) DB::table('scryfall_oracles')->count();
-        Log::info("BulkSyncService::syncOracleTable — inserted {$count} oracles");
+        Log::info("BulkSyncService::syncOracleTable — resolved {$count} oracles");
 
         return ['oracles' => $count];
     }
