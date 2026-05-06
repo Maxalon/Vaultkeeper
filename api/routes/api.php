@@ -105,10 +105,10 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
 
     Route::get('location-groups',               [LocationGroupController::class, 'index']);
     Route::post('location-groups',              [LocationGroupController::class, 'store']);
-    // reorder walks up to 1000 nodes and writes each — tighter throttle
-    // matches the cap on payload size.
-    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder'])
-        ->middleware('throttle:30,1');
+    // Single-item move — atomic per drag-and-drop in the sidebar. Renumbers
+    // siblings only within the affected source/destination parents.
+    Route::post('location-groups/move',         [LocationGroupController::class, 'move'])
+        ->middleware('throttle:120,1');
     Route::put('location-groups/{group}',       [LocationGroupController::class, 'update']);
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 

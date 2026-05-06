@@ -117,9 +117,11 @@ class DeckOwnershipService
      *   - owned_total    = Σ min(entry.quantity, owned_copies) * unit_price
      *   - missing_total  = Σ max(0, entry.quantity - owned_copies) * unit_price
      *
-     * `unit_price` is finish-aware: when the entry is bound to a physical
-     * copy, the bound CE's foil/is_etched select the price column;
-     * otherwise nonfoil. EUR-only — no currency parameter.
+     * `unit_price` is finish-aware: bound entries take finish from the
+     * linked CollectionEntry, unbound (Wanted) entries take it from the
+     * per-slot deck_entries.foil/is_etched columns set by the sidebar's
+     * finish selector. NULL on both sides falls through to nonfoil.
+     * EUR-only — no currency parameter.
      *
      * @return array{total: float, owned_total: float, missing_total: float, missing_price_count: int, generated_at: string}
      */
@@ -132,6 +134,8 @@ class DeckOwnershipService
             ->select(
                 'de.scryfall_id',
                 'de.quantity',
+                'de.foil as de_foil',
+                'de.is_etched as de_etched',
                 'pc.foil as pc_foil',
                 'pc.is_etched as pc_etched',
                 'cp.eur',
@@ -153,9 +157,14 @@ class DeckOwnershipService
             $ownedQty = min($qty, $ownedMap[$r->scryfall_id] ?? 0);
             $missingQty = max(0, $qty - $ownedQty);
 
+            // Bound entries source finish from the bound CE; unbound entries
+            // fall back to the per-deck-slot finish on deck_entries (NULL =
+            // nonfoil, set by the deck sidebar's finish selector).
+            $foil    = $r->pc_foil   ?? $r->de_foil   ?? false;
+            $etched  = $r->pc_etched ?? $r->de_etched ?? false;
             $price = $this->pickPriceCents(
-                (bool) ($r->pc_foil ?? false),
-                (bool) ($r->pc_etched ?? false),
+                (bool) $foil,
+                (bool) $etched,
                 $r->eur, $r->eur_foil, $r->eur_etched,
             );
             if ($price === null) {

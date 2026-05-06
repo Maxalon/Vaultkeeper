@@ -373,6 +373,13 @@ class ScryfallCardController extends Controller
                 'is_default_eligible' => (bool) $r->is_default_eligible,
                 'promo'               => (bool) $r->promo,
                 'variation'           => (bool) $r->variation,
+                // Drives the deck sidebar's per-printing finish toggle —
+                // disable Foil when the array doesn't contain 'foil', etc.
+                // Comes back as a raw JSON string from DB::select; decode
+                // here so the API contract stays a real array.
+                'finishes'            => isset($r->finishes)
+                    ? (json_decode($r->finishes, true) ?: null)
+                    : null,
                 'ownership' => [
                     'nonfoil'           => $nonfoil,
                     'foil'              => $foil,
