@@ -49,11 +49,14 @@ async function deleteGroup() {
   await collection.deleteGroup(props.group.id)
 }
 
-const childrenContainer = ref(null)
-// Destination parent is read off the container's `data-parent-id` attr in
-// the composable's onEnd handler, so we don't need to thread the group id
-// through here.
-useSidebarSortable(childrenContainer)
+// The drag container is owned by the FormKit composable: it returns the
+// element ref to bind, and the values ref we render from. Initial values
+// are taken from this group's children at mount time; external mutations
+// remount the whole sidebar via the `:key` on LocationSidebar's dropzone.
+const [childrenContainer, children] = useSidebarSortable(
+  props.group.children,
+  () => props.group.id,
+)
 </script>
 
 <template>
@@ -88,7 +91,7 @@ useSidebarSortable(childrenContainer)
       data-sidebar-container="group"
       :data-parent-id="group.id"
     >
-      <template v-for="child in group.children" :key="itemKey(child)">
+      <template v-for="child in children" :key="itemKey(child)">
         <SidebarGroup v-if="child.kind === 'group'" :group="child" />
         <SidebarRow v-else :item="child" :nested="true" />
       </template>

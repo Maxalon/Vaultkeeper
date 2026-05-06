@@ -1,53 +1,82 @@
-import { useDraggable } from 'vue-draggable-plus'
+import { useDragAndDrop } from '@formkit/drag-and-drop/vue'
 import { useCollectionStore } from '../stores/collection'
 
 /**
- * Attach SortableJS to a sidebar container without giving it a reactive
- * list to mutate. Sortable is purely an input device here: on drop we
- * read the move out of the SortableEvent (kind/id from data attrs on
- * the dragged element, destination parent from the destination
- * container's `data-parent-id`, position from `newIndex`), then
- * dispatch a single `moveItem` action.
+ * Bind drag-and-drop to one sidebar container (the root or one group's
+ * children) using @formkit/drag-and-drop. Unlike the previous setup
+ * with vue-draggable-plus / Sortable.js, this library mutates the
+ * values it manages in a single pass on drop rather than mutating the
+ * DOM continuously during the drag, so Vue's vnode references stay in
+ * sync with the actual DOM and the phantom-copy / snap-back bugs that
+ * dogged the previous iterations are gone by construction.
  *
- * The store applies the move immutably AND bumps a render epoch bound
- * to `:key` on the root dropzone, which forces Vue to tear down and
- * rebuild the entire sidebar subtree (along with this very Sortable
- * instance). That's what makes the result visually trustworthy: any
- * DOM that Sortable mid-drag-mutated gets thrown away and rebuilt
- * from the new tree, so phantom copies are impossible by construction.
+ * Architecture
+ * ------------
+ * The library OWNS the rendered values ref for its container — we
+ * render directly from the ref it returns. On drop we dispatch a
+ * `moveItem` so the Pinia store stays in sync (the canonical tree is
+ * read by location dropdowns, deck targets, etc. elsewhere in the
+ * app). We do NOT watch Pinia from this composable — that would race
+ * with the library's own mutations and reintroduce the same class of
+ * bugs we just escaped.
  *
- * Calling `useDraggable` with no list argument (the third overload of
- * the typings) means the library installs none of its auto-mutation
- * onAdd/onRemove/onUpdate handlers — only our onEnd runs.
+ * External mutations (createDeck, deleteEntry, fetchGroups, ...) bump
+ * `collection.sidebarExternalEpoch`, which is bound to a `:key` on the
+ * sidebar dropzone. That forces Vue to tear down and remount the drag
+ * containers with fresh initial values from Pinia. Move actions don't
+ * bump the epoch, so an in-progress drag is never disturbed.
+ *
+ * @param {Array<Object>} initial - children of this container at mount
+ *   time (top-level items for the root, `group.children` for a group).
+ *   Used once for initialisation; subsequent updates flow through the
+ *   external-epoch remount.
+ * @param {() => number|null} parentIdGetter - returns the destination
+ *   parent group id for moves that land inside this container, or null
+ *   for the top-level container.
+ * @returns {[Ref<HTMLElement|undefined>, Ref<Array<Object>>]} the
+ *   `[parentRef, valuesRef]` to bind to the container element and to
+ *   render from in the v-for.
  */
-export function useSidebarSortable(elementRef) {
+export function useSidebarSortable(initial, parentIdGetter) {
   const collection = useCollectionStore()
 
-  useDraggable(elementRef, {
-    group: { name: 'sidebar', pull: true, put: true },
-    handle: '.drag-handle',
-    animation: 150,
-    ghostClass: 'sortable-ghost',
-    chosenClass: 'sortable-chosen',
-    onEnd: (evt) => {
-      const item = evt.item
-      const kind = item.dataset.kind
-      const id = Number(item.dataset.id)
-      if (!kind || ! Number.isFinite(id)) return
+  // Plain shallow copies so the library never mutates Pinia state by
+  // accident. The library is the single owner of the returned values
+  // ref from this point on.
+  const seed = (initial || []).map((item) => ({ ...item }))
 
-      const dest = evt.to
-      const rawParent = dest.dataset.parentId
-      // Root container has no data-parent-id (or empty string); group
-      // containers carry the group id as a number.
-      const parentId = rawParent ? Number(rawParent) : null
+  return useDragAndDrop(seed, {
+    group: 'sidebar',
+    dragHandle: '.drag-handle',
 
-      // newIndex is the destination position in Sortable's draggable
-      // child list. Our containers contain only draggable children, so
-      // it matches the desired position in the merged sibling list.
-      const position = evt.newIndex
-      if (typeof position !== 'number' || position < 0) return
+    // Same-container reorder. `position` is the index in the destination
+    // values array — the merged sibling list — which is exactly what
+    // the backend's `move` endpoint wants.
+    onSort: (data) => {
+      const moved = data.draggedNodes[0].data.value
+      const parentId = parentIdGetter()
+      collection.moveItem({
+        kind: moved.kind,
+        id: moved.id,
+        parentId,
+        position: data.position,
+      })
+    },
 
-      collection.moveItem({ kind, id, parentId, position })
+    // Cross-container transfer. The destination parent id is read from
+    // the target container's `data-parent-id` attribute (root has none,
+    // group containers carry the group id).
+    onTransfer: (data) => {
+      const moved = data.draggedNodes[0].data.value
+      const targetEl = data.targetParent.el
+      const raw = targetEl?.dataset?.parentId
+      const targetParentId = raw ? Number(raw) : null
+      collection.moveItem({
+        kind: moved.kind,
+        id: moved.id,
+        parentId: targetParentId,
+        position: data.targetIndex,
+      })
     },
   })
 }

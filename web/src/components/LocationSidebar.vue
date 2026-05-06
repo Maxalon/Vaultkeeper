@@ -182,8 +182,16 @@ provide('sidebarCtx', {
   activeDeckId,
 })
 
-const rootDropzone = ref(null)
-useSidebarSortable(rootDropzone)
+// Bind the root dropzone to @formkit/drag-and-drop. The composable
+// returns the parent ref + a values ref that the library mutates on
+// drop; we render from `rootItems` so the rendered list and the
+// library's view of the world stay in sync. External mutations refresh
+// via the dropzone's `:key` (see template) which remounts the whole
+// sidebar with fresh initial values.
+const [rootDropzone, rootItems] = useSidebarSortable(
+  collection.sidebarItems,
+  () => null,
+)
 
 function itemKey(item) { return `${item.kind}:${item.id}` }
 </script>
@@ -236,18 +244,18 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
         <span class="num">{{ collection.review.card_count }}</span>
       </button>
 
-      <!-- :key on the dropzone forces a full teardown + rebuild of the
-           sidebar subtree (and its Sortable instances) after every move
-           or refetch. Sortable's mid-drag DOM mutations otherwise leave
-           Vue's vnode references out of sync with the live DOM, which
-           surfaces as a phantom copy of the dropped item. -->
+      <!-- :key bound to `sidebarExternalEpoch` so any *external* mutation
+           (createDeck, fetchGroups, deleteGroup, …) remounts the drag
+           containers with fresh initial values. Drag moves themselves do
+           NOT bump that epoch, so an in-flight drag never gets blown
+           away by Vue tearing down the subtree mid-gesture. -->
       <div
         ref="rootDropzone"
-        :key="collection.sidebarRenderEpoch"
+        :key="collection.sidebarExternalEpoch"
         class="sidebar-dropzone"
         data-sidebar-container="root"
       >
-        <template v-for="item in collection.sidebarItems" :key="itemKey(item)">
+        <template v-for="item in rootItems" :key="itemKey(item)">
           <SidebarGroup v-if="item.kind === 'group'" :group="item" />
           <SidebarRow v-else :item="item" />
         </template>
@@ -494,18 +502,18 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
   padding-bottom: 40px;
 }
 
-/* SortableJS drag states — applied at runtime to direct children of any
-   sidebar dropzone. The ghost (the placeholder where the dragged item
-   came from) is fully hidden so we never render a phantom copy alongside
-   Sortable's transient float clone. The chosen state lights up the row
-   the user is actively grabbing. */
+/* Drag states from @formkit/drag-and-drop. The library applies
+   `.dragging` to the source row while a drag is in progress — we
+   visually subdue it so the floating drag image is the only "live"
+   copy on screen. `.dropZone` highlights the destination container
+   when the cursor is over it. */
 /*noinspection CssUnusedSymbol*/
-:deep(.sortable-ghost) {
-  visibility: hidden;
+:deep(.dragging) {
+  opacity: 0.35;
 }
 /*noinspection CssUnusedSymbol*/
-:deep(.sortable-chosen) {
-  background: var(--bg-2);
+:deep(.dropZone) {
+  background: color-mix(in oklab, var(--amber) 8%, transparent);
 }
 
 /* ── Footer ─────────────────────────────────────────────────────── */
