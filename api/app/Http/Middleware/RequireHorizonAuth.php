@@ -25,7 +25,7 @@ class RequireHorizonAuth
     {
         $admin = HorizonAdmin::query()->first();
         if (! $admin) {
-            return redirect('/horizon-setup');
+            return redirect('/setup');
         }
 
         $sessionToken = $request->session()->get('horizon_authed');
@@ -36,6 +36,6 @@ class RequireHorizonAuth
             return $next($request);
         }
 
-        return redirect('/horizon-login');
+        return redirect('/login');
     }
 }
