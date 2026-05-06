@@ -135,16 +135,15 @@ export const useCollectionStore = defineStore('collection', {
      */
     sidebarItems: [],
     /**
-     * Bumped after every successful local sidebar mutation. Bound to
-     * `:key` on the root dropzone so Vue tears down and rebuilds the
-     * entire sidebar subtree (and its Sortable instances) on each move.
-     * Without this, Sortable's mid-drag DOM moves can leave Vue's vnode
-     * references out of sync with actual DOM positions, which surfaces
-     * as a "phantom copy" of the dropped item that only clears on
-     * reload. A full remount is heavy in theory but ~ms in practice
-     * for the sidebar's size.
+     * Bumped only when something OUTSIDE the drag-and-drop layer mutates
+     * the sidebar tree — `fetchGroups`, deck/group/location create or
+     * delete, batch-move, etc. The sidebar binds it to `:key` on the
+     * dropzone so an external mutation forces a clean remount of the
+     * drag containers (which re-initialise from fresh Pinia data). A
+     * sidebar drag does NOT bump this — drag state would otherwise get
+     * blown away mid-gesture.
      */
-    sidebarRenderEpoch: 0,
+    sidebarExternalEpoch: 0,
     /**
      * Review-queue summary: { card_count } when there are review-flagged
      * copies, otherwise null. Driven by the backend so the row only
@@ -206,6 +205,44 @@ export const useCollectionStore = defineStore('collection', {
       return out
     },
 
+    /**
+     * Counter value for a group's header badge, derived from the
+     * canonical Pinia tree. The sidebar renders rows from the
+     * drag-and-drop library's local values ref (so DOM stays in sync
+     * with drag state), but counts read from Pinia so they reflect the
+     * current state across the whole subtree — including child groups
+     * the outer SidebarGroup component can't see directly.
+     *
+     * @param {number} groupId
+     * @param {'cards'|'locations'} mode
+     */
+    groupCounter(state) {
+      const findGroup = (items, id) => {
+        for (const item of items) {
+          if (item.kind !== 'group') continue
+          if (item.id === id) return item
+          const nested = findGroup(item.children || [], id)
+          if (nested) return nested
+        }
+        return null
+      }
+      const sumCards = (g) =>
+        (g.children || []).reduce((sum, c) => {
+          if (c.kind === 'deck') return sum + (c.entry_count || 0)
+          if (c.kind === 'location') return sum + (c.card_count || 0)
+          if (c.kind === 'group') return sum + sumCards(c)
+          return sum
+        }, 0)
+      return (groupId, mode = 'cards') => {
+        const g = findGroup(state.sidebarItems, groupId)
+        if (!g) return 0
+        if (mode === 'locations') {
+          return (g.children || []).filter((c) => c.kind !== 'group').length
+        }
+        return sumCards(g)
+      }
+    },
+
     parsedSearch(state) {
       return parseSearch(state.filters.search)
     },
@@ -232,11 +269,14 @@ export const useCollectionStore = defineStore('collection', {
   actions: {
     async fetchGroups() {
       const { data } = await api.get('/location-groups')
-      // Authoritative replacement. The new sidebar drag-and-drop never
+      // Authoritative replacement. The sidebar drag-and-drop never
       // mutates `sidebarItems` in place — every change goes through
       // `moveItem`, which produces a new tree — so it's safe to reassign.
       this.sidebarItems = data.items || []
-      this.sidebarRenderEpoch++
+      // External path: force the drag containers to remount with fresh
+      // initial values. Move actions skip this so they don't disturb
+      // the in-flight drag state.
+      this.sidebarExternalEpoch++
       this.totalCount = data.total_count
       this.review = data.review || null
     },
@@ -365,11 +405,8 @@ export const useCollectionStore = defineStore('collection', {
       // group children references are all we share with the post-move tree.
       const before = this.sidebarItems
 
-      // Optimistic apply + force remount of the sidebar subtree so any
-      // DOM Sortable touched gets thrown away and rebuilt from the new
-      // tree. This is what makes the result visually trustworthy.
+      // Optimistic apply.
       this.sidebarItems = applyMoveImmutable(before, cmd)
-      this.sidebarRenderEpoch++
 
       // Serialize: every move waits for the previous one to settle before
       // hitting the server. This makes the server free of cross-request
