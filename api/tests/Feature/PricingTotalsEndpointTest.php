@@ -237,6 +237,34 @@ class PricingTotalsEndpointTest extends TestCase
             ]);
     }
 
+    public function test_deck_totals_uses_unbound_slot_finish(): void
+    {
+        $card = ScryfallCard::factory()->create();
+        $this->priceFor($card->scryfall_id, '3.00', '7.00');
+
+        $deck = Deck::create([
+            'user_id' => $this->user->id, 'name' => 'Y', 'format' => 'commander',
+        ]);
+        // Wanted-only slot (no physical_copy_id) flagged as foil — should
+        // price at eur_foil even though no bound CE exists.
+        DeckEntry::create([
+            'deck_id'     => $deck->id,
+            'scryfall_id' => $card->scryfall_id,
+            'quantity'    => 2,
+            'zone'        => 'main',
+            'foil'        => true,
+        ]);
+
+        $this->withHeaders($this->authHeaders())
+            ->getJson("/api/decks/{$deck->id}/totals")
+            ->assertOk()
+            ->assertJson([
+                'total'         => 14.0, // 2 × 7.00
+                'owned_total'   => 0.0,
+                'missing_total' => 14.0,
+            ]);
+    }
+
     public function test_deck_totals_blocks_other_users(): void
     {
         $other = User::factory()->create();

@@ -85,11 +85,19 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            'foil'                   => 'sometimes|nullable|boolean',
+            'is_etched'              => 'sometimes|nullable|boolean',
             // Inline picker: 'create_new_copy' delegates the create to
             // DeckEntryActionService::createWithNewCopy so a fresh CE is
             // created in the deck-location and linked in the same write.
             'mode'                   => 'sometimes|in:create_new_copy',
         ]);
+
+        // Mirror PhysicalCopyEditService's mutual exclusion: setting etched
+        // forces foil=false. Enforced controller-side, not at the DB level.
+        if (! empty($data['is_etched'])) {
+            $data['foil'] = false;
+        }
 
         // Inline-picker shortcut: "I just bought it (and I'm putting it
         // in this deck)". Bypasses the regular store path entirely so
@@ -122,6 +130,8 @@ class DeckEntryController extends Controller
                 'signature_for_entry_id' => $data['signature_for_entry_id'] ?? null,
                 'wanted'                 => $data['wanted'] ?? null,
                 'physical_copy_id'       => $data['physical_copy_id'] ?? null,
+                'foil'                   => array_key_exists('foil', $data) ? $data['foil'] : null,
+                'is_etched'              => array_key_exists('is_etched', $data) ? $data['is_etched'] : null,
             ]);
 
             if (! empty($data['is_commander'])) {
@@ -159,6 +169,25 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            // Per-deck-slot finish, used only on unbound entries. Bound
+            // entries source finish from the linked CollectionEntry — edit
+            // those through the Physical Copies surface, not here.
+            'foil'                   => [
+                'sometimes', 'nullable', 'boolean',
+                function ($attr, $value, $fail) use ($entry) {
+                    if ($entry->physical_copy_id !== null) {
+                        $fail('Cannot change finish while a physical copy is bound. Edit the physical copy directly.');
+                    }
+                },
+            ],
+            'is_etched'              => [
+                'sometimes', 'nullable', 'boolean',
+                function ($attr, $value, $fail) use ($entry) {
+                    if ($entry->physical_copy_id !== null) {
+                        $fail('Cannot change finish while a physical copy is bound. Edit the physical copy directly.');
+                    }
+                },
+            ],
             // Swap which printing this slot represents (e.g. via the
             // sidebar's printing-picker). Only allowed for unbound slots
             // — once a CE is bound, the binding pins the printing, so
@@ -189,6 +218,12 @@ class DeckEntryController extends Controller
             'mode'                   => 'sometimes|in:create_new_copy',
             'discard'                => 'sometimes|boolean',
         ]);
+
+        // Mirror PhysicalCopyEditService's mutual exclusion: setting etched
+        // forces foil=false. Enforced controller-side, not at the DB level.
+        if (! empty($data['is_etched'])) {
+            $data['foil'] = false;
+        }
 
         $mode    = $data['mode']    ?? null;
         $discard = (bool) ($data['discard'] ?? false);
@@ -718,6 +753,8 @@ class DeckEntryController extends Controller
             'signature_for_entry_id' => $entry->signature_for_entry_id,
             'wanted'                 => $entry->wanted,
             'physical_copy_id'       => $entry->physical_copy_id,
+            'foil'                   => $entry->foil,
+            'is_etched'              => $entry->is_etched,
             'physical_copy'          => $physical,
             'scryfall_card'          => $card ? [
                 'scryfall_id'    => $card->scryfall_id,
@@ -734,6 +771,7 @@ class DeckEntryController extends Controller
                 'produced_mana'  => $card->produced_mana,
                 'oracle_text'    => $card->oracle_text,
                 'keywords'       => $card->keywords,
+                'finishes'       => $card->finishes,
                 'commander_game_changer' => (bool) $card->commander_game_changer,
                 'legalities'     => $card->legalities,
                 'is_dfc'         => (bool) $card->is_dfc,
