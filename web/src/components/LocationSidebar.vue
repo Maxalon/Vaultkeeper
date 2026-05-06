@@ -236,8 +236,14 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
         <span class="num">{{ collection.review.card_count }}</span>
       </button>
 
+      <!-- :key on the dropzone forces a full teardown + rebuild of the
+           sidebar subtree (and its Sortable instances) after every move
+           or refetch. Sortable's mid-drag DOM mutations otherwise leave
+           Vue's vnode references out of sync with the live DOM, which
+           surfaces as a phantom copy of the dropped item. -->
       <div
         ref="rootDropzone"
+        :key="collection.sidebarRenderEpoch"
         class="sidebar-dropzone"
         data-sidebar-container="root"
       >
