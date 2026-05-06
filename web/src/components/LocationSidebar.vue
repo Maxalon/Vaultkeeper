@@ -184,12 +184,14 @@ provide('sidebarCtx', {
 
 // Bind the root dropzone to @formkit/drag-and-drop. The composable
 // returns the parent ref + a values ref that the library mutates on
-// drop; we render from `rootItems` so the rendered list and the
-// library's view of the world stay in sync. External mutations refresh
-// via the dropzone's `:key` (see template) which remounts the whole
-// sidebar with fresh initial values.
+// drop; we render from `rootItems`. External Pinia changes flow in
+// through the source getter — the composable watches the external
+// epoch and rehydrates the values when it bumps. We do NOT remount the
+// dropzone div on external changes because the library's parent
+// binding is set up via a self-stopping watch and only ever attaches
+// to the first element it sees; remounting would orphan it.
 const [rootDropzone, rootItems] = useSidebarSortable(
-  collection.sidebarItems,
+  () => collection.sidebarItems,
   () => null,
 )
 
@@ -244,14 +246,8 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
         <span class="num">{{ collection.review.card_count }}</span>
       </button>
 
-      <!-- :key bound to `sidebarExternalEpoch` so any *external* mutation
-           (createDeck, fetchGroups, deleteGroup, …) remounts the drag
-           containers with fresh initial values. Drag moves themselves do
-           NOT bump that epoch, so an in-flight drag never gets blown
-           away by Vue tearing down the subtree mid-gesture. -->
       <div
         ref="rootDropzone"
-        :key="collection.sidebarExternalEpoch"
         class="sidebar-dropzone"
         data-sidebar-container="root"
       >
