@@ -204,6 +204,7 @@ class BulkSyncServiceTest extends TestCase
             'draft_innovation qualifies'       => [[...$base, 'set_type' => 'draft_innovation'],                    true,  'Conspiracy, Battlebond, Clue Edition, …'],
             'commander set qualifies'          => [[...$base, 'set_type' => 'commander'],                           true,  'commander precons'],
             'masters qualifies'                => [[...$base, 'set_type' => 'masters'],                             true,  'reprint sets'],
+            'digital flag disqualifies'        => [[...$base, 'digital' => true],                                   false, 'Arena/MTGO-only printings (Pioneer Masters, Alchemy)'],
             'expansion with missing fields'    => [['set_type' => 'expansion'],                                     false, 'missing nonfoil defaults to false → disqualifies'],
         ];
     }

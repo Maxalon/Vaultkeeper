@@ -23,6 +23,7 @@ class MtgSet extends Model
         'code',
         'name',
         'set_type',
+        'digital',
         'released_at',
         'card_count',
         'our_card_count',
@@ -32,6 +33,7 @@ class MtgSet extends Model
     ];
 
     protected $casts = [
+        'digital'        => 'boolean',
         'released_at'    => 'date',
         'card_count'     => 'integer',
         'our_card_count' => 'integer',
