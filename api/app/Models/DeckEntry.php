@@ -22,12 +22,16 @@ class DeckEntry extends Model
         'signature_for_entry_id',
         'wanted',
         'physical_copy_id',
+        'foil',
+        'is_etched',
     ];
 
     protected $casts = [
         'quantity'           => 'integer',
         'is_commander'       => 'boolean',
         'is_signature_spell' => 'boolean',
+        'foil'               => 'boolean',
+        'is_etched'          => 'boolean',
     ];
 
     /**

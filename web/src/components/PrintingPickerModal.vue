@@ -53,8 +53,12 @@ function close() {
   emit('update:open', false)
 }
 
-function pick(scryfallId) {
-  emit('select', scryfallId)
+function pick(printing) {
+  // Emit (scryfall_id, finishes) so callers can snap a per-slot finish to
+  // a value the new printing actually supports. `finishes` is the raw
+  // Scryfall array (subset of nonfoil/foil/etched/glossy) or null when the
+  // backend hasn't synced it yet.
+  emit('select', printing.scryfall_id, printing.finishes ?? null)
   close()
 }
 
@@ -112,7 +116,7 @@ const imageSizes = computed(() => {
             class="browser-card"
             :class="{ selected: p.scryfall_id === selectedPrintingId }"
             :title="`${p.set_name || p.set_code} · #${p.collector_number}`"
-            @click="pick(p.scryfall_id)"
+            @click="pick(p)"
           >
             <div class="browser-card-frame">
               <img
