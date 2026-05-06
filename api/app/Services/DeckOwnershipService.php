@@ -38,15 +38,32 @@ class DeckOwnershipService
     }
 
     /**
-     * Collection-level EUR totals for a user.
+     * Collection-level EUR totals for a user, optionally scoped to a
+     * single location.
+     *
+     *   - both args default              → "all cards" view, every entry
+     *   - $locationId = int              → entries pinned to that location
+     *   - $unassignedOnly = true          → entries with NULL location_id
+     *
+     * Always excludes copies that live in a deck-role location, so the
+     * total reflects what the user actually sees in the collection view.
      *
      * @return array{total: float, card_count: int, missing_price_count: int, generated_at: string}
      */
-    public function totalsForCollection(int $userId): array
+    public function totalsForCollection(int $userId, ?int $locationId = null, bool $unassignedOnly = false): array
     {
-        $rows = DB::table('collection_entries as ce')
+        $query = DB::table('collection_entries as ce')
             ->leftJoin('card_prices as cp', 'cp.scryfall_id', '=', 'ce.scryfall_id')
             ->where('ce.user_id', $userId)
+            // Mirror the collection index: deck-bound copies are surfaced
+            // by their deck_entry on the deck page; counting them in the
+            // user-facing collection total would double-count.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('locations')
+                    ->whereColumn('locations.id', 'ce.location_id')
+                    ->where('locations.role', \App\Models\Location::ROLE_DECK);
+            })
             ->select(
                 'ce.quantity',
                 'ce.foil',
@@ -54,8 +71,15 @@ class DeckOwnershipService
                 'cp.eur',
                 'cp.eur_foil',
                 'cp.eur_etched',
-            )
-            ->get();
+            );
+
+        if ($locationId !== null) {
+            $query->where('ce.location_id', $locationId);
+        } elseif ($unassignedOnly) {
+            $query->whereNull('ce.location_id');
+        }
+
+        $rows = $query->get();
 
         $totalCents = 0;
         $cardCount = 0;

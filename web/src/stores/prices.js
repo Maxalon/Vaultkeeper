@@ -44,10 +44,24 @@ export const usePricesStore = defineStore('prices', {
       }
     },
 
-    async fetchCollectionTotals() {
+    /**
+     * Fetch /api/collection/totals, optionally scoped to a location.
+     *
+     *   - locationId omitted / undefined → "all cards" total
+     *   - locationId === null            → "unassigned" bucket
+     *   - locationId === <number>        → that specific location
+     *
+     * Mirrors the location_id filter shape on /api/collection so the
+     * total tracks whatever the user is currently looking at.
+     */
+    async fetchCollectionTotals(locationId) {
       this.loadingCollection = true
       try {
-        const { data } = await api.get('/collection/totals')
+        const params = {}
+        if (arguments.length >= 1) {
+          params.location_id = locationId === null ? 'unassigned' : locationId
+        }
+        const { data } = await api.get('/collection/totals', { params })
         this.collection = data
         return data
       } finally {
