@@ -45,11 +45,11 @@ async function deleteGroup() {
 }
 
 // The drag container is owned by the FormKit composable: it returns the
-// element ref to bind, and the values ref we render from. Initial values
-// are taken from this group's children at mount time; external mutations
-// remount the whole sidebar via the `:key` on LocationSidebar's dropzone.
+// element ref to bind, and the values ref we render from. The source
+// getter lets the composable rehydrate from Pinia when an external
+// mutation bumps the sidebar's external epoch — no remount required.
 const [childrenContainer, children] = useSidebarSortable(
-  props.group.children,
+  () => props.group.children,
   () => props.group.id,
 )
 </script>

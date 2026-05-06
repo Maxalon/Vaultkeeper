@@ -1,3 +1,4 @@
+import { watch } from 'vue'
 import { useDragAndDrop } from '@formkit/drag-and-drop/vue'
 import { useCollectionStore } from '../stores/collection'
 
@@ -5,47 +6,51 @@ import { useCollectionStore } from '../stores/collection'
  * Bind drag-and-drop to one sidebar container (the root or one group's
  * children) using @formkit/drag-and-drop. Unlike the previous setup
  * with vue-draggable-plus / Sortable.js, this library mutates the
- * values it manages in a single pass on drop rather than mutating the
- * DOM continuously during the drag, so Vue's vnode references stay in
- * sync with the actual DOM and the phantom-copy / snap-back bugs that
- * dogged the previous iterations are gone by construction.
+ * values ref it manages in a single pass on drop rather than mutating
+ * the DOM continuously during the drag, so Vue's vnode references stay
+ * in sync with the actual DOM and the phantom-copy / snap-back bugs
+ * that dogged the previous iterations are gone by construction.
  *
  * Architecture
  * ------------
  * The library OWNS the rendered values ref for its container — we
  * render directly from the ref it returns. On drop we dispatch a
  * `moveItem` so the Pinia store stays in sync (the canonical tree is
- * read by location dropdowns, deck targets, etc. elsewhere in the
- * app). We do NOT watch Pinia from this composable — that would race
- * with the library's own mutations and reintroduce the same class of
- * bugs we just escaped.
+ * read by location dropdowns, deck targets, etc. elsewhere).
  *
- * External mutations (createDeck, deleteEntry, fetchGroups, ...) bump
- * `collection.sidebarExternalEpoch`, which is bound to a `:key` on the
- * sidebar dropzone. That forces Vue to tear down and remount the drag
- * containers with fresh initial values from Pinia. Move actions don't
- * bump the epoch, so an in-progress drag is never disturbed.
+ * For external mutations (createDeck, fetchGroups, deleteGroup, …) we
+ * watch `collection.sidebarExternalEpoch` and re-read the source
+ * getter, replacing the values ref. Crucially we do NOT remount the
+ * container element on external changes — the library's parent binding
+ * is set up once via a self-stopping watch and only ever fires for the
+ * first mount of the parent ref. Tearing down and remounting the
+ * dropzone div would leave the library bound to the orphaned old div,
+ * with zero drag handlers on the new one. Rebinding values via this
+ * watcher keeps the same div live forever.
  *
- * @param {Array<Object>} initial - children of this container at mount
- *   time (top-level items for the root, `group.children` for a group).
- *   Used once for initialisation; subsequent updates flow through the
- *   external-epoch remount.
+ * Move actions don't bump `sidebarExternalEpoch`, so an in-progress
+ * drag is never disturbed by our own dispatch.
+ *
+ * @param {() => Array<Object>} sourceGetter - returns the children of
+ *   this container (top-level items, or `group.children`) from the
+ *   canonical Pinia tree.
  * @param {() => number|null} parentIdGetter - returns the destination
  *   parent group id for moves that land inside this container, or null
  *   for the top-level container.
  * @returns {[Ref<HTMLElement|undefined>, Ref<Array<Object>>]} the
- *   `[parentRef, valuesRef]` to bind to the container element and to
+ *   `[parentRef, valuesRef]` to bind to the container element and
  *   render from in the v-for.
  */
-export function useSidebarSortable(initial, parentIdGetter) {
+export function useSidebarSortable(sourceGetter, parentIdGetter) {
   const collection = useCollectionStore()
 
-  // Plain shallow copies so the library never mutates Pinia state by
-  // accident. The library is the single owner of the returned values
-  // ref from this point on.
-  const seed = (initial || []).map((item) => ({ ...item }))
+  // Spread to a fresh array so the library never mutates Pinia's array
+  // reference. Item identities are preserved — the library uses `===`
+  // to track items, and Vue's keyed v-for needs stable references for
+  // its reconciliation to reuse DOM nodes.
+  const seed = [...(sourceGetter() || [])]
 
-  return useDragAndDrop(seed, {
+  const [parent, values] = useDragAndDrop(seed, {
     group: 'sidebar',
     dragHandle: '.drag-handle',
 
@@ -79,4 +84,16 @@ export function useSidebarSortable(initial, parentIdGetter) {
       })
     },
   })
+
+  // External-mutation refresh: when something OUTSIDE drag-and-drop
+  // changes the tree, the store bumps `sidebarExternalEpoch`. Rehydrate
+  // values from Pinia so creates/deletes/refetches show up. Our own
+  // moveItem doesn't bump the epoch, so we never clobber an in-flight
+  // drag with this watcher.
+  watch(
+    () => collection.sidebarExternalEpoch,
+    () => { values.value = [...(sourceGetter() || [])] },
+  )
+
+  return [parent, values]
 }
