@@ -52,7 +52,18 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
 
   const [parent, values] = useDragAndDrop(seed, {
     group: 'sidebar',
-    dragHandle: '.drag-handle',
+    // The library's validateDragHandle does an unbounded
+    // querySelectorAll within a node, so a flat `.drag-handle` selector
+    // would let a group node "claim" a click on any nested row's handle
+    // and start dragging the whole group. We scope the selector to the
+    // shapes of our two draggable elements:
+    //   - SidebarGroup roots:  <div.group-section> > <div.group-header> > .drag-handle
+    //   - SidebarRow buttons:  <button.loc-row>     > .drag-handle
+    // `:scope >` keeps the search bounded to the node's own immediate
+    // structure, so a group only matches its own header handle and a
+    // row only matches its own handle — nested rows inside a group no
+    // longer trigger the group's drag.
+    dragHandle: ':scope > .group-header > .drag-handle, :scope > .drag-handle',
 
     // Same-container reorder. `position` is the index in the destination
     // values array — the merged sibling list — which is exactly what
