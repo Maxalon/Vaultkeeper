@@ -23,19 +23,14 @@ function itemKey(item) {
   return `${item.kind}:${item.id}`
 }
 
-function groupCardCount(g) {
-  return (g.children || []).reduce((sum, child) => {
-    if (child.kind === 'deck') return sum + (child.entry_count || 0)
-    if (child.kind === 'location') return sum + (child.card_count || 0)
-    if (child.kind === 'group') return sum + groupCardCount(child)
-    return sum
-  }, 0)
-}
-function groupCounterValue(g) {
-  if (settings.sidebarGroupCounter === 'locations') {
-    return (g.children || []).filter((c) => c.kind !== 'group').length
-  }
-  return groupCardCount(g)
+// Counter reads from the canonical Pinia tree (kept in sync on every
+// move) rather than walking `props.group.children`, which is a snapshot
+// of the children at mount time and drifts during drag-and-drop. Pinia
+// has the live state across the whole subtree — including child groups
+// this component can't see directly.
+function counterValue() {
+  const mode = settings.sidebarGroupCounter === 'locations' ? 'locations' : 'cards'
+  return collection.groupCounter(props.group.id, mode)
 }
 
 async function deleteGroup() {
@@ -75,7 +70,7 @@ const [childrenContainer, children] = useSidebarSortable(
         <IconChevron />
       </span>
       <span class="label">{{ group.name }}</span>
-      <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ groupCounterValue(group) }}</span>
+      <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ counterValue() }}</span>
       <span class="group-actions" @click.stop>
         <button v-if="settings.sidebarShowEdit" type="button" class="edit-btn" @click="modalOpen = true" title="Edit group">
           <IconEdit />

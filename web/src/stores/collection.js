@@ -205,6 +205,44 @@ export const useCollectionStore = defineStore('collection', {
       return out
     },
 
+    /**
+     * Counter value for a group's header badge, derived from the
+     * canonical Pinia tree. The sidebar renders rows from the
+     * drag-and-drop library's local values ref (so DOM stays in sync
+     * with drag state), but counts read from Pinia so they reflect the
+     * current state across the whole subtree — including child groups
+     * the outer SidebarGroup component can't see directly.
+     *
+     * @param {number} groupId
+     * @param {'cards'|'locations'} mode
+     */
+    groupCounter(state) {
+      const findGroup = (items, id) => {
+        for (const item of items) {
+          if (item.kind !== 'group') continue
+          if (item.id === id) return item
+          const nested = findGroup(item.children || [], id)
+          if (nested) return nested
+        }
+        return null
+      }
+      const sumCards = (g) =>
+        (g.children || []).reduce((sum, c) => {
+          if (c.kind === 'deck') return sum + (c.entry_count || 0)
+          if (c.kind === 'location') return sum + (c.card_count || 0)
+          if (c.kind === 'group') return sum + sumCards(c)
+          return sum
+        }, 0)
+      return (groupId, mode = 'cards') => {
+        const g = findGroup(state.sidebarItems, groupId)
+        if (!g) return 0
+        if (mode === 'locations') {
+          return (g.children || []).filter((c) => c.kind !== 'group').length
+        }
+        return sumCards(g)
+      }
+    },
+
     parsedSearch(state) {
       return parseSearch(state.filters.search)
     },
