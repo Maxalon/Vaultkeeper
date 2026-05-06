@@ -26,7 +26,6 @@ class DeckController extends Controller
             ->with(['commander1:scryfall_id,name,image_small,image_normal,color_identity,commander_game_changer',
                     'commander2:scryfall_id,name,image_small,image_normal,color_identity,commander_game_changer',
                     'companion:scryfall_id,name,image_small,image_normal,color_identity,keywords'])
-            ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
 
@@ -61,8 +60,6 @@ class DeckController extends Controller
                     'format'          => $deck->format,
                     'description'     => $deck->description,
                     'color_identity'  => $deck->color_identity,
-                    'group_id'        => $deck->group_id,
-                    'sort_order'      => $deck->sort_order,
                     'is_archived'     => $deck->is_archived,
                     'entry_count'     => (int) ($entryCounts[$deck->id] ?? 0),
                     'illegality_count'=> $active,
@@ -123,8 +120,6 @@ class DeckController extends Controller
             'commander_1_scryfall_id' => ['sometimes', 'nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
             'commander_2_scryfall_id' => ['sometimes', 'nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
             'companion_scryfall_id'   => ['sometimes', 'nullable', 'uuid', 'exists:scryfall_cards,scryfall_id'],
-            'group_id'                => ['sometimes', 'nullable', 'integer'],
-            'sort_order'              => 'sometimes|integer',
         ]);
 
         $commandersChanged = array_key_exists('commander_1_scryfall_id', $data)
@@ -258,8 +253,6 @@ class DeckController extends Controller
             'description'            => $deck->description,
             'color_identity'         => $deck->color_identity,
             'is_archived'            => $deck->is_archived,
-            'group_id'               => $deck->group_id,
-            'sort_order'             => $deck->sort_order,
             'commander1'             => $this->presentCommander($deck->commander1),
             'commander2'             => $this->presentCommander($deck->commander2),
             'companion'              => $this->presentCompanion($deck->companion),
@@ -293,7 +286,6 @@ class DeckController extends Controller
             'signature_for_entry_id' => $entry->signature_for_entry_id,
             'wanted'                 => $entry->wanted,
             'physical_copy_id'       => $entry->physical_copy_id,
-            'needs_review'           => (bool) $entry->needs_review,
             'card'                   => $card ? [
                 'scryfall_id'     => $card->scryfall_id,
                 'oracle_id'       => $card->oracle_id,

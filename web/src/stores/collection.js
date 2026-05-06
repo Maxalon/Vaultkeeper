@@ -61,22 +61,66 @@ function loadCollapsedGroups() {
   }
 }
 
+/**
+ * Sync the sidebar tree in place. vue-draggable-plus binds to the array
+ * reference at mount and mutates it directly on drag; if `fetchGroups`
+ * replaced the array with a fresh one, the directive would keep mutating
+ * the orphan and `reorderAll` would post the pre-drag order. Mutating in
+ * place at every level keeps every captured reference live.
+ *
+ * Existing items are matched by `kind:id` so that group/deck/location
+ * objects (and their nested `children` arrays) keep the same identity
+ * across refetches.
+ */
+function syncTreeInPlace(target, source) {
+  const byKey = new Map()
+  for (const item of target) byKey.set(`${item.kind}:${item.id}`, item)
+
+  const next = []
+  for (const src of source) {
+    const key = `${src.kind}:${src.id}`
+    const existing = byKey.get(key)
+    if (existing) {
+      // Copy scalar fields onto the existing item so the proxy identity
+      // is preserved. `children` is handled recursively so its array
+      // reference stays stable too.
+      for (const k of Object.keys(src)) {
+        if (k === 'children') continue
+        if (existing[k] !== src[k]) existing[k] = src[k]
+      }
+      if (src.kind === 'group') {
+        if (!Array.isArray(existing.children)) existing.children = []
+        syncTreeInPlace(existing.children, src.children || [])
+      }
+      next.push(existing)
+      byKey.delete(key)
+    } else {
+      next.push(src)
+    }
+  }
+
+  // Replace target's contents in-place with `next`. `splice(0, len, ...next)`
+  // keeps the same array reference, which is what vue-draggable bound to.
+  target.splice(0, target.length, ...next)
+}
+
 export const useCollectionStore = defineStore('collection', {
   state: () => ({
     /**
-     * Top-level sidebar structure: a single array interleaving groups and
-     * un-grouped locations. Each item has `kind: 'group' | 'location'`.
-     * Groups carry their nested locations in `item.locations`.
+     * Recursive sidebar tree. Each entry is one of:
+     *   - { kind: 'group', id, name, sort_order, parent_group_id, children }
+     *   - { kind: 'location', id, name, type, sort_order, group_id, ... }
+     *   - { kind: 'deck',  id, name, sort_order, group_id, format, ... }
+     * (`id` for a deck is the shadow Location's id; `deck_id` is the deck's
+     * own id, used for navigation to DeckView.)
      */
     sidebarItems: [],
-    /** Full decks list (flat — already split across groups by group_id). */
-    decks: [],
     /**
-     * Pending-relocation summary: { id, name, card_count } when there are
-     * copies awaiting re-shelving, otherwise null. Driven by the backend so
-     * the row only shows up when there's something in it.
+     * Review-queue summary: { card_count } when there are review-flagged
+     * copies, otherwise null. Driven by the backend so the row only
+     * shows up when there's something in it.
      */
-    pending: null,
+    review: null,
     collapsedGroups: loadCollapsedGroups(),
     totalCount: 0,
     activeLocationId: null, // number | null (null = all cards)
@@ -99,52 +143,37 @@ export const useCollectionStore = defineStore('collection', {
 
   getters: {
     /**
-     * Flat array of every location, in render order. Used by location
-     * dropdowns in CardListPanel, ImportModal, and DetailSidebar — they
-     * don't care about grouping.
+     * Flat array of every physical-storage location (drawers/binders), in
+     * render order, recursing through nested groups. Decks are excluded —
+     * they're not valid card-move destinations (server-side validation
+     * already enforces this in CollectionController). Consumed by location
+     * dropdowns in CardListPanel, ImportModal, and DetailSidebar.
      */
     locations(state) {
-      return state.sidebarItems.flatMap((item) =>
-        item.kind === 'group' ? item.locations : [item],
-      )
-    },
-
-    /** Groups extracted from sidebarItems in their current order. */
-    groups(state) {
-      return state.sidebarItems.filter((item) => item.kind === 'group')
-    },
-
-    /**
-     * Sidebar items with each deck merged into its group.locations list (or
-     * appearing at the top level when group_id is null), interleaved by
-     * sort_order. Decks carry `kind: 'deck'`. This is the render-time list.
-     */
-    sidebarItemsMerged(state) {
-      const decksByGroup = new Map()
-      const topLevelDecks = []
-      for (const d of state.decks) {
-        const item = { ...d, kind: 'deck' }
-        if (d.group_id) {
-          if (!decksByGroup.has(d.group_id)) decksByGroup.set(d.group_id, [])
-          decksByGroup.get(d.group_id).push(item)
-        } else {
-          topLevelDecks.push(item)
+      const out = []
+      const walk = (items) => {
+        for (const item of items) {
+          if (item.kind === 'group') walk(item.children || [])
+          else if (item.kind === 'location') out.push(item)
         }
       }
+      walk(state.sidebarItems)
+      return out
+    },
 
-      const merged = state.sidebarItems.map((item) => {
-        if (item.kind !== 'group') return item
-        const groupDecks = decksByGroup.get(item.id) || []
-        if (!groupDecks.length) return item
-        const combined = [...item.locations, ...groupDecks]
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-        return { ...item, locations: combined }
-      })
-
-      if (topLevelDecks.length) {
-        return [...merged, ...topLevelDecks]
+    /** All groups, flattened depth-first across nesting levels. */
+    groups(state) {
+      const out = []
+      const walk = (items) => {
+        for (const item of items) {
+          if (item.kind === 'group') {
+            out.push(item)
+            walk(item.children || [])
+          }
+        }
       }
-      return merged
+      walk(state.sidebarItems)
+      return out
     },
 
     parsedSearch(state) {
@@ -173,10 +202,10 @@ export const useCollectionStore = defineStore('collection', {
   actions: {
     async fetchGroups() {
       const { data } = await api.get('/location-groups')
-      this.sidebarItems = data.items
+      // In-place sync — see `syncTreeInPlace` for why we don't reassign.
+      syncTreeInPlace(this.sidebarItems, data.items)
       this.totalCount = data.total_count
-      this.decks = data.decks || []
-      this.pending = data.pending || null
+      this.review = data.review || null
     },
 
     // Alias so existing callers (createLocation, updateEntry, batchMove,
@@ -185,12 +214,11 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchGroups()
     },
 
+    // Decks now live inside the unified sidebar tree, so refreshing decks is
+    // identical to refreshing groups. Kept as an alias so existing callers
+    // (DeckView, deck.js entry mutations) don't need to change.
     async fetchDecks() {
-      // fetchGroups already includes decks in its response, but expose a
-      // standalone action so DeckView can refresh the list after an edit
-      // without re-fetching the entire sidebar payload.
-      const { data } = await api.get('/decks')
-      this.decks = data
+      await this.fetchGroups()
     },
 
     async createDeck(payload) {
@@ -201,6 +229,38 @@ export const useCollectionStore = defineStore('collection', {
 
     async importDeck(payload) {
       const { data } = await api.post('/decks/import', payload)
+      await this.fetchGroups()
+      return data
+    },
+
+    async importDeckCsv(formData) {
+      const { data } = await api.post('/decks/import/csv', formData)
+      await this.fetchGroups()
+      return data
+    },
+
+    /**
+     * Review-queue actions. The sidebar's `review` summary arrives via
+     * fetchGroups; these add the full-list / resolve surface that
+     * powers the /review route and the per-deck tab.
+     *
+     * @param {{ deckId?: number, reason?: string }} [opts] — `deckId`
+     *   scopes the fetch to copies that came from a specific deck;
+     *   `reason` filters by review_reason.
+     */
+    async fetchReviewList(opts = {}) {
+      const params = {}
+      if (opts.deckId) params.deck_id = opts.deckId
+      if (opts.reason) params.reason  = opts.reason
+      const { data } = await api.get('/review', { params })
+      return data?.data || []
+    },
+
+    /**
+     * @param {Array<{collection_entry_id:number,target_location_id?:number|null,discard?:boolean,accept_defaults?:boolean,condition?:string,foil?:boolean}>} assignments
+     */
+    async resolveReview(assignments) {
+      const { data } = await api.post('/review/resolve', { assignments })
       await this.fetchGroups()
       return data
     },
@@ -216,20 +276,23 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchGroups()
     },
 
-    async createGroup(name) {
+    async createGroup(payload) {
+      // Accepts either a plain name string (legacy) or { name, parent_group_id }.
+      const body = typeof payload === 'string' ? { name: payload } : payload
       this.loading = true
       try {
-        await api.post('/location-groups', { name })
+        await api.post('/location-groups', body)
         await this.fetchGroups()
       } finally {
         this.loading = false
       }
     },
 
-    async updateGroup(id, name) {
+    async updateGroup(id, payload) {
+      const body = typeof payload === 'string' ? { name: payload } : payload
       this.loading = true
       try {
-        await api.put(`/location-groups/${id}`, { name })
+        await api.put(`/location-groups/${id}`, body)
         await this.fetchGroups()
       } finally {
         this.loading = false
@@ -256,25 +319,31 @@ export const useCollectionStore = defineStore('collection', {
     /**
      * Persist the full drag-and-drop state. Fires after vue-draggable-plus has
      * already mutated the reactive arrays, so the UI is already correct —
-     * we just need the server to match. On failure, surface the error and
-     * refetch to snap back.
+     * we just need the server to match. On success we refetch so the store
+     * snaps cleanly to the server's view (rare cross-container moves can
+     * leave duplicates in the local tree until syncTreeInPlace reconciles
+     * by `kind:id`); on failure we refetch to revert.
+     *
+     * The payload mirrors the recursive sidebar tree: each group item has a
+     * `children` array containing nested locations, decks, and groups.
      */
     async reorderAll() {
-      const payload = {
-        items: this.sidebarItems.map((item) => {
+      const toPayload = (items) =>
+        (items || []).map((item) => {
           if (item.kind === 'group') {
             return {
               kind: 'group',
               id: item.id,
-              location_ids: item.locations.map((l) => l.id),
+              children: toPayload(item.children),
             }
           }
-          return { kind: 'location', id: item.id }
-        }),
-      }
+          return { kind: item.kind, id: item.id }
+        })
+
       this.loading = true
       try {
-        await api.post('/location-groups/reorder', payload)
+        await api.post('/location-groups/reorder', { items: toPayload(this.sidebarItems) })
+        await this.fetchGroups()
       } catch (e) {
         this.error = e.response?.data?.message || 'Failed to reorder locations'
         await this.fetchGroups()
@@ -375,26 +444,56 @@ export const useCollectionStore = defineStore('collection', {
       await this.fetchLocations()
     },
 
-    async updateEntry(id, payload) {
-      const { data } = await api.patch(`/collection/${id}`, payload)
-      const idx = this.entries.findIndex((e) => e.id === id)
-      if (idx !== -1) {
-        this.entries[idx] = {
-          ...this.entries[idx],
-          quantity: data.quantity,
-          condition: data.condition,
-          foil: data.foil,
-          notes: data.notes,
-          location_id: data.location_id,
+    /**
+     * Per-CE-id promise chain. Every CE-mutating action awaits the
+     * previous in-flight one for the same id before kicking off, so a
+     * burst of clicks (4 +1s in a row) can't interleave at the network
+     * layer and step on each other's optimistic-locking version. Each
+     * link includes a fresh version pulled from local state right
+     * before the request fires.
+     */
+    _enqueueForEntry(id, fn) {
+      if (!this._pendingByEntry) this._pendingByEntry = new Map()
+      const prev = this._pendingByEntry.get(id) || Promise.resolve()
+      const next = prev.catch(() => {}).then(fn)
+      this._pendingByEntry.set(id, next)
+      // Clean up the map entry once the chain settles to avoid leaking.
+      next.finally(() => {
+        if (this._pendingByEntry.get(id) === next) {
+          this._pendingByEntry.delete(id)
         }
-      }
-      if (this.activeEntryId === id) {
-        this.activeEntry = data
-      }
-      if (payload.location_id !== undefined) {
-        this.fetchLocations()
-      }
-      return data
+      })
+      return next
+    },
+
+    async updateEntry(id, payload) {
+      return this._enqueueForEntry(id, async () => {
+        const local = this.entries.find((e) => e.id === id) ?? this.activeEntry
+        const body = { ...payload }
+        if (local && typeof local.version === 'number' && body.version === undefined) {
+          body.version = local.version
+        }
+        const { data } = await api.patch(`/collection/${id}`, body)
+        const idx = this.entries.findIndex((e) => e.id === id)
+        if (idx !== -1) {
+          this.entries[idx] = {
+            ...this.entries[idx],
+            quantity: data.quantity,
+            condition: data.condition,
+            foil: data.foil,
+            notes: data.notes,
+            location_id: data.location_id,
+            version: data.version,
+          }
+        }
+        if (this.activeEntryId === id) {
+          this.activeEntry = data
+        }
+        if (payload.location_id !== undefined) {
+          this.fetchLocations()
+        }
+        return data
+      })
     },
 
     toggleSelecting() {
@@ -433,10 +532,16 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     async deleteEntry(id) {
-      await api.delete(`/collection/${id}`)
-      this.entries = this.entries.filter((e) => e.id !== id)
-      if (this.activeEntryId === id) this.closeActiveEntry()
-      this.fetchLocations()
+      return this._enqueueForEntry(id, async () => {
+        const local = this.entries.find((e) => e.id === id) ?? this.activeEntry
+        const params = local && typeof local.version === 'number'
+          ? { version: local.version }
+          : undefined
+        await api.delete(`/collection/${id}`, { params })
+        this.entries = this.entries.filter((e) => e.id !== id)
+        if (this.activeEntryId === id) this.closeActiveEntry()
+        this.fetchLocations()
+      })
     },
   },
 })

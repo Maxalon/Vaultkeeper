@@ -24,13 +24,10 @@ class Deck extends Model
         'commander_2_scryfall_id',
         'companion_scryfall_id',
         'color_identity',
-        'group_id',
-        'sort_order',
     ];
 
     protected $casts = [
         'is_archived' => 'boolean',
-        'sort_order'  => 'integer',
     ];
 
     public function user(): BelongsTo
@@ -63,15 +60,10 @@ class Deck extends Model
         return $this->belongsTo(ScryfallCard::class, 'companion_scryfall_id', 'scryfall_id');
     }
 
-    public function group(): BelongsTo
-    {
-        return $this->belongsTo(LocationGroup::class, 'group_id');
-    }
-
     /**
-     * The auto-managed Location row that physically backs this deck. Created
-     * by DeckObserver on deck create, renamed on deck rename, removed via FK
-     * cascade on deck delete.
+     * The auto-managed Location row that physically backs this deck and
+     * carries its sidebar position. Created by DeckObserver on deck create,
+     * renamed on deck rename, removed via FK cascade on deck delete.
      */
     public function deckLocation(): HasOne
     {

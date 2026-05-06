@@ -89,6 +89,43 @@ export function useDeckEntryActions(entryRef) {
       }
     }
 
+    // ── Inline assemble pickers (locked decision 11) ────────────────────
+    // Bound vs unbound state drives which option to show. The default
+    // +1/-1/remove flows still apply the observer's defaults; these
+    // menu items are the explicit overrides.
+    const isBound = e.physical_copy_id !== null && e.physical_copy_id !== undefined
+    if (!isBound) {
+      out.push({
+        id: 'mark-bought',
+        label: 'I bought it (create copy)',
+        hint: "Adds a new copy in this deck's storage.",
+        kind: 'neutral',
+        run: () => deck.bindEntryAsNewCopy(deckId(), e.id),
+      })
+    }
+    // "Remove from deck" — the safe default. For bound entries the
+    // freed copy lands in the review queue (with a one-click "Sold /
+    // discarded" toast override), so this is reversible. For unbound
+    // entries it just drops the slot.
+    out.push({
+      id: 'remove-from-deck',
+      label: 'Remove from deck',
+      hint: isBound
+        ? 'Frees the copy to your collection (queued for review).'
+        : 'Drops this slot from the deck.',
+      kind: 'neutral',
+      run: () => deck.removeEntry(deckId(), e.id),
+    })
+    if (isBound) {
+      out.push({
+        id: 'mark-sold',
+        label: 'Mark as sold or discarded',
+        hint: 'Removes the slot AND deletes the copy — bypasses review.',
+        kind: 'danger',
+        run: () => deck.destroyEntryAndDiscard(deckId(), e.id),
+      })
+    }
+
     // ── Signature spell promote/demote (oathbreaker only) ─────────────────
     if (isOathbreaker.value && !e.is_commander) {
       if (e.is_signature_spell) {

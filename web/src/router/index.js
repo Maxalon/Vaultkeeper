@@ -58,6 +58,17 @@ const routes = [
     props: true,
   },
   {
+    path: '/review',
+    name: 'review',
+    component: () => import('../views/ReviewView.vue'),
+    meta: { requiresAuth: true },
+  },
+  // Backward-compat redirect — old /pending links bounce to /review.
+  {
+    path: '/pending',
+    redirect: { name: 'review' },
+  },
+  {
     path: '/',
     redirect: { name: 'collection' },
   },

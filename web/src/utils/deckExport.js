@@ -11,8 +11,15 @@ function cardName(entry) {
   return entry.scryfall_card?.name || '(Unknown card)'
 }
 
+function printingSuffix(entry) {
+  const set = entry.scryfall_card?.set_code
+  const cn = entry.scryfall_card?.collector_number
+  if (!set || !cn) return ''
+  return ` (${String(set).toUpperCase()}) ${cn}`
+}
+
 function formatLine(entry) {
-  return `${entry.quantity} ${cardName(entry)}`
+  return `${entry.quantity} ${cardName(entry)}${printingSuffix(entry)}`
 }
 
 function sortByName(entries) {

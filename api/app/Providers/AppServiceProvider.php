@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Models\Deck;
+use App\Models\DeckEntry;
+use App\Observers\DeckEntryObserver;
 use App\Observers\DeckObserver;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Deck::observe(DeckObserver::class);
+        DeckEntry::observe(DeckEntryObserver::class);
 
         // The default ResetPassword notification builds a URL pointing at a
         // Laravel route. We serve the SPA on the same origin as the API, so

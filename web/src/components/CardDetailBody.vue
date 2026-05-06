@@ -14,6 +14,7 @@ import { assetUrl } from '../lib/assets.js'
  */
 const props = defineProps({
   card: { type: Object, required: true },
+  showLegalities: { type: Boolean, default: true },
 })
 
 const flipped = ref(false)
@@ -131,7 +132,7 @@ const ptOrLoyalty = computed(() => {
       </div>
     </div>
 
-    <section v-if="card.legalities" class="vk-detail-section">
+    <section v-if="showLegalities && card.legalities" class="vk-detail-section">
       <h4>Legalities</h4>
       <div class="legality-grid">
         <template v-for="[key, label] in FORMATS" :key="key">

@@ -2,12 +2,56 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import { useTabsStore } from '../../stores/tabs'
+import { confirm as confirmDialog } from '../../composables/useConfirm'
+import { useToast } from '../../composables/useToast'
 import ManaSymbol from '../ManaSymbol.vue'
 import ExportMenu from './ExportMenu.vue'
+import AssembleDeckModal from '../AssembleDeckModal.vue'
 
 const deck = useDeckStore()
 const tabs = useTabsStore()
+const toast = useToast()
 const emit = defineEmits(['edit', 'export'])
+
+// "Assembled" = any entry is bound to a physical copy. We don't have a
+// flag on the deck itself (locked decision 1: ownership is implicit
+// from the entries' physical_copy_id), so derive it.
+const isAssembled = computed(() =>
+  deck.entries.some((e) => e.physical_copy_id !== null && e.physical_copy_id !== undefined),
+)
+const canAssemble = computed(() => deck.entries.length > 0)
+const assembleOpen = ref(false)
+const assembleMenuOpen = ref(false)
+
+function openAssemble() {
+  assembleMenuOpen.value = false
+  assembleOpen.value = true
+}
+function toggleAssembleMenu() {
+  assembleMenuOpen.value = !assembleMenuOpen.value
+}
+function onDocClickAssemble(e) {
+  if (!e.target.closest?.('.assemble-split')) assembleMenuOpen.value = false
+}
+
+async function onUnassemble() {
+  assembleMenuOpen.value = false
+  if (!deck.deck) return
+  const ok = await confirmDialog({
+    title: 'Unassemble this deck?',
+    message: 'Every physical copy in this deck will move to Review so you can decide where each one goes.',
+    confirmText: 'Unassemble',
+    destructive: true,
+  })
+  if (!ok) return
+  try {
+    const result = await deck.unassembleDeck(deck.deck.id)
+    const flagged = result?.marked_for_review ?? 0
+    let msg = 'Deck unassembled.'
+    if (flagged > 0) msg += ` ${flagged} cop${flagged === 1 ? 'y' : 'ies'} marked for review.`
+    toast.success(msg)
+  } catch { /* deck.unassembleDeck already toasts on failure */ }
+}
 
 const canvasRef = ref(null)
 const titleRef = ref(null)
@@ -150,11 +194,13 @@ onMounted(() => {
   } else {
     window.addEventListener('resize', drawBg)
   }
+  document.addEventListener('click', onDocClickAssemble)
 })
 
 onBeforeUnmount(() => {
   if (ro) ro.disconnect()
   else window.removeEventListener('resize', drawBg)
+  document.removeEventListener('click', onDocClickAssemble)
 })
 
 watch(
@@ -208,8 +254,47 @@ watch(
         <div class="deck-actions">
           <button type="button" class="btn" @click="emit('edit')">Edit</button>
           <ExportMenu class="export-menu" @select="(f) => emit('export', f)" />
+          <template v-if="canAssemble">
+            <button
+              v-if="!isAssembled"
+              type="button"
+              class="btn assemble-btn"
+              @click="openAssemble"
+            >Mark as assembled</button>
+            <div v-else class="assemble-split">
+              <button
+                type="button"
+                class="btn split-main"
+                @click="openAssemble"
+              >Reassemble</button>
+              <button
+                type="button"
+                class="btn split-chevron"
+                :class="{ open: assembleMenuOpen }"
+                @click="toggleAssembleMenu"
+                aria-haspopup="menu"
+                :aria-expanded="assembleMenuOpen"
+                aria-label="More assembly options"
+              >▾</button>
+              <div v-if="assembleMenuOpen" class="split-menu" role="menu">
+                <button
+                  type="button"
+                  class="split-menu-item"
+                  role="menuitem"
+                  @click="onUnassemble"
+                >Unassemble</button>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
+
+      <AssembleDeckModal
+        v-if="assembleOpen && deck.deck"
+        :deck="{ id: deck.deck.id, name: deck.deck.name }"
+        :entries="deck.entries"
+        @close="assembleOpen = false"
+      />
 
       <div
         v-if="commanderSlots.length"
@@ -311,13 +396,13 @@ watch(
   line-height: 1.02;
   letter-spacing: -0.015em;
   color: var(--ink-100);
-  margin: 0;
-  padding: 2px 6px;
-  margin-left: -6px;
+  padding: 6px 6px 0;
+  margin: -4px 0 0 -6px;
   border-radius: 4px;
   transition: background 0.12s ease;
   cursor: text;
   display: inline-block;
+  align-self: flex-start;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
   max-width: 100%;
   overflow: hidden;
@@ -485,6 +570,54 @@ watch(
 .commander-slot.sig-expanded .sig-card {
   opacity: 1;
   transform: translateY(0) scale(1);
+}
+
+.assemble-split {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+.assemble-split .split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.assemble-split .split-chevron {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.assemble-split .split-chevron.open {
+  background: var(--amber-dim);
+  color: var(--ink-100);
+  border-color: var(--amber);
+}
+.assemble-split .split-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+  min-width: 140px;
+  padding: 4px 0;
+}
+.assemble-split .split-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--ink-100);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.assemble-split .split-menu-item:hover {
+  background: var(--amber-dim);
 }
 
 .export-menu :deep(button) {

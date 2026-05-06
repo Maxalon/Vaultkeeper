@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class CollectionController extends Controller
 {
@@ -49,6 +50,17 @@ class CollectionController extends Controller
             ->join('scryfall_cards', 'collection_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
             ->where('collection_entries.user_id', $userId)
             ->with('card')
+            // Deck-location copies are represented by their deck_entry on
+            // the deck page; surfacing them here too would double-count
+            // and let the user accidentally re-shelve a copy out from
+            // under its deck. Pending copies stay visible (the dedicated
+            // /pending UI lives elsewhere in the stack).
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('locations')
+                    ->whereColumn('locations.id', 'collection_entries.location_id')
+                    ->where('locations.role', Location::ROLE_DECK);
+            })
             ->select('collection_entries.*');
 
         // location_id filter — three possible shapes
@@ -126,8 +138,8 @@ class CollectionController extends Controller
                 'nullable',
                 'integer',
                 // Must belong to the same user AND be a user-managed location.
-                // Auto-managed rows (deck/pending) are off-limits to direct
-                // user moves — they're written exclusively by their owning
+                // Auto-managed rows (deck) are off-limits to direct user
+                // moves — they're written exclusively by their owning
                 // model so the invariants stay coherent.
                 function ($attr, $value, $fail) {
                     if ($value === null) return;
@@ -143,19 +155,39 @@ class CollectionController extends Controller
             'notes'    => 'sometimes|nullable|string|max:1000',
             'quantity' => 'sometimes|integer|min:1',
             'foil'     => 'sometimes|boolean',
+            // Optional optimistic-locking version. When present, the
+            // current row's version must match — otherwise 412.
+            'version'  => 'sometimes|integer|min:0',
         ]);
 
+        $expectedVersion = array_key_exists('version', $data) ? (int) $data['version'] : null;
+        unset($data['version']);
+
         // The user re-shelving this copy means the "from <deck>" stamp from
-        // the last shrink is no longer relevant. Clear it in the same write
-        // as the location move so the pill disappears.
+        // the last shrink is no longer relevant — clear it in the same
+        // write as the location move so the pill disappears. Picking any
+        // valid location also resolves a `no_location` review reason.
         if (array_key_exists('location_id', $data)) {
             $data['source_deck_id'] = null;
             $data['source_deck_name_snapshot'] = null;
             $data['source_deck_deleted'] = false;
+            $data['review_reason'] = null;
         }
 
         $previousLocationId = $entry->getOriginal('location_id');
-        $entry->update($data);
+
+        DB::transaction(function () use ($entry, $data, $expectedVersion) {
+            $locked = CollectionEntry::query()
+                ->where('id', $entry->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($expectedVersion !== null) {
+                $locked->assertVersion($expectedVersion);
+            }
+            $locked->update($data);
+            // Bring the route-bound model in line with the locked write.
+            $entry->setRawAttributes($locked->fresh()->getAttributes(), true);
+        });
 
         if (array_key_exists('location_id', $data)) {
             $affected = array_filter([$previousLocationId, $entry->location_id]);
@@ -179,7 +211,11 @@ class CollectionController extends Controller
     public function batchMove(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'ids'         => 'required|array|min:1',
+            // Cap: a single batchMove fans out to a whereIn().update() over
+            // the request's ids. 500 is safely above any plausible UI batch
+            // and well below the level where one request would lock-out the
+            // collection_entries table for other users.
+            'ids'         => 'required|array|min:1|max:500',
             'ids.*'       => 'integer',
             'location_id' => [
                 'present',
@@ -237,6 +273,15 @@ class CollectionController extends Controller
         $rows = CollectionEntry::query()
             ->where('user_id', auth()->id())
             ->where('scryfall_id', $data['scryfall_id'])
+            // Same rationale as index(): a copy already living in a
+            // deck-location is owned by that deck, so don't offer it as
+            // a binding target for a different deck slot.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('locations')
+                    ->whereColumn('locations.id', 'collection_entries.location_id')
+                    ->where('locations.role', Location::ROLE_DECK);
+            })
             ->with('location:id,name,type')
             ->get();
 
@@ -254,12 +299,26 @@ class CollectionController extends Controller
         );
     }
 
-    public function destroy(CollectionEntry $entry): Response
+    public function destroy(Request $request, CollectionEntry $entry): Response
     {
         abort_if($entry->user_id !== auth()->id(), 403);
 
-        $locationId = $entry->location_id;
-        $entry->delete();
+        $expectedVersion = $request->has('version')
+            ? (int) $request->input('version')
+            : null;
+
+        $locationId = null;
+        DB::transaction(function () use ($entry, $expectedVersion, &$locationId) {
+            $locked = CollectionEntry::query()
+                ->where('id', $entry->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($expectedVersion !== null) {
+                $locked->assertVersion($expectedVersion);
+            }
+            $locationId = $locked->location_id;
+            $locked->delete();
+        });
 
         if ($locationId) {
             Location::find($locationId)?->refreshSetCodes();
@@ -340,6 +399,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'version'     => (int) ($entry->version ?? 0),
             'source_deck' => $this->presentSourceDeck($entry),
             'created_at'  => $entry->created_at?->toIso8601String(),
             'card'        => $card ? [
@@ -380,6 +440,7 @@ class CollectionController extends Controller
             'foil'        => (bool) $entry->foil,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
+            'version'     => (int) ($entry->version ?? 0),
             'source_deck' => $this->presentSourceDeck($entry),
             'card'        => $card ? [
                 'scryfall_id'      => $card->scryfall_id,

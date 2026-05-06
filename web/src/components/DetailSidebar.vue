@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useCollectionStore } from '../stores/collection'
 import CardDetailBody from './CardDetailBody.vue'
+import Checkbox from './Checkbox.vue'
 
 const collection = useCollectionStore()
 
@@ -87,7 +88,11 @@ const realLocations = computed(() => collection.locations)
           <label class="vk-field foil-field">
             <span class="vk-field-label">Foil</span>
             <span class="foil-toggle">
-              <input type="checkbox" name="foil" :checked="entry.foil" @change="onFoilChange" />
+              <Checkbox
+                name="foil"
+                :model-value="!!entry.foil"
+                @update:model-value="(v) => patch({ foil: v })"
+              />
               <span>{{ entry.foil ? 'Yes' : 'No' }}</span>
             </span>
           </label>

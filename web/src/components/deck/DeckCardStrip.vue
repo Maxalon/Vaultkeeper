@@ -28,6 +28,13 @@ const card = computed(() => props.entry?.scryfall_card || {})
 const qty = computed(() => props.entry?.quantity || 0)
 const isModeA = computed(() => settings.displayMode === 'A')
 
+// Partial-exclude split rows (locked decision 3.3): the merged view
+// surfaces these flags so the strip can render an "owned X / wanted Y"
+// badge instead of a single quantity pill.
+const isSplit = computed(() => !!props.entry?._split)
+const ownedQty = computed(() => props.entry?.owned_quantity ?? null)
+const wantedQty = computed(() => props.entry?.wanted_quantity ?? null)
+
 function onDragStart(e) {
   e.dataTransfer.effectAllowed = 'move'
   e.dataTransfer.setData('application/json', JSON.stringify({
@@ -59,7 +66,6 @@ function onPeekShow({ rect }) {
     :card="card"
     :quantity="qty"
     :show-qty-in-bar="false"
-    :show-skeleton="false"
     :mode-b="settings.displayMode === 'B'"
     :hover-mode="settings.hoverMode"
     :draggable="true"
@@ -76,7 +82,16 @@ function onPeekShow({ rect }) {
       <!-- Mode A keeps the square pill in the top-right. Mode B replaces
            it with the base's animated corner badge, so hide this one to
            avoid stacking two quantity markers. -->
-      <span v-if="qty > 1 && isModeA" class="qty-badge">{{ qty }}</span>
+      <span v-if="qty > 1 && isModeA && !isSplit" class="qty-badge">{{ qty }}</span>
+      <!-- Split rows (partial-exclude assemble): show owned vs. wanted
+           so the user knows the slot is half-fulfilled. Renders in both
+           display modes since it's strictly informational, not just a
+           quantity stand-in. -->
+      <span
+        v-if="isSplit"
+        class="split-badge"
+        :title="`Owned ${ownedQty}, wanted ${wantedQty}`"
+      >{{ ownedQty }}<span class="sep">/</span>{{ wantedQty }}</span>
     </template>
     <template #overlay-extras>
       <span
@@ -119,6 +134,37 @@ function onPeekShow({ rect }) {
 
 /* GC pill rides inside the overlay bar (left of mana cost) — visual
    styling comes from the global .gc-badge rule in style.css. */
+
+/* Split-row "owned/wanted" badge for partial-exclude assemble (locked
+   decision 3.3). Same anchor as the regular qty pill but coloured
+   amber so users notice the half-fulfilled state without reading the
+   tooltip. */
+.split-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(201, 162, 39, 0.92);
+  color: #1a120c;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 3;
+}
+.split-badge .sep {
+  opacity: 0.6;
+  margin: 0 1px;
+}
 
 /* .illegal-glow itself is a global rule in style.css (shared pulse
    with DeckCardTile / CommanderZone); nothing strip-specific to add. */

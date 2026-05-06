@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    // Operator-only address that receives the one-time /horizon-setup token
+    // on first access. If unset, the token is only retrievable via
+    // `php artisan horizon:setup-token` from inside the api container.
+    'horizon' => [
+        'setup_email' => env('HORIZON_SETUP_EMAIL'),
+    ],
+
 ];

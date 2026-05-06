@@ -71,6 +71,104 @@ export const useDeckStore = defineStore('deck', {
     entriesByZone: (state) => (zone) =>
       state.entries.filter((e) => e.zone === zone),
 
+    /**
+     * Same as `entriesByZone`, but coalesces partial-exclude split
+     * pairs (locked decision 3.3) into a single display row. The
+     * backend leaves the two raw rows in place so individual edits
+     * still target the right one — this view is purely cosmetic.
+     *
+     * Each merged row carries:
+     *   - the bound entry's id / scryfall_card / category / etc.
+     *     (commands operating on row.id naturally hit the bound row;
+     *     +1 / catalog-drag route to the wanted sibling explicitly)
+     *   - quantity = bound + wanted (the visual total)
+     *   - owned_quantity / wanted_quantity for the badge
+     *   - _split = true, _wantedEntry, and _boundEntry pointers so
+     *     edit handlers can address either side directly.
+     *
+     * Purely-bound rows (no wanted sibling yet) get _canSplit = true
+     * so `+1` knows to mint a wanted sibling via /decks/{id}/wanted
+     * instead of bumping the bound row's CE-backed quantity.
+     *
+     * Commanders / signature spells are never merged — they always
+     * have qty=1 and partial-exclude is rejected for them server-side.
+     */
+    mergedEntriesByZone: (state) => (zone) => {
+      const inZone = state.entries.filter((e) => e.zone === zone)
+      // Group by (scryfall_id, zone) — the only legitimate pair shape
+      // is one bound + one wanted row.
+      const groups = new Map()
+      for (const e of inZone) {
+        if (e.is_commander || e.is_signature_spell) continue
+        const key = e.scryfall_id
+        if (!groups.has(key)) groups.set(key, [])
+        groups.get(key).push(e)
+      }
+
+      const merged = []
+      const consumedIds = new Set()
+      const annotated = new Map()
+      for (const [, rows] of groups) {
+        if (rows.length === 1) {
+          const only = rows[0]
+          if (only.physical_copy_id != null && only.wanted == null) {
+            annotated.set(only.id, { ...only, _canSplit: true })
+          }
+          continue
+        }
+        // Treat every unbound row (physical_copy_id null, regardless of
+        // whether `wanted` is set) as part of the wishlist side. The
+        // observer auto-sets wanted=zone on grow, but a freshly-added
+        // unbound row arrives with wanted=null — we still need to merge
+        // it into the display row so the deck list doesn't show two
+        // strips for the same card.
+        const wantedRows = rows.filter(
+          (r) => r.physical_copy_id === null || r.physical_copy_id === undefined,
+        )
+        const bound = rows.find((r) => r.physical_copy_id !== null && r.physical_copy_id !== undefined)
+
+        if (bound && wantedRows.length > 0) {
+          const wantedQty = wantedRows.reduce((s, r) => s + (r.quantity || 0), 0)
+          const total = (bound.quantity || 0) + wantedQty
+          merged.push({
+            ...bound,
+            quantity: total,
+            owned_quantity: bound.quantity || 0,
+            wanted_quantity: wantedQty,
+            _split: true,
+            // _wantedEntry points at the first unbound sibling —
+            // handlers that mutate it (sidebar Wanted+/−,
+            // AddCopiesModal reconciliation) re-read fresh state from
+            // the store post-mutation, so one representative row is
+            // enough.
+            _wantedEntry: wantedRows[0],
+            _boundEntry: bound,
+          })
+          consumedIds.add(bound.id)
+          for (const w of wantedRows) consumedIds.add(w.id)
+        } else if (!bound && wantedRows.length > 1) {
+          // No bound row, but multiple unbound rows — coalesce to one
+          // strip showing the summed wishlist quantity. No /-split,
+          // since there's no owned side.
+          const total = wantedRows.reduce((s, r) => s + (r.quantity || 0), 0)
+          merged.push({ ...wantedRows[0], quantity: total })
+          for (const w of wantedRows) consumedIds.add(w.id)
+        }
+        // else: 2+ bound rows with no wanted → leave as-is (malformed
+        // but the merge can't pick one without guessing).
+      }
+
+      // Stitch unmerged entries (commanders/sigs included, plus any
+      // ungrouped row) back in. Purely-bound singletons are returned
+      // with _canSplit=true so +1 can route to the new endpoint.
+      const out = []
+      for (const e of inZone) {
+        if (consumedIds.has(e.id)) continue
+        out.push(annotated.get(e.id) || e)
+      }
+      return out.concat(merged)
+    },
+
     commanderEntries: (state) =>
       state.entries.filter((e) => e.is_commander),
 
@@ -168,6 +266,37 @@ export const useDeckStore = defineStore('deck', {
         this.entries.push(data)
         await Promise.all([
           this.loadIllegalities(deckId),
+          useCollectionStore().fetchGroups(),
+        ])
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Failed to add card')
+        throw e
+      }
+    },
+
+    /**
+     * "+1 want one more". The single endpoint behind the sidebar +1
+     * button (when the active entry is bound or already wanted) and
+     * the catalog-drag drop. Backend creates a fresh wanted-only
+     * deck_entry or bumps an existing wanted sibling — either way,
+     * a bound CE-backed quantity is never touched (that requires the
+     * explicit inline-picker "I bought it" path).
+     */
+    async growWanted(deckId, scryfallId, zone, opts = {}) {
+      const toast = useToast()
+      const body = { scryfall_id: scryfallId, zone }
+      if (opts.delta != null)    body.delta    = opts.delta
+      if (opts.category != null) body.category = opts.category
+      try {
+        const { data } = await api.post(`/decks/${deckId}/wanted`, body)
+        // Replace existing entry if the bumped sibling is already in
+        // local state, else append the fresh row.
+        const idx = this.entries.findIndex((e) => e.id === data.id)
+        if (idx === -1) this.entries.push(data)
+        else this.entries[idx] = { ...this.entries[idx], ...data }
+        await Promise.all([
+          this.loadIllegalities(deckId),
           useCollectionStore().fetchDecks(),
         ])
         return data
@@ -195,7 +324,7 @@ export const useDeckStore = defineStore('deck', {
         this.entries[idx] = { ...this.entries[idx], ...data }
         await Promise.all([
           this.loadIllegalities(deckId),
-          countChanged ? useCollectionStore().fetchDecks() : null,
+          countChanged ? useCollectionStore().fetchGroups() : null,
         ])
         return data
       } catch (e) {
@@ -211,23 +340,112 @@ export const useDeckStore = defineStore('deck', {
       return this.updateEntry(deckId, entryId, { zone })
     },
 
-    async removeEntry(deckId, entryId) {
+    /**
+     * POST /api/decks/{deck}/entries/{entry}/edit-physical — adjust the
+     * bound CE's condition / foil / notes / printing, optionally splitting
+     * the slot when `apply_to` is less than the current quantity. The
+     * server returns either the updated source entry (apply-all) or the
+     * freshly-minted sibling (split). We re-load the full entry list so
+     * both sides of a split materialise locally.
+     */
+    async editPhysicalCopy(deckId, entryId, payload) {
+      const toast = useToast()
+      this.saving.add(entryId)
+      try {
+        const { data } = await api.post(
+          `/decks/${deckId}/entries/${entryId}/edit-physical`,
+          payload,
+        )
+        await Promise.all([
+          this.loadEntries(deckId),
+          this.loadIllegalities(deckId),
+        ])
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Edit failed')
+        throw e
+      } finally {
+        this.saving.delete(entryId)
+      }
+    },
+
+    async removeEntry(deckId, entryId, opts = {}) {
       const toast = useToast()
       const idx = this.entries.findIndex((e) => e.id === entryId)
       if (idx === -1) return
       const removed = this.entries.splice(idx, 1)[0]
       if (this.activeEntryId === entryId) this.activeEntryId = null
+      // Whether the default-path delete will queue a CE for review.
+      // (Discard skips the queue; a row with no bound copy has nothing
+      // to queue either.)
+      const willQueueForReview = !opts.discard && removed?.physical_copy_id != null
+      const cardName = removed?.scryfall_card?.name || 'Card'
       try {
-        await api.delete(`/decks/${deckId}/entries/${entryId}`)
+        const url = opts.discard
+          ? `/decks/${deckId}/entries/${entryId}?discard=true`
+          : `/decks/${deckId}/entries/${entryId}`
+        await api.delete(url)
         await Promise.all([
           this.loadIllegalities(deckId),
-          useCollectionStore().fetchDecks(),
+          // Removing an entry might queue its copy for review — refresh
+          // the sidebar summary so the badge is in sync. Discard doesn't
+          // queue, so this is a no-op there, but it's cheap.
+          useCollectionStore().fetchGroups(),
         ])
+        if (willQueueForReview) {
+          // Default path queued the freed copy for review with reason
+          // `no_location`. Offer the user a one-click override to
+          // discard it instead, since the most common other intent
+          // ("I sold/discarded this") would otherwise need a trip
+          // to /review to express.
+          const collection = useCollectionStore()
+          toast.withActions(
+            `${cardName} marked for review.`,
+            [
+              {
+                label: 'Sold / discarded',
+                run: () => collection.resolveReview([
+                  { collection_entry_id: removed.physical_copy_id, discard: true },
+                ]),
+              },
+            ],
+          )
+        }
       } catch (e) {
         this.entries.splice(idx, 0, removed)
         toast.error(e.response?.data?.message || 'Delete failed')
         throw e
       }
+    },
+
+    /**
+     * Inline-picker shortcuts. Each maps directly onto a backend
+     * `mode=...` / `discard=true` call so the action service is the
+     * single point of truth for the assemble-related semantics. The
+     * `bindAsNewCopy` path is the same backend hook the menu offers
+     * for unbound entries; `discard` is the menu's "sold or discarded"
+     * action.
+     */
+    async bindEntryAsNewCopy(deckId, entryId) {
+      return this.updateEntry(deckId, entryId, { mode: 'create_new_copy' })
+    },
+
+    async growEntryAsNewCopy(deckId, entryId, newQuantity) {
+      return this.updateEntry(deckId, entryId, {
+        quantity: newQuantity,
+        mode: 'create_new_copy',
+      })
+    },
+
+    async shrinkEntryAndDiscard(deckId, entryId, newQuantity) {
+      return this.updateEntry(deckId, entryId, {
+        quantity: newQuantity,
+        discard: true,
+      })
+    },
+
+    async destroyEntryAndDiscard(deckId, entryId) {
+      return this.removeEntry(deckId, entryId, { discard: true })
     },
 
     async updateDeck(id, patch) {
@@ -343,6 +561,48 @@ export const useDeckStore = defineStore('deck', {
         is_signature_spell: false,
         signature_for_entry_id: null,
       })
+    },
+
+    /**
+     * POST /api/decks/{id}/assemble — declare the deck physically built.
+     * The backend creates one CE per slot in the deck-location, links
+     * each entry's `physical_copy_id`, and (for partial-exclude rows)
+     * splits the slot in two.
+     *
+     * `intent` shape:
+     *   { all: bool, sections?: string[], excludes?: [{scryfall_id, zone, qty}] }
+     */
+    async assembleDeck(id, intent) {
+      const toast = useToast()
+      try {
+        const { data } = await api.post(`/decks/${id}/assemble`, intent)
+        // Re-load entries so the new physical_copy_id bindings + split
+        // rows from partial-excludes show up immediately.
+        await this.loadEntries(id)
+        await useCollectionStore().fetchGroups()
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Assemble failed')
+        throw e
+      }
+    },
+
+    /**
+     * POST /api/decks/{id}/unassemble — tear down the assembled state.
+     * Every CE in the deck-location is marked for review with reason
+     * `no_location`. Every entry's physical_copy_id is cleared.
+     */
+    async unassembleDeck(id) {
+      const toast = useToast()
+      try {
+        const { data } = await api.post(`/decks/${id}/unassemble`)
+        await this.loadEntries(id)
+        await useCollectionStore().fetchGroups()
+        return data
+      } catch (e) {
+        toast.error(e.response?.data?.message || 'Unassemble failed')
+        throw e
+      }
     },
 
     async ignoreIllegality(id, payload) {

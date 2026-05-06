@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
@@ -29,10 +28,37 @@ class AuthController extends Controller
     }
 
     /**
-     * Create a new user and immediately log them in. Email and username are
-     * unique. Password is confirmed against `password_confirmation` on the
+     * Create a new user and immediately log them in. Email and username must
+     * be unique. Password is confirmed against `password_confirmation` on the
      * client side too, but we re-validate here to defend against malformed
      * requests that bypass the form.
+     *
+     * ┌─────────────────────────────────────────────────────────────────────┐
+     * │ KNOWN ACCEPTED RISK — open registration, no email verification      │
+     * ├─────────────────────────────────────────────────────────────────────┤
+     * │ Anyone who can reach this endpoint can mint a verified-looking      │
+     * │ account with a throwaway address and immediately get a JWT. There   │
+     * │ is no email-confirmation step. This is an accepted risk because     │
+     * │ the deployment lives behind a Tailscale ACL that only admits        │
+     * │ pre-approved devices — every caller is already authenticated at    │
+     * │ the network layer. We're keeping the convenience of one-click      │
+     * │ signup for invited users.                                           │
+     * │                                                                     │
+     * │ If this service is EVER exposed to the public internet (or to a    │
+     * │ wider tailnet, or to a Cloudflare Tunnel), revisit this:           │
+     * │   1. Add email verification before granting an API token.          │
+     * │   2. Gate decks/import* and import behind `verified` middleware.   │
+     * │   3. Add hCaptcha / Turnstile to the registration form.            │
+     * │   4. Consider an invite-token requirement.                         │
+     * │ Tracked in the security audit as H-6.                               │
+     * └─────────────────────────────────────────────────────────────────────┘
+     *
+     * Account-enumeration hardening (H-2)
+     * ───────────────────────────────────
+     * Username and email uniqueness are checked manually and surfaced under
+     * a single generic `username` error so an attacker can't tell whether
+     * they hit a registered username, a registered email, or both. The
+     * unique() rule used to leak the difference via field-specific messages.
      */
     public function register(Request $request): JsonResponse
     {
@@ -40,7 +66,6 @@ class AuthController extends Controller
             'username' => [
                 'required', 'string', 'min:3', 'max:50',
                 'regex:/^[a-zA-Z0-9_.-]+$/',
-                Rule::unique('users', 'username'),
             ],
             'email' => [
                 'required',
@@ -55,10 +80,23 @@ class AuthController extends Controller
                     ? 'email:rfc'
                     : 'email:rfc,dns',
                 'max:255',
-                Rule::unique('users', 'email'),
             ],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
+
+        $taken = User::query()
+            ->where('username', $data['username'])
+            ->orWhere('email', $data['email'])
+            ->exists();
+
+        if ($taken) {
+            // Single generic error — never reveal *which* field collided.
+            // The SPA renders this under the username input; users with a
+            // genuine duplicate are nudged toward the password-reset flow.
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'username' => ['Those credentials are unavailable. If you already have an account, please sign in or reset your password.'],
+            ]);
+        }
 
         $user = User::create([
             'username' => $data['username'],

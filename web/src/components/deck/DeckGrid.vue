@@ -94,7 +94,11 @@ const filtered = computed(() => {
   const parsed = deck.parsedView
   const nameQ = (parsed.nameQuery || '').trim().toLowerCase()
   const tokens = parsed.tokens
-  const zoneEntries = deck.entriesByZone(props.zone).filter(
+  // Use the merged view so partial-exclude split rows (locked
+  // decision 3.3) render as one row with combined quantity. The
+  // commander / signature-spell filter still applies — those slots
+  // are never coalesced and they live in their own zone visually.
+  const zoneEntries = deck.mergedEntriesByZone(props.zone).filter(
     (e) => !e.is_commander && !e.is_signature_spell,
   )
   if (!nameQ && tokens.length === 0) return zoneEntries
@@ -214,6 +218,16 @@ const columns = computed(() => {
 
 const cardIllegalityMap = computed(() => deck.cardLevelIllegalitiesByScryfallId)
 
+// Total card count for a group header — sums every row's quantity so a
+// single merged entry with 4 copies counts as 4, not 1. Merged split
+// rows already carry quantity = owned + wanted (see deck store
+// mergedEntriesByZone), so summing `quantity` covers both sides.
+function groupTotal(rows) {
+  let total = 0
+  for (const r of rows) total += Number(r.quantity) || 0
+  return total
+}
+
 const gridDragActive = ref(false)
 const dropTargetGroup = ref(null)
 
@@ -290,13 +304,15 @@ function onGroupDragLeave() {
 
 function applyDrop(payload, groupKey) {
   if (payload.source === 'catalog') {
-    deck.addEntry(deck.deck.id, {
-      scryfall_id: payload.scryfall_id,
-      zone: props.zone,
-      category: deck.view.groupBy === 'categories' && groupKey && groupKey !== 'Uncategorized'
+    // Catalog drag-in always routes through the wanted endpoint:
+    // a fresh card lands as a wanted-only entry, an existing card
+    // bumps its wanted sibling. Bound CE-backed quantity is never
+    // changed by drag — that requires the explicit inline picker.
+    const category =
+      deck.view.groupBy === 'categories' && groupKey && groupKey !== 'Uncategorized'
         ? groupKey
-        : undefined,
-    })
+        : null
+    deck.growWanted(deck.deck.id, payload.scryfall_id, props.zone, { category })
     return
   }
   if (payload.source === 'deck' && payload.deckEntryId) {
@@ -420,7 +436,7 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
         <header v-if="group.label" class="group-header" @click="toggle(group.key)">
           <span class="chevron" :class="{ collapsed: collapsed[group.key] }">▾</span>
           <span>{{ group.label }}</span>
-          <span class="count">({{ group.rows.reduce((s, r) => s + r.quantity, 0) }})</span>
+          <span class="count">({{ groupTotal(group.rows) }})</span>
         </header>
         <div v-if="!collapsed[group.key]" class="group-body" :class="deck.view.displayMode">
           <template v-for="entry in group.rows" :key="entry.id">

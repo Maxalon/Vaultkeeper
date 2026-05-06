@@ -8,8 +8,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * Handles the password-protected entry into the Horizon dashboard.
@@ -18,10 +20,20 @@ use Illuminate\View\View;
  * ──────────────────
  * When no admin row exists, GET /horizon-setup renders a "choose a password"
  * form gated by a one-time setup token. The token is generated lazily on
- * the first GET, cached in Redis for 24h, and emitted to the application
- * log so the operator retrieves it from `docker compose logs api`. After
- * a successful POST the token is invalidated and the form 404s on every
- * future visit.
+ * the first GET and cached in Redis for 24h.
+ *
+ * Token delivery
+ * ──────────────
+ * The token is delivered by email to HORIZON_SETUP_EMAIL (preferred). The
+ * operator should configure that env var before first deploy. As a backup
+ * (mail outage, env var not yet set, lost the email), an artisan command
+ * is available inside the container:
+ *
+ *   docker compose exec api php artisan horizon:setup-token
+ *
+ * which prints the currently-cached token to stdout. The token is NEVER
+ * written to the application log — anyone with log access used to be
+ * able to complete first-time setup ahead of the legitimate operator.
  *
  * Login
  * ─────
@@ -50,17 +62,61 @@ class HorizonAuthController extends Controller
         $token = Cache::get(self::SETUP_TOKEN_KEY);
         if (! $token) {
             $token = Str::random(48);
-            // 24h is enough for the operator to fetch from logs and set
+            // 24h is enough for the operator to fetch the email and set
             // the password, but short enough that an unused token won't
             // sit around forever.
             Cache::put(self::SETUP_TOKEN_KEY, $token, now()->addHours(24));
-            // warning level so the line stands out at the default
-            // LOG_LEVEL=warning prod runs on. The token is the SECRET —
-            // anyone with log access can complete first-time setup.
-            Log::warning('HORIZON_SETUP_TOKEN issued', ['token' => $token]);
+            $this->deliverSetupToken($token);
         }
 
         return view('horizon.setup');
+    }
+
+    /**
+     * Deliver the freshly-issued setup token to the configured operator.
+     *
+     * Primary channel: email to HORIZON_SETUP_EMAIL. Fallback: the artisan
+     * command `php artisan horizon:setup-token`, which reads the same
+     * cache key. We deliberately do NOT write the token to the application
+     * log — the previous behavior leaked the secret to anyone with stdout
+     * access (CI artifacts, Loki/Grafana, log shippers).
+     *
+     * If the email send fails (transport down, env not configured), we
+     * log an OPERATIONAL warning that does NOT contain the token, so the
+     * operator knows to fall back to the artisan command.
+     */
+    private function deliverSetupToken(string $token): void
+    {
+        $recipient = (string) config('services.horizon.setup_email', '');
+
+        if ($recipient === '') {
+            // No operator email configured — log a hint, NOT the token.
+            Log::warning('HORIZON_SETUP_TOKEN issued but HORIZON_SETUP_EMAIL is not set. Run `php artisan horizon:setup-token` inside the api container to retrieve it.');
+            return;
+        }
+
+        try {
+            Mail::raw(
+                "A Horizon dashboard setup token has been issued for ".config('app.url').".\n\n"
+                ."Token: {$token}\n\n"
+                ."Visit /horizon-setup, paste this token, and choose a password.\n"
+                ."The token expires in 24 hours.\n\n"
+                ."If you did not initiate this, someone reached the /horizon-setup\n"
+                ."page before an admin was configured. The token alone is harmless\n"
+                ."until the password form is submitted, but you should investigate.",
+                function ($msg) use ($recipient) {
+                    $msg->to($recipient)->subject('Vaultkeeper Horizon — setup token');
+                },
+            );
+            Log::info('HORIZON_SETUP_TOKEN sent by email', ['to' => $recipient]);
+        } catch (Throwable $e) {
+            // Don't crash the setup page — the operator can always use the
+            // artisan-command fallback. Log the failure (no token!).
+            Log::error('HORIZON_SETUP_TOKEN email delivery failed; use `php artisan horizon:setup-token` as a fallback.', [
+                'to'    => $recipient,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function setup(Request $request): RedirectResponse

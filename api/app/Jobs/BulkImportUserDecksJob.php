@@ -80,6 +80,13 @@ class BulkImportUserDecksJob implements ShouldQueue
             'message'  => "Found {$total} decks. Importing…",
         ]);
 
+        // Sort the upstream list alphabetically (case-insensitive) before
+        // creating any decks. Each call to importFromUrl assigns the next
+        // sort_order on the shadow Location, so processing alphabetically
+        // gives the user an A→Z default in the sidebar — they can drag to
+        // reorder afterwards and those positions will stick.
+        usort($decks, fn ($a, $b) => strcasecmp($a['name'] ?? '', $b['name'] ?? ''));
+
         // Cache LocationGroups by their flattened folder path for the run so
         // we don't hit the DB for every deck.
         $groupCache = [];

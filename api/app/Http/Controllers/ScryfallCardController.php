@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
+use App\Models\Location;
 use App\Models\ScryfallCard;
 use App\Models\ScryfallOracle;
 use App\Services\BulkSyncService;
@@ -313,7 +314,26 @@ class ScryfallCardController extends Controller
             $committed[$c->sid][$key] = (int) $c->used;
         }
 
-        $out = array_map(function ($r) use ($owned, $committed) {
+        // Per-printing presence in the user's "real" collection — i.e. at
+        // least one CE that does NOT live in a deck-role location. Used by
+        // the printing-picker's "owned only" filter so a copy that exists
+        // solely as an assemble-minted deck-bound CE doesn't qualify.
+        $collectionSids = CollectionEntry::query()
+            ->where('user_id', $userId)
+            ->whereIn('scryfall_id', $sids)
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('locations')
+                    ->whereColumn('locations.id', 'collection_entries.location_id')
+                    ->where('locations.role', Location::ROLE_DECK);
+            })
+            ->select('scryfall_id')
+            ->distinct()
+            ->pluck('scryfall_id')
+            ->all();
+        $inCollection = array_flip($collectionSids);
+
+        $out = array_map(function ($r) use ($owned, $committed, $inCollection) {
             $o = $owned[$r->scryfall_id] ?? [];
             $c = $committed[$r->scryfall_id] ?? [];
             $nonfoil = (int) ($o['nonfoil'] ?? 0);
@@ -345,6 +365,7 @@ class ScryfallCardController extends Controller
                     'foil'              => $foil,
                     'available_nonfoil' => max(0, $nonfoil - $usedNonfoil),
                     'available_foil'    => max(0, $foil    - $usedFoil),
+                    'in_collection'     => isset($inCollection[$r->scryfall_id]),
                 ],
             ];
         }, $rows);

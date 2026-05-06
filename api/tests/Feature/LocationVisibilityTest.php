@@ -6,7 +6,6 @@ use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\Location;
 use App\Models\User;
-use App\Services\PendingRelocationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -40,7 +39,6 @@ class LocationVisibilityTest extends TestCase
             'name'    => 'Hidden Deck',
             'format'  => 'commander',
         ]);
-        app(PendingRelocationService::class)->ensureLocation($this->user);
 
         $response = $this->withHeaders($this->headers())
             ->getJson('/api/locations')
@@ -49,18 +47,19 @@ class LocationVisibilityTest extends TestCase
         $names = collect($response->json('locations'))->pluck('name')->all();
         $this->assertContains('Visible Drawer', $names);
         $this->assertNotContains('Deck: Hidden Deck', $names);
-        $this->assertNotContains('Pending Relocation', $names);
     }
 
-    public function test_location_groups_index_hides_auto_managed_rows(): void
+    public function test_location_groups_index_includes_decks(): void
     {
+        // Decks now appear as first-class sidebar items (kind='deck'),
+        // surfaced via their shadow Location row.
         Location::factory()->create([
             'user_id' => $this->user->id,
             'name'    => 'Visible Drawer',
         ]);
         Deck::create([
             'user_id' => $this->user->id,
-            'name'    => 'Hidden Deck',
+            'name'    => 'Visible Deck',
             'format'  => 'commander',
         ]);
 
@@ -69,9 +68,16 @@ class LocationVisibilityTest extends TestCase
             ->assertOk();
 
         $items = collect($response->json('items'));
+        $kinds = $items->pluck('kind')->all();
+        $this->assertContains('deck', $kinds);
+
+        $deckRow = $items->firstWhere('kind', 'deck');
+        $this->assertSame('Visible Deck', $deckRow['name']);
+        $this->assertArrayHasKey('format', $deckRow);
+        $this->assertArrayHasKey('entry_count', $deckRow);
+
         $names = $items->pluck('name')->all();
         $this->assertContains('Visible Drawer', $names);
-        $this->assertNotContains('Deck: Hidden Deck', $names);
     }
 
     public function test_cannot_update_auto_managed_location(): void
