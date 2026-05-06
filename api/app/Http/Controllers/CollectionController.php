@@ -134,14 +134,28 @@ class CollectionController extends Controller
     /**
      * GET /api/collection/totals
      *
-     * Aggregate EUR value of the user's entire collection. Finish-aware
-     * (foil / etched copies price off their dedicated columns), with a
-     * fallback count of copies whose printing has no Cardmarket EUR
-     * price for the requested finish.
+     * Aggregate EUR value of the user's collection. Optional
+     * `location_id` query parameter scopes the total to a single
+     * location (or "unassigned" for entries with no location), matching
+     * the filter semantics of GET /api/collection.
+     *
+     * Finish-aware: foil / etched copies price off their dedicated
+     * columns. `missing_price_count` counts copies whose printing has
+     * no Cardmarket EUR listing for the relevant finish.
      */
-    public function totals(): JsonResponse
+    public function totals(Request $request): JsonResponse
     {
-        return response()->json($this->ownership->totalsForCollection(auth()->id()));
+        $userId = auth()->id();
+
+        if (! $request->has('location_id')) {
+            return response()->json($this->ownership->totalsForCollection($userId));
+        }
+
+        $loc = $request->query('location_id');
+        if ($loc === 'unassigned' || $loc === null || $loc === '') {
+            return response()->json($this->ownership->totalsForCollection($userId, null, true));
+        }
+        return response()->json($this->ownership->totalsForCollection($userId, (int) $loc));
     }
 
     public function update(Request $request, CollectionEntry $entry): JsonResponse

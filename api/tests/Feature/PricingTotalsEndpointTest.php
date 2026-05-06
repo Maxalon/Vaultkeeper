@@ -6,6 +6,7 @@ use App\Models\CardPrice;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
+use App\Models\Location;
 use App\Models\ScryfallCard;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,6 +107,47 @@ class PricingTotalsEndpointTest extends TestCase
                 'card_count'          => 4,
                 'missing_price_count' => 3,
             ]);
+    }
+
+    public function test_collection_totals_can_be_scoped_to_a_location(): void
+    {
+        $card = ScryfallCard::factory()->create();
+        $this->priceFor($card->scryfall_id, '2.00');
+
+        $drawer = Location::factory()->create(['user_id' => $this->user->id]);
+        $binder = Location::factory()->create(['user_id' => $this->user->id]);
+
+        // 3 in drawer, 1 in binder, 2 unassigned. Drawer total = 6.00.
+        CollectionEntry::factory()->create([
+            'user_id' => $this->user->id, 'scryfall_id' => $card->scryfall_id,
+            'quantity' => 3, 'location_id' => $drawer->id,
+        ]);
+        CollectionEntry::factory()->create([
+            'user_id' => $this->user->id, 'scryfall_id' => $card->scryfall_id,
+            'quantity' => 1, 'location_id' => $binder->id,
+        ]);
+        CollectionEntry::factory()->create([
+            'user_id' => $this->user->id, 'scryfall_id' => $card->scryfall_id,
+            'quantity' => 2, 'location_id' => null,
+        ]);
+
+        // Whole collection
+        $this->withHeaders($this->authHeaders())
+            ->getJson('/api/collection/totals')
+            ->assertOk()
+            ->assertJson(['total' => 12.0, 'card_count' => 6]);
+
+        // Single drawer
+        $this->withHeaders($this->authHeaders())
+            ->getJson("/api/collection/totals?location_id={$drawer->id}")
+            ->assertOk()
+            ->assertJson(['total' => 6.0, 'card_count' => 3]);
+
+        // Unassigned bucket
+        $this->withHeaders($this->authHeaders())
+            ->getJson('/api/collection/totals?location_id=unassigned')
+            ->assertOk()
+            ->assertJson(['total' => 4.0, 'card_count' => 2]);
     }
 
     public function test_collection_totals_isolates_users(): void
