@@ -6,7 +6,17 @@ import {
   copyDeckToClipboard,
 } from '../deckExport.js'
 
-function entry(name, { quantity = 1, zone = 'main', is_commander = false, scryfall_id = `id-${name}` } = {}) {
+function entry(
+  name,
+  {
+    quantity = 1,
+    zone = 'main',
+    is_commander = false,
+    scryfall_id = `id-${name}`,
+    set_code = 'tst',
+    collector_number = '1',
+  } = {},
+) {
   return {
     quantity,
     zone,
@@ -14,7 +24,7 @@ function entry(name, { quantity = 1, zone = 'main', is_commander = false, scryfa
     is_signature_spell: false,
     category: null,
     scryfall_id,
-    scryfall_card: { name },
+    scryfall_card: { name, set_code, collector_number },
   }
 }
 
@@ -32,23 +42,23 @@ const baseDeck = {
 describe('buildPlainText', () => {
   it('emits Commander / Deck / Sideboard / Maybe sections in order, skipping empty ones', () => {
     const entries = [
-      entry("Atraxa, Praetors' Voice", { is_commander: true }),
-      entry('Sol Ring'),
-      entry('Arcane Signet'),
-      entry('Back to Basics', { zone: 'side' }),
+      entry("Atraxa, Praetors' Voice", { is_commander: true, set_code: 'cmr', collector_number: '317' }),
+      entry('Sol Ring', { set_code: 'cmm', collector_number: '410' }),
+      entry('Arcane Signet', { set_code: 'eld', collector_number: '331' }),
+      entry('Back to Basics', { zone: 'side', set_code: 'usg', collector_number: '63' }),
     ]
     const text = buildPlainText(baseDeck, entries)
     expect(text).toBe(
       [
         'Commander',
-        "1 Atraxa, Praetors' Voice",
+        "1 Atraxa, Praetors' Voice (CMR) 317",
         '',
         'Deck',
-        '1 Arcane Signet',
-        '1 Sol Ring',
+        '1 Arcane Signet (ELD) 331',
+        '1 Sol Ring (CMM) 410',
         '',
         'Sideboard',
-        '1 Back to Basics',
+        '1 Back to Basics (USG) 63',
       ].join('\n'),
     )
   })
@@ -56,9 +66,9 @@ describe('buildPlainText', () => {
   it('omits Commander section when deck has no commander', () => {
     const text = buildPlainText(
       { ...baseDeck, commander_1_scryfall_id: null },
-      [entry('Lightning Bolt', { quantity: 4 })],
+      [entry('Lightning Bolt', { quantity: 4, set_code: 'lea', collector_number: '161' })],
     )
-    expect(text).toBe(['Deck', '4 Lightning Bolt'].join('\n'))
+    expect(text).toBe(['Deck', '4 Lightning Bolt (LEA) 161'].join('\n'))
   })
 
   it('excludes commanders from the Deck section', () => {
@@ -74,19 +84,19 @@ describe('buildPlainText', () => {
 describe('buildMoxfieldText', () => {
   it('puts commanders at the top of Deck and drops the Commander header', () => {
     const entries = [
-      entry("Atraxa, Praetors' Voice", { is_commander: true }),
-      entry('Sol Ring'),
-      entry('Back to Basics', { zone: 'side' }),
+      entry("Atraxa, Praetors' Voice", { is_commander: true, set_code: 'cmr', collector_number: '317' }),
+      entry('Sol Ring', { set_code: 'cmm', collector_number: '410' }),
+      entry('Back to Basics', { zone: 'side', set_code: 'usg', collector_number: '63' }),
     ]
     const text = buildMoxfieldText(baseDeck, entries)
     expect(text).toBe(
       [
         'Deck',
-        "1 Atraxa, Praetors' Voice",
-        '1 Sol Ring',
+        "1 Atraxa, Praetors' Voice (CMR) 317",
+        '1 Sol Ring (CMM) 410',
         '',
         'Sideboard',
-        '1 Back to Basics',
+        '1 Back to Basics (USG) 63',
       ].join('\n'),
     )
   })
@@ -98,6 +108,13 @@ describe('buildMoxfieldText', () => {
     ])
     expect(text).not.toContain('Rhystic Study')
     expect(text).not.toContain('Maybe')
+  })
+
+  it('drops the printing suffix when set or collector number is missing', () => {
+    const text = buildMoxfieldText(baseDeck, [
+      entry('Sol Ring', { set_code: null, collector_number: null }),
+    ])
+    expect(text).toBe(['Deck', '1 Sol Ring'].join('\n'))
   })
 })
 
