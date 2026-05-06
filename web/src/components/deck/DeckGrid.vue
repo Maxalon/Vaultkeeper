@@ -218,6 +218,16 @@ const columns = computed(() => {
 
 const cardIllegalityMap = computed(() => deck.cardLevelIllegalitiesByScryfallId)
 
+// Total card count for a group header — sums every row's quantity so a
+// single merged entry with 4 copies counts as 4, not 1. Merged split
+// rows already carry quantity = owned + wanted (see deck store
+// mergedEntriesByZone), so summing `quantity` covers both sides.
+function groupTotal(rows) {
+  let total = 0
+  for (const r of rows) total += Number(r.quantity) || 0
+  return total
+}
+
 const gridDragActive = ref(false)
 const dropTargetGroup = ref(null)
 
@@ -426,7 +436,7 @@ const gcFormat = computed(() => deck.deck?.format === 'commander')
         <header v-if="group.label" class="group-header" @click="toggle(group.key)">
           <span class="chevron" :class="{ collapsed: collapsed[group.key] }">▾</span>
           <span>{{ group.label }}</span>
-          <span class="count">({{ group.rows.reduce((s, r) => s + r.quantity, 0) }})</span>
+          <span class="count">({{ groupTotal(group.rows) }})</span>
         </header>
         <div v-if="!collapsed[group.key]" class="group-body" :class="deck.view.displayMode">
           <template v-for="entry in group.rows" :key="entry.id">
