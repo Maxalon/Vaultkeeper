@@ -1,9 +1,9 @@
 <script setup>
-import { provide, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { provide, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { vDraggable } from 'vue-draggable-plus'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
+import { useSidebarSortable } from '../composables/useSidebarSortable'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
@@ -182,14 +182,8 @@ provide('sidebarCtx', {
   activeDeckId,
 })
 
-const outerOptions = {
-  group: { name: 'sidebar', pull: true, put: true },
-  handle: '.drag-handle',
-  animation: 150,
-  ghostClass: 'sortable-ghost',
-  chosenClass: 'sortable-chosen',
-  onEnd: () => collection.reorderAll(),
-}
+const rootDropzone = ref(null)
+useSidebarSortable(rootDropzone)
 
 function itemKey(item) { return `${item.kind}:${item.id}` }
 </script>
@@ -243,8 +237,9 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
       </button>
 
       <div
+        ref="rootDropzone"
         class="sidebar-dropzone"
-        v-draggable="[collection.sidebarItems, outerOptions]"
+        data-sidebar-container="root"
       >
         <template v-for="item in collection.sidebarItems" :key="itemKey(item)">
           <SidebarGroup v-if="item.kind === 'group'" :group="item" />
@@ -493,11 +488,14 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
   padding-bottom: 40px;
 }
 
-/* SortableJS ghost / drag states — applied at runtime by vue-draggable-plus */
+/* SortableJS drag states — applied at runtime to direct children of any
+   sidebar dropzone. The ghost (the placeholder where the dragged item
+   came from) is fully hidden so we never render a phantom copy alongside
+   Sortable's transient float clone. The chosen state lights up the row
+   the user is actively grabbing. */
 /*noinspection CssUnusedSymbol*/
 :deep(.sortable-ghost) {
-  opacity: 0.4;
-  background: rgba(240, 195, 92, 0.08);
+  visibility: hidden;
 }
 /*noinspection CssUnusedSymbol*/
 :deep(.sortable-chosen) {
