@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "sandbox:setup": "node ../claude-sandbox/setup.js",
+    "sandbox": "npm run sandbox:setup && vite --config ../claude-sandbox/vite.config.js",
+    "sandbox:test": "npm run sandbox:setup && playwright test --config ../claude-sandbox/playwright.config.js"
   },
   "dependencies": {
     "@fontsource/inter-tight": "^5.2.7",
@@ -22,6 +25,7 @@
     "vue-router": "^5.0.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^20.9.0",
