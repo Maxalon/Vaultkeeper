@@ -1363,15 +1363,14 @@ class BulkSyncService
             WHERE sc.scryfall_id IS NULL
         SQL);
 
-        // 2. Insert skeleton rows for any oracle that exists in
-        //    scryfall_cards but not yet in scryfall_oracles (e.g., when
-        //    syncOracleTable runs outside the syncBulkCards path —
-        //    targeted set syncs, tests). The skeleton carries the
-        //    oracle_id only; the UPDATE below fills in the rep and
-        //    aggregate columns. Oracle-invariant columns stay at their
-        //    table defaults (NULL JSON, empty strings) — production
-        //    callers always go through syncBulkCards first, so this is
-        //    purely a safety net for partial flows.
+        // 2. Skeleton rows for any oracle in scryfall_cards that isn't
+        //    yet in scryfall_oracles. Production callers always go
+        //    through syncBulkCards first (which writes oracles
+        //    authoritatively), so this only fires for unusual flows
+        //    where a scryfall_cards row landed via direct DB writes.
+        //    Pick a single representative printing per missing oracle
+        //    via MIN(id) so the INSERT is GROUP-BY safe under MySQL 8's
+        //    ONLY_FULL_GROUP_BY default.
         DB::statement(<<<'SQL'
             INSERT INTO scryfall_oracles (
                 oracle_id,
@@ -1380,16 +1379,20 @@ class BulkSyncService
                 printing_count,
                 created_at, updated_at
             )
-            SELECT DISTINCT
+            SELECT
                 sc.oracle_id,
                 sc.scryfall_id, sc.set_code, sc.collector_number, sc.rarity,
                 sc.name, sc.layout, sc.is_dfc,
                 0,
                 NOW(), NOW()
             FROM scryfall_cards sc
+            INNER JOIN (
+                SELECT oracle_id, MIN(id) AS first_id
+                FROM scryfall_cards
+                GROUP BY oracle_id
+            ) firsts ON firsts.first_id = sc.id
             LEFT JOIN scryfall_oracles so ON so.oracle_id = sc.oracle_id
             WHERE so.oracle_id IS NULL
-            GROUP BY sc.oracle_id
         SQL);
 
         // 3. Rep UPDATE — pick the best representative printing per

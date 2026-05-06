@@ -15,8 +15,15 @@ class ScryfallOracleFactory extends Factory
 
     public function definition(): array
     {
+        $oracleId = (string) Str::uuid();
         return [
-            'oracle_id'              => (string) Str::uuid(),
+            'oracle_id'              => $oracleId,
+            // NOT NULL on the table; tests that bypass the paired
+            // ScryfallCardFactory still need plausible values here.
+            'default_scryfall_id'    => (string) Str::uuid(),
+            'default_set_code'       => strtolower($this->faker->lexify('???')),
+            'default_collector_number' => (string) $this->faker->numberBetween(1, 400),
+            'default_rarity'         => $this->faker->randomElement(['common', 'uncommon', 'rare', 'mythic']),
             'name'                   => $this->faker->words(3, true),
             'layout'                 => 'normal',
             'is_dfc'                 => false,
