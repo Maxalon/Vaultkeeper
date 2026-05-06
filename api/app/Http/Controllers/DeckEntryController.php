@@ -721,6 +721,7 @@ class DeckEntryController extends Controller
                 'oracle_id'      => $card->oracle_id,
                 'name'           => $card->name,
                 'set_code'       => $card->set_code,
+                'collector_number' => $card->collector_number,
                 'rarity'         => $card->rarity,
                 'type_line'      => $card->type_line,
                 'mana_cost'      => $card->mana_cost,
