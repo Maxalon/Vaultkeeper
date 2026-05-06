@@ -481,6 +481,7 @@ export const useCollectionStore = defineStore('collection', {
             quantity: data.quantity,
             condition: data.condition,
             foil: data.foil,
+            is_etched: data.is_etched,
             notes: data.notes,
             location_id: data.location_id,
             version: data.version,

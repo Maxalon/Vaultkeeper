@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\BulkSyncService;
+use App\Services\PriceUpsertService;
 use App\Services\ScryfallService;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -21,7 +22,7 @@ class BulkSyncServiceTest extends TestCase
         // Pure function under test has no dependency on ScryfallService state
         // but the constructor still needs one — instantiate with a fresh Http
         // factory so nothing ever tries to call out.
-        return new BulkSyncService(new ScryfallService(new HttpFactory));
+        return new BulkSyncService(new ScryfallService(new HttpFactory), new PriceUpsertService());
     }
 
     /**

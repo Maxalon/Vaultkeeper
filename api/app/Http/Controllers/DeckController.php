@@ -7,6 +7,7 @@ use App\Models\DeckEntry;
 use App\Models\DeckIgnoredIllegality;
 use App\Models\ScryfallCard;
 use App\Services\DeckLegalityService;
+use App\Services\DeckOwnershipService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -16,7 +17,10 @@ class DeckController extends Controller
 {
     private const FORMATS = ['commander', 'oathbreaker', 'pauper', 'standard', 'modern'];
 
-    public function __construct(private DeckLegalityService $legality) {}
+    public function __construct(
+        private DeckLegalityService $legality,
+        private DeckOwnershipService $ownership,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -144,6 +148,19 @@ class DeckController extends Controller
         $this->authorizeOwner($deck);
         $deck->delete();
         return response()->noContent();
+    }
+
+    /**
+     * GET /api/decks/{deck}/totals
+     *
+     * EUR cost-to-complete summary for a deck. Returns total / owned /
+     * missing / missing_price_count, with finish-aware pricing (etched
+     * and foil deck-bound copies use their dedicated columns).
+     */
+    public function totals(Deck $deck): JsonResponse
+    {
+        $this->authorizeOwner($deck);
+        return response()->json($this->ownership->totalsForDeck($deck));
     }
 
     // ─────────────────────────────────────────────────────────────────────

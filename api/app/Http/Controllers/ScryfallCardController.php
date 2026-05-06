@@ -379,7 +379,7 @@ class ScryfallCardController extends Controller
 
     public function show(ScryfallCard $scryfallCard): JsonResponse
     {
-        $scryfallCard->load('tags');
+        $scryfallCard->load(['tags', 'priceRow']);
 
         $ownership = $this->ownershipMap([$scryfallCard->oracle_id], auth()->id());
 
@@ -626,6 +626,7 @@ class ScryfallCardController extends Controller
             'owned_count'      => $own['owned'],
             'available_count'  => $own['available'],
             'wanted_by_others' => $own['wanted_by_others'],
+            'prices'           => $this->presentPrices($card->priceRow ?? null),
         ];
 
         if ($card->is_dfc) {
@@ -644,6 +645,25 @@ class ScryfallCardController extends Controller
     // ─────────────────────────────────────────────────────────────────────
     // Small utilities
     // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Shape a CardPrice row for the JSON payload, returning null when no
+     * price snapshot exists for the printing.
+     *
+     * @return array<string, string|null>|null
+     */
+    private function presentPrices(?\App\Models\CardPrice $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return [
+            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
+            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
+            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'captured_on' => $row->captured_on?->toDateString(),
+        ];
+    }
 
     private function decodeJson($v): mixed
     {

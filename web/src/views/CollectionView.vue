@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import { useCollectionStore } from '../stores/collection'
+import { usePricesStore } from '../stores/prices'
 import { useSettingsStore } from '../stores/settings'
 import AppTopBar from '../components/AppTopBar.vue'
 import LocationSidebar from '../components/LocationSidebar.vue'
@@ -9,6 +10,7 @@ import CardListPanel from '../components/CardListPanel.vue'
 import DetailSidebar from '../components/DetailSidebar.vue'
 
 const collection = useCollectionStore()
+const prices = usePricesStore()
 const settings = useSettingsStore()
 
 onMounted(async () => {
@@ -16,6 +18,10 @@ onMounted(async () => {
   if (collection.activeLocationId === null) {
     await collection.fetchEntries()
   }
+  // Fire-and-forget: the totals + last-synced hint render once they
+  // arrive; we don't block the collection list on them.
+  prices.fetchStatus().catch(() => {})
+  prices.fetchCollectionTotals().catch(() => {})
 })
 </script>
 
