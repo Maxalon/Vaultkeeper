@@ -1,7 +1,6 @@
 import { watch } from 'vue'
 import { useDragAndDrop } from '@formkit/drag-and-drop/vue'
 import { useCollectionStore } from '../stores/collection'
-
 /**
  * Bind drag-and-drop to one sidebar container (the root or one group's
  * children) using @formkit/drag-and-drop. Unlike the previous setup
@@ -105,6 +104,29 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
     () => collection.sidebarExternalEpoch,
     () => { values.value = [...(sourceGetter() || [])] },
   )
+
+  // Containment-bubble guard for nested containers.
+  //
+  // The library attaches a dragstart listener to every node. When a
+  // node's validateDragHandle fails, the handler calls preventDefault()
+  // — which cancels the *entire* drag, even one that an inner-container
+  // handler just started. Because we have nested containers (a group
+  // div is a node in the outer container, AND its `.group-locations`
+  // child is itself a draggable container), an inner row's dragstart
+  // bubbles up to the outer group div, fails the outer's
+  // direct-child-only handle check, and the outer's preventDefault kills
+  // the inner drag.
+  //
+  // Stopping dragstart at each parent container's bubble phase blocks
+  // that cancellation. The inner node's listener already ran (it's on
+  // the node itself), so the inner drag still starts; we only prevent
+  // outer node listeners from interfering on the way up.
+  watch(parent, (el, _old, onCleanup) => {
+    if (!el) return
+    const stop = (e) => e.stopPropagation()
+    el.addEventListener('dragstart', stop)
+    onCleanup(() => el.removeEventListener('dragstart', stop))
+  }, { immediate: true })
 
   return [parent, values]
 }
