@@ -145,20 +145,21 @@ const FINISH_HINTS   = {
 }
 
 const printingFinishes = computed(() => {
-  // Pre-sync data: render as "unknown — allow all options" so the picker
-  // never dead-ends. Glossy is treated as nonfoil-equivalent (not user-
-  // selectable as its own option).
+  // Pre-sync data: when the printing's `finishes` array is null/missing
+  // (i.e. the row predates the finishes column being populated), fall
+  // back to {nonfoil, foil} rather than allowing all options. Etched is
+  // post-2021 and rare — defaulting it OFF is the safer 95% answer until
+  // the next bulk-sync repopulates the column. Glossy is treated as
+  // nonfoil-equivalent (not user-selectable as its own option).
   const raw = entry.value?.scryfall_card?.finishes
-  if (!Array.isArray(raw)) return null
+  if (!Array.isArray(raw)) return new Set(['nonfoil', 'foil'])
   const set = new Set(raw)
   if (set.has('glossy')) set.add('nonfoil')
   return set
 })
 
 function finishSupported(opt) {
-  const fin = printingFinishes.value
-  if (fin === null) return true
-  return fin.has(opt)
+  return printingFinishes.value.has(opt)
 }
 
 const currentFinish = computed(() => {
