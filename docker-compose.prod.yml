@@ -152,6 +152,13 @@ services:
       APP_URL: ${APP_URL}
       SESSION_DOMAIN: ${SESSION_DOMAIN}
       SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-true}
+      # Horizon dashboard mount. Defaulting PATH to 'horizon' keeps the
+      # pre-subdomain layout working for any env that hasn't added these
+      # keys yet; setting HORIZON_PATH=/ + HORIZON_DOMAIN=<sub> in the
+      # env file moves Horizon to the root of its own subdomain.
+      HORIZON_DOMAIN: ${HORIZON_DOMAIN}
+      HORIZON_PATH: ${HORIZON_PATH:-horizon}
+      HORIZON_SETUP_EMAIL: ${HORIZON_SETUP_EMAIL}
       LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
       LOG_LEVEL: ${LOG_LEVEL:-warning}
       DB_CONNECTION: mysql
@@ -221,6 +228,9 @@ services:
       APP_URL: ${APP_URL}
       SESSION_DOMAIN: ${SESSION_DOMAIN}
       SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-true}
+      HORIZON_DOMAIN: ${HORIZON_DOMAIN}
+      HORIZON_PATH: ${HORIZON_PATH:-horizon}
+      HORIZON_SETUP_EMAIL: ${HORIZON_SETUP_EMAIL}
       LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
       LOG_LEVEL: ${LOG_LEVEL:-warning}
       DB_CONNECTION: mysql
@@ -280,6 +290,9 @@ services:
       APP_URL: ${APP_URL}
       SESSION_DOMAIN: ${SESSION_DOMAIN}
       SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-true}
+      HORIZON_DOMAIN: ${HORIZON_DOMAIN}
+      HORIZON_PATH: ${HORIZON_PATH:-horizon}
+      HORIZON_SETUP_EMAIL: ${HORIZON_SETUP_EMAIL}
       LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
       LOG_LEVEL: ${LOG_LEVEL:-warning}
       DB_CONNECTION: mysql
