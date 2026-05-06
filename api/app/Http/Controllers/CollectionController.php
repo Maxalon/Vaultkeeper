@@ -6,6 +6,7 @@ use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
 use App\Models\Location;
 use App\Services\CardSearchService;
+use App\Services\DeckOwnershipService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -14,7 +15,10 @@ use Illuminate\Support\Facades\DB;
 
 class CollectionController extends Controller
 {
-    public function __construct(private CardSearchService $search) {}
+    public function __construct(
+        private CardSearchService $search,
+        private DeckOwnershipService $ownership,
+    ) {}
 
     /** Sortable columns. cmc is intentionally absent — no column to back it yet. */
     private const SORT_FIELDS = [
@@ -49,7 +53,7 @@ class CollectionController extends Controller
         $query = CollectionEntry::query()
             ->join('scryfall_cards', 'collection_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
             ->where('collection_entries.user_id', $userId)
-            ->with('card')
+            ->with('card.priceRow')
             // Deck-location copies are represented by their deck_entry on
             // the deck page; surfacing them here too would double-count
             // and let the user accidentally re-shelve a copy out from
@@ -120,11 +124,38 @@ class CollectionController extends Controller
     {
         abort_if($entry->user_id !== auth()->id(), 403);
 
-        $entry->loadMissing('card');
+        $entry->loadMissing('card.priceRow');
 
         $wantedMap = $this->wantedByDecksMap([$entry->scryfall_id], auth()->id());
 
         return response()->json($this->presentDetail($entry, $wantedMap));
+    }
+
+    /**
+     * GET /api/collection/totals
+     *
+     * Aggregate EUR value of the user's collection. Optional
+     * `location_id` query parameter scopes the total to a single
+     * location (or "unassigned" for entries with no location), matching
+     * the filter semantics of GET /api/collection.
+     *
+     * Finish-aware: foil / etched copies price off their dedicated
+     * columns. `missing_price_count` counts copies whose printing has
+     * no Cardmarket EUR listing for the relevant finish.
+     */
+    public function totals(Request $request): JsonResponse
+    {
+        $userId = auth()->id();
+
+        if (! $request->has('location_id')) {
+            return response()->json($this->ownership->totalsForCollection($userId));
+        }
+
+        $loc = $request->query('location_id');
+        if ($loc === 'unassigned' || $loc === null || $loc === '') {
+            return response()->json($this->ownership->totalsForCollection($userId, null, true));
+        }
+        return response()->json($this->ownership->totalsForCollection($userId, (int) $loc));
     }
 
     public function update(Request $request, CollectionEntry $entry): JsonResponse
@@ -152,13 +183,22 @@ class CollectionController extends Controller
                     }
                 },
             ],
-            'notes'    => 'sometimes|nullable|string|max:1000',
-            'quantity' => 'sometimes|integer|min:1',
-            'foil'     => 'sometimes|boolean',
+            'notes'     => 'sometimes|nullable|string|max:1000',
+            'quantity'  => 'sometimes|integer|min:1',
+            'foil'      => 'sometimes|boolean',
+            'is_etched' => 'sometimes|boolean',
             // Optional optimistic-locking version. When present, the
             // current row's version must match — otherwise 412.
-            'version'  => 'sometimes|integer|min:0',
+            'version'   => 'sometimes|integer|min:0',
         ]);
+
+        // Etched copies aren't foil — they're a separate Cardmarket
+        // finish flavour with their own price column. When a request sets
+        // `is_etched=true`, force `foil=false` so the (foil, is_etched)
+        // pair stays mutually exclusive on the row.
+        if (array_key_exists('is_etched', $data) && $data['is_etched']) {
+            $data['foil'] = false;
+        }
 
         $expectedVersion = array_key_exists('version', $data) ? (int) $data['version'] : null;
         unset($data['version']);
@@ -196,7 +236,7 @@ class CollectionController extends Controller
             }
         }
 
-        $entry->load('card');
+        $entry->load('card.priceRow');
 
         $wantedMap = $this->wantedByDecksMap([$entry->scryfall_id], auth()->id());
 
@@ -291,6 +331,7 @@ class CollectionController extends Controller
                 'quantity'      => $e->quantity,
                 'condition'     => $e->condition,
                 'foil'          => (bool) $e->foil,
+                'is_etched'     => (bool) $e->is_etched,
                 'notes'         => $e->notes,
                 'location_id'   => $e->location_id,
                 'location_name' => $e->location?->name,
@@ -397,6 +438,7 @@ class CollectionController extends Controller
             'quantity'    => $entry->quantity,
             'condition'   => $entry->condition,
             'foil'        => (bool) $entry->foil,
+            'is_etched'   => (bool) $entry->is_etched,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
             'version'     => (int) ($entry->version ?? 0),
@@ -418,8 +460,29 @@ class CollectionController extends Controller
                 'image_small_back' => $card->image_small_back,
                 'image_normal_back'=> $card->image_normal_back,
                 'image_large_back' => $card->image_large_back,
+                'prices'           => $this->presentPrices($card->priceRow),
             ] : null,
             'wanted_by_decks' => $wantedMap->get($entry->scryfall_id, []),
+        ];
+    }
+
+    /**
+     * Shape a CardPrice row for the JSON payload, returning null when no
+     * price row exists for the printing. Decimals are stringified so the
+     * frontend's Intl formatter sees stable cents.
+     *
+     * @return array<string, string|null>|null
+     */
+    private function presentPrices(?\App\Models\CardPrice $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return [
+            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
+            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
+            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'captured_on' => $row->captured_on?->toDateString(),
         ];
     }
 
@@ -438,6 +501,7 @@ class CollectionController extends Controller
             'quantity'    => $entry->quantity,
             'condition'   => $entry->condition,
             'foil'        => (bool) $entry->foil,
+            'is_etched'   => (bool) $entry->is_etched,
             'notes'       => $entry->notes,
             'location_id' => $entry->location_id,
             'version'     => (int) ($entry->version ?? 0),
@@ -466,6 +530,7 @@ class CollectionController extends Controller
                 'image_normal_back'=> $card->image_normal_back,
                 'image_large_back' => $card->image_large_back,
                 'legalities'       => $card->legalities,
+                'prices'           => $this->presentPrices($card->priceRow),
             ] : null,
             'wanted_by_decks' => $wantedMap->get($entry->scryfall_id, []),
         ];

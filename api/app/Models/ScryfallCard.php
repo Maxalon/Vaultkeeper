@@ -109,6 +109,11 @@ class ScryfallCard extends Model
         return $this->hasOne(ScryfallCardRaw::class, 'scryfall_id', 'scryfall_id');
     }
 
+    public function priceRow(): HasOne
+    {
+        return $this->hasOne(CardPrice::class, 'scryfall_id', 'scryfall_id');
+    }
+
     public function getRouteKeyName(): string
     {
         // /api/scryfall-cards/{scryfallCard} resolves by scryfall_id (UUID),

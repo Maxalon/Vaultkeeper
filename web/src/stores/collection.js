@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import api from '../lib/api'
+import { useToast } from '../composables/useToast'
 import {
   parseSearch as parseSearchGeneric,
   serializeQuery as serializeQueryGeneric,
@@ -62,47 +63,65 @@ function loadCollapsedGroups() {
 }
 
 /**
- * Sync the sidebar tree in place. vue-draggable-plus binds to the array
- * reference at mount and mutates it directly on drag; if `fetchGroups`
- * replaced the array with a fresh one, the directive would keep mutating
- * the orphan and `reorderAll` would post the pre-drag order. Mutating in
- * place at every level keeps every captured reference live.
+ * Apply a single drag-and-drop move to the sidebar tree, returning a NEW
+ * tree with the moved item removed from its old parent and inserted into
+ * the new parent at `position`. The old tree is never mutated; Pinia
+ * gets one assignment, Vue re-renders authoritatively.
  *
- * Existing items are matched by `kind:id` so that group/deck/location
- * objects (and their nested `children` arrays) keep the same identity
- * across refetches.
+ * `parentId` is the destination group id, or null for the top level.
+ * Position is the 0-based index within the destination's merged sibling
+ * list (groups + locations + decks interleaved).
  */
-function syncTreeInPlace(target, source) {
-  const byKey = new Map()
-  for (const item of target) byKey.set(`${item.kind}:${item.id}`, item)
+function applyMoveImmutable(tree, { kind, id, parentId, position }) {
+  let moved = null
 
-  const next = []
-  for (const src of source) {
-    const key = `${src.kind}:${src.id}`
-    const existing = byKey.get(key)
-    if (existing) {
-      // Copy scalar fields onto the existing item so the proxy identity
-      // is preserved. `children` is handled recursively so its array
-      // reference stays stable too.
-      for (const k of Object.keys(src)) {
-        if (k === 'children') continue
-        if (existing[k] !== src[k]) existing[k] = src[k]
+  // Pass 1: rebuild the tree without the moved item, capturing it.
+  const stripMoved = (items) => {
+    const out = []
+    for (const item of items) {
+      if (item.kind === kind && item.id === id) {
+        moved = item
+        continue
       }
-      if (src.kind === 'group') {
-        if (!Array.isArray(existing.children)) existing.children = []
-        syncTreeInPlace(existing.children, src.children || [])
+      if (item.kind === 'group') {
+        out.push({ ...item, children: stripMoved(item.children || []) })
+      } else {
+        out.push(item)
       }
-      next.push(existing)
-      byKey.delete(key)
-    } else {
-      next.push(src)
     }
+    return out
+  }
+  let next = stripMoved(tree)
+
+  // If the item wasn't in the tree (shouldn't happen), bail without changes.
+  if (!moved) return tree
+
+  // Pass 2: insert it into its destination. If `parentId` is null the
+  // destination is the top level; otherwise we walk to find the group and
+  // splice into a fresh children array.
+  const insertInto = (items, atTopLevel) => {
+    if (atTopLevel) {
+      const out = items.slice()
+      const at = Math.max(0, Math.min(position, out.length))
+      out.splice(at, 0, moved)
+      return out
+    }
+    return items.map((item) => {
+      if (item.kind !== 'group') return item
+      if (item.id === parentId) {
+        const children = (item.children || []).slice()
+        const at = Math.max(0, Math.min(position, children.length))
+        children.splice(at, 0, moved)
+        return { ...item, children }
+      }
+      return { ...item, children: insertInto(item.children || [], false) }
+    })
   }
 
-  // Replace target's contents in-place with `next`. `splice(0, len, ...next)`
-  // keeps the same array reference, which is what vue-draggable bound to.
-  target.splice(0, target.length, ...next)
+  next = insertInto(next, parentId === null)
+  return next
 }
+
 
 export const useCollectionStore = defineStore('collection', {
   state: () => ({
@@ -115,6 +134,16 @@ export const useCollectionStore = defineStore('collection', {
      * own id, used for navigation to DeckView.)
      */
     sidebarItems: [],
+    /**
+     * Bumped only when something OUTSIDE the drag-and-drop layer mutates
+     * the sidebar tree — `fetchGroups`, deck/group/location create or
+     * delete, batch-move, etc. The sidebar binds it to `:key` on the
+     * dropzone so an external mutation forces a clean remount of the
+     * drag containers (which re-initialise from fresh Pinia data). A
+     * sidebar drag does NOT bump this — drag state would otherwise get
+     * blown away mid-gesture.
+     */
+    sidebarExternalEpoch: 0,
     /**
      * Review-queue summary: { card_count } when there are review-flagged
      * copies, otherwise null. Driven by the backend so the row only
@@ -176,6 +205,44 @@ export const useCollectionStore = defineStore('collection', {
       return out
     },
 
+    /**
+     * Counter value for a group's header badge, derived from the
+     * canonical Pinia tree. The sidebar renders rows from the
+     * drag-and-drop library's local values ref (so DOM stays in sync
+     * with drag state), but counts read from Pinia so they reflect the
+     * current state across the whole subtree — including child groups
+     * the outer SidebarGroup component can't see directly.
+     *
+     * @param {number} groupId
+     * @param {'cards'|'locations'} mode
+     */
+    groupCounter(state) {
+      const findGroup = (items, id) => {
+        for (const item of items) {
+          if (item.kind !== 'group') continue
+          if (item.id === id) return item
+          const nested = findGroup(item.children || [], id)
+          if (nested) return nested
+        }
+        return null
+      }
+      const sumCards = (g) =>
+        (g.children || []).reduce((sum, c) => {
+          if (c.kind === 'deck') return sum + (c.entry_count || 0)
+          if (c.kind === 'location') return sum + (c.card_count || 0)
+          if (c.kind === 'group') return sum + sumCards(c)
+          return sum
+        }, 0)
+      return (groupId, mode = 'cards') => {
+        const g = findGroup(state.sidebarItems, groupId)
+        if (!g) return 0
+        if (mode === 'locations') {
+          return (g.children || []).filter((c) => c.kind !== 'group').length
+        }
+        return sumCards(g)
+      }
+    },
+
     parsedSearch(state) {
       return parseSearch(state.filters.search)
     },
@@ -202,8 +269,14 @@ export const useCollectionStore = defineStore('collection', {
   actions: {
     async fetchGroups() {
       const { data } = await api.get('/location-groups')
-      // In-place sync — see `syncTreeInPlace` for why we don't reassign.
-      syncTreeInPlace(this.sidebarItems, data.items)
+      // Authoritative replacement. The sidebar drag-and-drop never
+      // mutates `sidebarItems` in place — every change goes through
+      // `moveItem`, which produces a new tree — so it's safe to reassign.
+      this.sidebarItems = data.items || []
+      // External path: force the drag containers to remount with fresh
+      // initial values. Move actions skip this so they don't disturb
+      // the in-flight drag state.
+      this.sidebarExternalEpoch++
       this.totalCount = data.total_count
       this.review = data.review || null
     },
@@ -317,38 +390,52 @@ export const useCollectionStore = defineStore('collection', {
     },
 
     /**
-     * Persist the full drag-and-drop state. Fires after vue-draggable-plus has
-     * already mutated the reactive arrays, so the UI is already correct —
-     * we just need the server to match. On success we refetch so the store
-     * snaps cleanly to the server's view (rare cross-container moves can
-     * leave duplicates in the local tree until syncTreeInPlace reconciles
-     * by `kind:id`); on failure we refetch to revert.
+     * Drag-and-drop move of a single sidebar item. Applies the change
+     * optimistically (Vue re-renders from a fresh tree, so any DOM mutation
+     * Sortable left behind gets clobbered), then persists through a
+     * serialized queue so concurrent drops can't race on the server.
      *
-     * The payload mirrors the recursive sidebar tree: each group item has a
-     * `children` array containing nested locations, decks, and groups.
+     * On failure we refetch to snap the UI back to server truth and surface
+     * a toast — silent failures were one of the symptoms of the old system.
+     *
+     * @param {{ kind: 'location'|'deck'|'group', id: number, parentId: number|null, position: number }} cmd
      */
-    async reorderAll() {
-      const toPayload = (items) =>
-        (items || []).map((item) => {
-          if (item.kind === 'group') {
-            return {
-              kind: 'group',
-              id: item.id,
-              children: toPayload(item.children),
-            }
-          }
-          return { kind: item.kind, id: item.id }
-        })
+    async moveItem(cmd) {
+      // Snapshot for revert. Cheap — top-level array reference + nested
+      // group children references are all we share with the post-move tree.
+      const before = this.sidebarItems
 
-      this.loading = true
+      // Optimistic apply.
+      this.sidebarItems = applyMoveImmutable(before, cmd)
+
+      // Serialize: every move waits for the previous one to settle before
+      // hitting the server. This makes the server free of cross-request
+      // races without us having to add optimistic locking.
+      this._sidebarMoveQueue = (this._sidebarMoveQueue || Promise.resolve())
+        .catch(() => {})
+        .then(() => this._sendMove(cmd, before))
+
+      return this._sidebarMoveQueue
+    },
+
+    async _sendMove(cmd, before) {
       try {
-        await api.post('/location-groups/reorder', { items: toPayload(this.sidebarItems) })
-        await this.fetchGroups()
+        await api.post('/location-groups/move', {
+          kind:      cmd.kind,
+          id:        cmd.id,
+          parent_id: cmd.parentId,
+          position:  cmd.position,
+        })
       } catch (e) {
-        this.error = e.response?.data?.message || 'Failed to reorder locations'
-        await this.fetchGroups()
-      } finally {
-        this.loading = false
+        // Revert by refetching from the server — that's the source of
+        // truth, and a refetch also catches anything else that drifted.
+        const message = e.response?.data?.message || 'Failed to move item'
+        this.error = message
+        try { useToast().error(message) } catch { /* toast host unmounted */ }
+        // Best-effort revert: drop back to the pre-move tree first so the
+        // user sees the rollback immediately, then sync with the server.
+        this.sidebarItems = before
+        try { await this.fetchGroups() } catch { /* network down, keep optimistic state */ }
       }
     },
 
@@ -481,6 +568,7 @@ export const useCollectionStore = defineStore('collection', {
             quantity: data.quantity,
             condition: data.condition,
             foil: data.foil,
+            is_etched: data.is_etched,
             notes: data.notes,
             location_id: data.location_id,
             version: data.version,

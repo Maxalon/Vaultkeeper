@@ -136,6 +136,7 @@ class BulkSyncService
 
     public function __construct(
         private ScryfallService $scryfall,
+        private PriceUpsertService $prices,
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────
@@ -389,6 +390,7 @@ class BulkSyncService
         $now = now();
         $batch = [];
         $rawBatch = [];
+        $priceBatch = [];
         $processed = 0;
         $total = count($cards);
 
@@ -411,11 +413,24 @@ class BulkSyncService
                 ];
             }
 
+            // Price companion row — null when the printing carries no EUR
+            // price at all. Flushed parallel to the cards batch so prices
+            // stay fresh on day-1 of new releases without waiting for the
+            // next daily price job.
+            $priceRow = $this->prices->buildRow($card, $now);
+            if ($priceRow !== null) {
+                $priceBatch[] = $priceRow;
+            }
+
             if (count($batch) >= self::UPSERT_CHUNK) {
                 $this->flushScryfallCards($batch);
                 if ($rawBatch) {
                     $this->flushScryfallCardsRaw($rawBatch);
                     $rawBatch = [];
+                }
+                if ($priceBatch) {
+                    $this->prices->upsertRows($priceBatch);
+                    $priceBatch = [];
                 }
                 $processed += count($batch);
                 $batch = [];
@@ -430,6 +445,9 @@ class BulkSyncService
         }
         if ($rawBatch) {
             $this->flushScryfallCardsRaw($rawBatch);
+        }
+        if ($priceBatch) {
+            $this->prices->upsertRows($priceBatch);
         }
 
         // Free the in-memory array before the JOIN — pgsql/mysql client
@@ -924,7 +942,11 @@ class BulkSyncService
         // Both rows exist in scryfall_cards — migrate children to $newId
         // first (FKs are RESTRICT on delete), then drop the old card row.
 
-        // 1. collection_entries — coalesce on (location_id, condition, foil)
+        // 1. collection_entries — coalesce on (location_id, condition, foil, is_etched).
+        //    Etched is a separate finish flavour from foil and prices
+        //    independently on Cardmarket; keeping it in the merge key
+        //    prevents an etched copy from collapsing into a foil copy
+        //    (or vice versa) during a Scryfall card-id rename.
         $oldEntries = CollectionEntry::where('scryfall_id', $oldId)->get();
         foreach ($oldEntries as $old) {
             $sibling = CollectionEntry::where('scryfall_id', $newId)
@@ -932,6 +954,7 @@ class BulkSyncService
                 ->where('location_id', $old->location_id)
                 ->where('condition', $old->condition)
                 ->where('foil', $old->foil)
+                ->where('is_etched', $old->is_etched)
                 ->first();
 
             if ($sibling) {

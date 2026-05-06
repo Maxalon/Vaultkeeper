@@ -20,6 +20,7 @@ class CollectionEntry extends Model
         'quantity',
         'condition',
         'foil',
+        'is_etched',
         'notes',
         'review_reason',
         'source_deck_id',
@@ -29,6 +30,7 @@ class CollectionEntry extends Model
 
     protected $casts = [
         'foil' => 'boolean',
+        'is_etched' => 'boolean',
         'quantity' => 'integer',
         'review_reason' => ReviewReason::class,
         'source_deck_deleted' => 'boolean',
