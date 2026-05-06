@@ -6,7 +6,6 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Throwable;
 
 /**
  * Persist Scryfall's per-set `digital` flag so the printing picker (and
@@ -38,7 +37,7 @@ return new class extends Migration
                 /** @var BulkSyncService $bulk */
                 $bulk = app(BulkSyncService::class);
                 $bulk->syncSets();
-            } catch (Throwable $e) {
+            } catch (\Throwable $e) {
                 // Don't block deploys on a transient Scryfall hiccup; the
                 // weekly scheduled sync will populate digital on its own.
                 Log::warning('add_digital_to_sets self-heal failed: ' . $e->getMessage());
