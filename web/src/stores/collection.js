@@ -135,6 +135,17 @@ export const useCollectionStore = defineStore('collection', {
      */
     sidebarItems: [],
     /**
+     * Bumped after every successful local sidebar mutation. Bound to
+     * `:key` on the root dropzone so Vue tears down and rebuilds the
+     * entire sidebar subtree (and its Sortable instances) on each move.
+     * Without this, Sortable's mid-drag DOM moves can leave Vue's vnode
+     * references out of sync with actual DOM positions, which surfaces
+     * as a "phantom copy" of the dropped item that only clears on
+     * reload. A full remount is heavy in theory but ~ms in practice
+     * for the sidebar's size.
+     */
+    sidebarRenderEpoch: 0,
+    /**
      * Review-queue summary: { card_count } when there are review-flagged
      * copies, otherwise null. Driven by the backend so the row only
      * shows up when there's something in it.
@@ -225,6 +236,7 @@ export const useCollectionStore = defineStore('collection', {
       // mutates `sidebarItems` in place — every change goes through
       // `moveItem`, which produces a new tree — so it's safe to reassign.
       this.sidebarItems = data.items || []
+      this.sidebarRenderEpoch++
       this.totalCount = data.total_count
       this.review = data.review || null
     },
@@ -353,8 +365,11 @@ export const useCollectionStore = defineStore('collection', {
       // group children references are all we share with the post-move tree.
       const before = this.sidebarItems
 
-      // Optimistic apply.
+      // Optimistic apply + force remount of the sidebar subtree so any
+      // DOM Sortable touched gets thrown away and rebuilt from the new
+      // tree. This is what makes the result visually trustworthy.
       this.sidebarItems = applyMoveImmutable(before, cmd)
+      this.sidebarRenderEpoch++
 
       // Serialize: every move waits for the previous one to settle before
       // hitting the server. This makes the server free of cross-request
