@@ -4,6 +4,7 @@ import { useDeckStore } from '../../stores/deck'
 import { useDeckEntryActions } from '../../composables/useDeckEntryActions'
 import CardDetailBody from '../CardDetailBody.vue'
 import HelpHint from '../HelpHint.vue'
+import PriceLine from '../PriceLine.vue'
 import PrintingPickerModal from '../PrintingPickerModal.vue'
 import ZoneSelector from './ZoneSelector.vue'
 import CategoryInput from './CategoryInput.vue'
@@ -209,6 +210,12 @@ function onPickPrinting(scryfallId, finishes) {
         <CardDetailBody :card="entry.scryfall_card" :show-legalities="false" />
         <span v-if="isGc" class="gc-badge">GC</span>
       </div>
+
+      <PriceLine
+        :prices="entry.scryfall_card?.prices"
+        :foil="currentFinish === 'foil'"
+        :is-etched="currentFinish === 'etched'"
+      />
 
       <section class="vk-detail-section">
         <div class="qty-row">

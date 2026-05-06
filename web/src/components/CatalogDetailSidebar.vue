@@ -1,12 +1,21 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useCatalogStore } from '../stores/catalog'
 import { useDeckStore } from '../stores/deck'
+import { usePricesStore } from '../stores/prices'
 import CardDetailBody from './CardDetailBody.vue'
+import PriceLine from './PriceLine.vue'
 import PrintingPickerModal from './PrintingPickerModal.vue'
 
 const catalog = useCatalogStore()
 const deck = useDeckStore()
+const pricesStore = usePricesStore()
+
+onMounted(() => {
+  // Drive the "updated X ago" caption inside PriceLine. Cheap; cached
+  // for an hour by the store.
+  pricesStore.fetchStatus().catch(() => {})
+})
 
 const activeCard = computed(() => catalog.activeCard)
 
@@ -29,6 +38,11 @@ const selectedPrinting = computed(
  * from the printings response + the search row's oracle-wide fields
  * (oracle_text, etc.). That way the body shows the right image/set/collector#
  * without losing the oracle-level text.
+ *
+ * Prices come from the per-printing payload too — each printing has its
+ * own Cardmarket trend, so a `set:` swap should swap the price along
+ * with the image. Falls back to the search row's prices when the user
+ * hasn't picked a different printing.
  */
 const representativeCard = computed(() => {
   const row = activeCard.value
@@ -47,6 +61,7 @@ const representativeCard = computed(() => {
     image_small_back: p.image_small_back,
     image_normal_back: p.image_normal_back,
     image_large_back: p.image_large_back,
+    prices: p.prices ?? row.prices ?? null,
   }
 })
 
@@ -89,6 +104,8 @@ function pickInBrowser(scryfallId) {
 
     <div class="vk-detail-body">
       <CardDetailBody :card="representativeCard" />
+
+      <PriceLine :prices="representativeCard?.prices" />
 
       <section v-if="deckId" class="add-actions">
         <h4>Add to deck</h4>

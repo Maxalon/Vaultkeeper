@@ -35,7 +35,7 @@ class DeckEntryController extends Controller
 
         $query = DeckEntry::query()
             ->where('deck_id', $deck->id)
-            ->with(['card', 'physicalCopy.location:id,name,role']);
+            ->with(['card.priceRow', 'physicalCopy.location:id,name,role']);
 
         if ($zone = $request->query('zone')) {
             $query->where('zone', $zone);
@@ -718,6 +718,12 @@ class DeckEntryController extends Controller
     private function presentEntryBare(DeckEntry $entry): array
     {
         $card = $entry->card;
+        // Make sure the price snapshot is loaded — singular store/update
+        // paths call presentEntryBare on a model freshly hydrated with
+        // just `card`, so the relation isn't always preloaded.
+        if ($card !== null && ! $card->relationLoaded('priceRow')) {
+            $card->loadMissing('priceRow');
+        }
         // Bound-CE detail block — drives the Physical Copies tab and any
         // sidebar surface that wants to show the actual condition/foil/
         // notes the slot is backed by.
@@ -779,7 +785,24 @@ class DeckEntryController extends Controller
                 'image_normal'   => $card->image_normal,
                 'image_small_back'  => $card->image_small_back,
                 'image_normal_back' => $card->image_normal_back,
+                'prices'         => $this->presentPrices($card->priceRow),
             ] : null,
+        ];
+    }
+
+    /**
+     * @return array<string, string|null>|null
+     */
+    private function presentPrices(?\App\Models\CardPrice $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return [
+            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
+            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
+            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'captured_on' => $row->captured_on?->toDateString(),
         ];
     }
 }
