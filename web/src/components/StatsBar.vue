@@ -1,13 +1,19 @@
 <script setup>
 import { computed } from 'vue'
 import { useCollectionStore } from '../stores/collection'
+import { usePricesStore } from '../stores/prices'
+import { formatEur } from '../utils/price'
 
 const collection = useCollectionStore()
+const prices = usePricesStore()
 
 const uniqueCount = computed(() => collection.filteredEntries.length)
 const totalCount = computed(() =>
   collection.filteredEntries.reduce((sum, e) => sum + (Number(e.quantity) || 1), 0),
 )
+
+const estimatedValue = computed(() => prices.collection?.total ?? null)
+const missingPriceCount = computed(() => prices.collection?.missing_price_count ?? 0)
 
 // Pluck the newest created_at across the loaded entries (raw — not the
 // filtered view, so the value reflects the actual collection state).
@@ -57,6 +63,13 @@ const showingLabel = computed(() => {
     <div class="stat">
       <span class="k">Last Added</span>
       <span class="v compact">{{ lastAddedLabel }}</span>
+    </div>
+    <div class="stat" :title="missingPriceCount ? `${missingPriceCount} cards have no Cardmarket price` : ''">
+      <span class="k">Est. Value</span>
+      <span class="v">≈ {{ formatEur(estimatedValue) }}</span>
+      <span v-if="missingPriceCount" class="missing-prices">
+        {{ missingPriceCount }} unpriced
+      </span>
     </div>
     <div class="grow" />
     <div class="stat" style="align-items: flex-end;">
@@ -109,6 +122,14 @@ const showingLabel = computed(() => {
   font-family: var(--font-sans), sans-serif;
   font-size: 13px;
   color: var(--ink-70);
+}
+.missing-prices {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cond-hp, #d97757);
+  margin-top: 2px;
 }
 .grow { flex: 1; }
 .stat:last-child::before { display: none; }

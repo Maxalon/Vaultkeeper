@@ -271,6 +271,7 @@ class DeckEntryController extends Controller
             'version'     => ['sometimes', 'nullable', 'integer', 'min:0'],
             'condition'   => ['sometimes', 'in:NM,LP,MP,HP,DMG'],
             'foil'        => ['sometimes', 'boolean'],
+            'is_etched'   => ['sometimes', 'boolean'],
             'notes'       => ['sometimes', 'nullable', 'string', 'max:1000'],
             'scryfall_id' => ['sometimes', 'string', 'size:36', 'exists:scryfall_cards,scryfall_id'],
         ]);
@@ -502,6 +503,7 @@ class DeckEntryController extends Controller
                     'quantity'    => $needed,
                     'condition'   => $locked->condition,
                     'foil'        => (bool) $locked->foil,
+                    'is_etched'   => (bool) $locked->is_etched,
                     'notes'       => $locked->notes,
                 ]);
                 $boundId = $newCopy->id;
@@ -695,6 +697,7 @@ class DeckEntryController extends Controller
                     'quantity'     => (int) $copy->quantity,
                     'condition'    => $copy->condition,
                     'foil'         => (bool) $copy->foil,
+                    'is_etched'    => (bool) $copy->is_etched,
                     'notes'        => $copy->notes,
                     'location_id'  => $copy->location_id,
                     'location_name'=> $copy->location?->name,

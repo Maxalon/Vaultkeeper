@@ -29,8 +29,13 @@ const physical = computed(() => props.entry.physical_copy || {})
 const card     = computed(() => props.entry.scryfall_card || {})
 
 const condition = ref(physical.value.condition || 'NM')
-const foil      = ref(!!physical.value.foil)
-const notes     = ref(physical.value.notes || '')
+// Tri-state finish: nonfoil / foil / etched. Mutually exclusive — the
+// backend forces foil=false when is_etched=true (and vice versa via UI).
+const initialFinish = physical.value.is_etched
+  ? 'etched'
+  : (physical.value.foil ? 'foil' : 'nonfoil')
+const finish = ref(initialFinish)
+const notes  = ref(physical.value.notes || '')
 
 // Printing — null means "no change". Stores a scryfall_id when picked.
 const newPrintingId = ref(null)
@@ -45,10 +50,10 @@ const printingChanged = computed(
   () => newPrintingId.value !== null && newPrintingId.value !== props.entry.scryfall_id,
 )
 const conditionChanged = computed(() => condition.value !== (physical.value.condition || 'NM'))
-const foilChanged      = computed(() => foil.value !== !!physical.value.foil)
+const finishChanged    = computed(() => finish.value !== initialFinish)
 const notesChanged     = computed(() => (notes.value || '') !== (physical.value.notes || ''))
 const anyChange = computed(
-  () => printingChanged.value || conditionChanged.value || foilChanged.value || notesChanged.value,
+  () => printingChanged.value || conditionChanged.value || finishChanged.value || notesChanged.value,
 )
 const canSubmit = computed(() => anyChange.value && !submitting.value)
 
@@ -59,7 +64,10 @@ async function submit() {
     const payload = { apply_to: applyTo.value }
     if (physical.value.version != null) payload.version = physical.value.version
     if (conditionChanged.value) payload.condition = condition.value
-    if (foilChanged.value)      payload.foil      = foil.value
+    if (finishChanged.value) {
+      payload.foil      = finish.value === 'foil'
+      payload.is_etched = finish.value === 'etched'
+    }
     if (notesChanged.value)     payload.notes     = notes.value || null
     if (printingChanged.value)  payload.scryfall_id = newPrintingId.value
 
@@ -126,9 +134,13 @@ const previewPrintingId = computed(
           </select>
         </label>
 
-        <label class="field foil">
-          <span class="label">Foil</span>
-          <input type="checkbox" v-model="foil" name="edit-copy-foil" />
+        <label class="field">
+          <span class="label">Finish</span>
+          <select v-model="finish" name="edit-copy-finish">
+            <option value="nonfoil">Nonfoil</option>
+            <option value="foil">Foil</option>
+            <option value="etched">Etched</option>
+          </select>
         </label>
 
         <div class="field full">

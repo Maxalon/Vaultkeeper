@@ -29,6 +29,7 @@ class PhysicalCopyEditService
      *     version?: int|null,
      *     condition?: string,
      *     foil?: bool,
+     *     is_etched?: bool,
      *     notes?: ?string,
      *     scryfall_id?: string,
      * }  $payload
@@ -58,8 +59,15 @@ class PhysicalCopyEditService
             ]);
         }
 
-        $patchKeys = ['condition', 'foil', 'notes', 'scryfall_id'];
+        $patchKeys = ['condition', 'foil', 'is_etched', 'notes', 'scryfall_id'];
         $patch = array_intersect_key($payload, array_flip($patchKeys));
+
+        // Etched is mutually exclusive with foil — a true is_etched
+        // forces foil=false on the resulting row regardless of what the
+        // caller sent for the other field.
+        if (array_key_exists('is_etched', $patch) && $patch['is_etched']) {
+            $patch['foil'] = false;
+        }
 
         if (array_key_exists('scryfall_id', $patch) && $patch['scryfall_id'] !== $entry->scryfall_id) {
             $newOracle = ScryfallCard::where('scryfall_id', $patch['scryfall_id'])->value('oracle_id');
@@ -88,6 +96,7 @@ class PhysicalCopyEditService
                 $update = [];
                 if (array_key_exists('condition', $patch)) $update['condition'] = $patch['condition'];
                 if (array_key_exists('foil', $patch))      $update['foil']      = (bool) $patch['foil'];
+                if (array_key_exists('is_etched', $patch)) $update['is_etched'] = (bool) $patch['is_etched'];
                 if (array_key_exists('notes', $patch))     $update['notes']     = $patch['notes'];
                 if ($printingChanged)                      $update['scryfall_id'] = $newScryfallId;
                 // The user has explicitly confirmed the values — drop any
@@ -119,6 +128,7 @@ class PhysicalCopyEditService
                 'quantity'      => $applyTo,
                 'condition'     => $patch['condition'] ?? $copy->condition,
                 'foil'          => array_key_exists('foil', $patch) ? (bool) $patch['foil'] : (bool) $copy->foil,
+                'is_etched'     => array_key_exists('is_etched', $patch) ? (bool) $patch['is_etched'] : (bool) $copy->is_etched,
                 'notes'         => array_key_exists('notes', $patch) ? $patch['notes'] : $copy->notes,
                 'review_reason' => null,
             ]);

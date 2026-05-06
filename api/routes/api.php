@@ -11,6 +11,7 @@ use App\Http\Controllers\DeckLegalityController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\LocationGroupController;
+use App\Http\Controllers\PricesStatusController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScryfallCardController;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,7 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);
     Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
     Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
+    Route::get   ('decks/{deck}/totals',                   [DeckController::class, 'totals']);
 
     // Assemble/unassemble each fan out to ~deck-size CE writes inside one
     // transaction. The 120/min global floor would let one user do ~12K CE
@@ -125,10 +127,16 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
 
     Route::get('collection',               [CollectionController::class, 'index']);
     Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);
+    Route::get('collection/totals',        [CollectionController::class, 'totals']);
     Route::post('collection/batch-move',   [CollectionController::class, 'batchMove']);
     Route::get('collection/{entry}',       [CollectionController::class, 'show']);
     Route::patch('collection/{entry}',     [CollectionController::class, 'update']);
     Route::delete('collection/{entry}',    [CollectionController::class, 'destroy']);
+
+    // Pricing metadata. The actual per-card prices ride on the existing
+    // card payloads (CollectionController, ScryfallCardController); this
+    // endpoint just exposes "when did the last sync run".
+    Route::get('prices/status',            [PricesStatusController::class, 'show']);
 
     // CSV / text bulk import — same heavy-job reasoning as decks/import*.
     Route::post('import', [ImportController::class, 'store'])
