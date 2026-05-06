@@ -26,12 +26,9 @@ const router = useRouter()
 // exclude autocomplete has something to search over.
 const fetchedEntries = ref([])
 const loadingEntries = ref(false)
-const entriesList = computed(() => entriesList.value ?? fetchedEntries.value)
+const entriesList = computed(() => props.entries ?? fetchedEntries.value)
 
-const all = ref(true)
-// `sections` only matters when `all` is false. Pre-tick whatever the
-// deck actually has so the user starts in a "everything is included"
-// state regardless of which toggle they touch.
+// Per-zone toggles, only surfaced when the deck has more than one zone.
 const sectionsState = ref({ main: true, side: true, maybe: true })
 
 // Exclude rows: { scryfall_id, zone, qty, name, is_commander, slotQty }.
@@ -58,16 +55,17 @@ const presentSections = computed(() => {
   return ['main', 'side', 'maybe'].filter((z) => present.has(z))
 })
 
-// `true` for a section when it's in the active assemble set (master
-// toggle on, or sub-toggle ticked).
 function sectionActive(zone) {
-  if (all.value) return true
+  // Single-zone decks have no UI toggle and are always fully active.
+  if (presentSections.value.length <= 1) return true
   return !!sectionsState.value[zone]
 }
 
 const activeSections = computed(() =>
   presentSections.value.filter((z) => sectionActive(z)),
 )
+
+const showZoneToggles = computed(() => presentSections.value.length > 1)
 
 // Pool the autocomplete searches over: every entry in an active
 // section, dedup'd to one chip-suggestion per (scryfall_id, zone).
@@ -147,8 +145,10 @@ function clampExcludeQty(idx) {
 }
 
 const intent = computed(() => {
-  const payload = { all: all.value }
-  if (!all.value) {
+  const everyZoneActive =
+    activeSections.value.length === presentSections.value.length
+  const payload = { all: everyZoneActive }
+  if (!everyZoneActive) {
     payload.sections = activeSections.value
   }
   if (excludes.value.length > 0) {
@@ -163,7 +163,6 @@ const intent = computed(() => {
 
 const canSubmit = computed(() => {
   if (submitting.value) return false
-  if (all.value) return true
   return activeSections.value.length > 0
 })
 
@@ -240,10 +239,9 @@ const sectionLabel = (z) =>
       <h2 id="assemble-title" class="display">Mark deck as assembled</h2>
       <p class="subtitle">We'll log every card here as physically owned in this deck.</p>
 
-      <div class="section">
-        <Checkbox v-model="all" label="All cards are present" />
-
-        <div v-if="!all" class="sub-sections">
+      <div v-if="showZoneToggles" class="section">
+        <span class="label">Sections to assemble</span>
+        <div class="sub-sections">
           <Checkbox
             v-for="z in presentSections"
             :key="z"
@@ -372,7 +370,6 @@ const sectionLabel = (z) =>
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 8px 0 0 24px;
 }
 .label {
   display: block;
