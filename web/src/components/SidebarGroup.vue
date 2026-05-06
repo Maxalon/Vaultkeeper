@@ -1,9 +1,9 @@
 <script setup>
 import { inject, ref } from 'vue'
-import { vDraggable } from 'vue-draggable-plus'
 import { useSettingsStore } from '../stores/settings'
 import { useCollectionStore } from '../stores/collection'
 import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useSidebarSortable } from '../composables/useSidebarSortable'
 import SidebarRow from './SidebarRow.vue'
 import GroupModal from './GroupModal.vue'
 import IconChevron from '../assets/chevron-down.svg'
@@ -49,18 +49,19 @@ async function deleteGroup() {
   await collection.deleteGroup(props.group.id)
 }
 
-const childrenOptions = {
-  group: { name: 'sidebar', pull: true, put: true },
-  handle: '.drag-handle',
-  animation: 150,
-  ghostClass: 'sortable-ghost',
-  chosenClass: 'sortable-chosen',
-  onEnd: () => collection.reorderAll(),
-}
+const childrenContainer = ref(null)
+// Destination parent is read off the container's `data-parent-id` attr in
+// the composable's onEnd handler, so we don't need to thread the group id
+// through here.
+useSidebarSortable(childrenContainer)
 </script>
 
 <template>
-  <div class="group-section">
+  <div
+    class="group-section"
+    data-kind="group"
+    :data-id="group.id"
+  >
     <div
       class="group-header"
       :class="{ collapsed: ctx.isCollapsed(group.id) }"
@@ -82,8 +83,10 @@ const childrenOptions = {
 
     <div
       v-show="!ctx.isCollapsed(group.id)"
+      ref="childrenContainer"
       class="group-locations"
-      v-draggable="[group.children, childrenOptions]"
+      data-sidebar-container="group"
+      :data-parent-id="group.id"
     >
       <template v-for="child in group.children" :key="itemKey(child)">
         <SidebarGroup v-if="child.kind === 'group'" :group="child" />
