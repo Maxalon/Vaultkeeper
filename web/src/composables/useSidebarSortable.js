@@ -1,5 +1,6 @@
 import { watch } from 'vue'
 import { useDragAndDrop } from '@formkit/drag-and-drop/vue'
+import { animations } from '@formkit/drag-and-drop'
 import { useCollectionStore } from '../stores/collection'
 /**
  * Bind drag-and-drop to one sidebar container (the root or one group's
@@ -51,6 +52,21 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
 
   const [parent, values] = useDragAndDrop(seed, {
     group: 'sidebar',
+    // Use synthetic (pointer-event-driven) drag instead of native HTML5
+    // drag. Native drag has two cliff edges that bit us repeatedly here:
+    //   1) `<button draggable="true">` is unreliable in Chromium — the
+    //      browser sometimes consumes the mousedown for click activation
+    //      and never fires dragstart, especially in nested DOM contexts.
+    //   2) The library's per-node dragstart handler calls
+    //      preventDefault() when its handle validator fails, and
+    //      dragstart's preventDefault cancels the *whole* drag. With
+    //      nested containers the inner drag would get cancelled by the
+    //      outer container's failed validation on the bubble, leaving a
+    //      sortable that silently does nothing.
+    // Synth drag uses pointerdown/pointermove/pointerup, the library's
+    // pointerdown handler stops propagation cleanly, and there's no
+    // dragstart preventDefault to cascade.
+    nativeDrag: false,
     // The library's validateDragHandle does an unbounded
     // querySelectorAll within a node, so a flat `.drag-handle` selector
     // would let a group node "claim" a click on any nested row's handle
@@ -60,9 +76,13 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
     //   - SidebarRow buttons:  <button.loc-row>     > .drag-handle
     // `:scope >` keeps the search bounded to the node's own immediate
     // structure, so a group only matches its own header handle and a
-    // row only matches its own handle — nested rows inside a group no
-    // longer trigger the group's drag.
+    // row only matches its own handle.
     dragHandle: ':scope > .group-header > .drag-handle, :scope > .drag-handle',
+    // Slide neighbors out of the way as the dragged element moves over
+    // them, so the user gets the same visual cue they had before. The
+    // animations plugin must be passed explicitly — FormKit ships it
+    // off by default to keep the core small.
+    plugins: [animations()],
 
     // Same-container reorder. `position` is the index in the destination
     // values array — the merged sibling list — which is exactly what
@@ -104,29 +124,6 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
     () => collection.sidebarExternalEpoch,
     () => { values.value = [...(sourceGetter() || [])] },
   )
-
-  // Containment-bubble guard for nested containers.
-  //
-  // The library attaches a dragstart listener to every node. When a
-  // node's validateDragHandle fails, the handler calls preventDefault()
-  // — which cancels the *entire* drag, even one that an inner-container
-  // handler just started. Because we have nested containers (a group
-  // div is a node in the outer container, AND its `.group-locations`
-  // child is itself a draggable container), an inner row's dragstart
-  // bubbles up to the outer group div, fails the outer's
-  // direct-child-only handle check, and the outer's preventDefault kills
-  // the inner drag.
-  //
-  // Stopping dragstart at each parent container's bubble phase blocks
-  // that cancellation. The inner node's listener already ran (it's on
-  // the node itself), so the inner drag still starts; we only prevent
-  // outer node listeners from interfering on the way up.
-  watch(parent, (el, _old, onCleanup) => {
-    if (!el) return
-    const stop = (e) => e.stopPropagation()
-    el.addEventListener('dragstart', stop)
-    onCleanup(() => el.removeEventListener('dragstart', stop))
-  }, { immediate: true })
 
   return [parent, values]
 }
