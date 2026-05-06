@@ -290,6 +290,11 @@ class BulkSyncService
                 'code'           => strtolower($s['code']),
                 'name'           => $s['name'],
                 'set_type'       => $s['set_type'],
+                // Scryfall flags Arena-only / MTGO-only sets (Alchemy,
+                // Pioneer Masters, Historic Anthology, etc.) with this
+                // boolean. Used downstream to hide their printings from
+                // the picker and the catalog.
+                'digital'        => (bool) ($s['digital'] ?? false),
                 'released_at'    => $s['released_at'] ?? null,
                 'card_count'     => (int) ($s['card_count'] ?? 0),
                 'icon_svg_uri'   => $s['icon_svg_uri'] ?? null,
@@ -304,7 +309,7 @@ class BulkSyncService
             MtgSet::upsert(
                 $chunk,
                 ['code'],
-                ['scryfall_id', 'name', 'set_type', 'released_at',
+                ['scryfall_id', 'name', 'set_type', 'digital', 'released_at',
                  'card_count', 'icon_svg_uri', 'search_uri',
                  'last_synced_at', 'updated_at'],
             );
@@ -694,6 +699,12 @@ class BulkSyncService
      */
     public function deriveDefaultEligible(array $c): bool
     {
+        // Defense-in-depth: the per-card `games` array filter at intake
+        // already drops Arena-only / MTGO-only printings, but a digital
+        // card sneaking past (e.g. legacy data, or a future Scryfall
+        // schema shift) should never be a default representative.
+        if ((bool) ($c['digital'] ?? false)) return false;
+
         if (! (bool) ($c['nonfoil'] ?? false)) return false;
 
         $frameEffects = (array) ($c['frame_effects'] ?? []);
@@ -1335,9 +1346,15 @@ class BulkSyncService
                     COUNT(*) AS printing_count,
                     MAX(COALESCE(sc.released_at, ms.released_at)) AS max_released_at,
                     MAX(CASE WHEN sc.is_playtest THEN 1 ELSE 0 END) AS is_playtest_any,
+                    -- A printing is "kept" (counts toward catalog visibility) if
+                    -- its set_type is unknown, OR it's not in the hard-excluded
+                    -- list AND not on a digital-only set, OR it's a playtest
+                    -- card (carve-out). If zero printings are kept, the entire
+                    -- oracle is hidden from search.
                     CASE WHEN SUM(
                         CASE WHEN (ms.set_type IS NULL
-                                   OR ms.set_type NOT IN ({$excludedList})
+                                   OR (ms.set_type NOT IN ({$excludedList})
+                                       AND COALESCE(ms.digital, 0) = 0)
                                    OR sc.is_playtest = 1)
                              THEN 1 ELSE 0 END
                     ) = 0 THEN 1 ELSE 0 END AS excluded_from_catalog

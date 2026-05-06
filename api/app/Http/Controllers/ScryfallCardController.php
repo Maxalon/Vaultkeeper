@@ -272,7 +272,10 @@ class ScryfallCardController extends Controller
         $userId = auth()->id();
         $oracleId = $data['oracle_id'];
 
-        // Same hard exclusion as search.
+        // Same hard exclusion as search, plus a digital-set filter so
+        // Arena-only / MTGO-only printings (Pioneer Masters, Alchemy,
+        // Historic Anthology, …) don't surface in the picker even when
+        // their oracle has paper printings too.
         $excluded = "'" . implode("','", BulkSyncService::INELIGIBLE_SET_TYPES) . "'";
 
         $rows = DB::select("
@@ -284,6 +287,7 @@ class ScryfallCardController extends Controller
             LEFT JOIN sets ms ON ms.code = sc.set_code
             WHERE sc.oracle_id = ?
               AND (ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}) OR sc.is_playtest = 1)
+              AND COALESCE(ms.digital, 0) = 0
             ORDER BY COALESCE(sc.released_at, ms.released_at) DESC, sc.set_code ASC
         ", [$oracleId]);
 
