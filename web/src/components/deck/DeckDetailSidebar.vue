@@ -155,9 +155,44 @@ function onPickPrinting(scryfallId) {
 
     <div class="vk-detail-body">
       <div class="card-wrap" :class="{ 'illegal-glow': isIllegal }">
-        <CardDetailBody :card="entry.scryfall_card" />
+        <CardDetailBody :card="entry.scryfall_card" :show-legalities="false" />
         <span v-if="isGc" class="gc-badge">GC</span>
       </div>
+
+      <section class="vk-detail-section">
+        <div class="qty-row">
+          <div class="qty-cell">
+            <h4 class="qty-label">
+              <span>Wanted</span>
+              <HelpHint
+                text="Cards on your wishlist for this deck. + adds one to your wishlist; − removes one. When you actually buy a wanted copy, use the Owned + button to convert it into an owned copy."
+              />
+            </h4>
+            <QuantityStepper
+              :value="wantedQty"
+              :min="0"
+              :dec-disabled="wantedQty === 0"
+              @inc="onWantedInc"
+              @dec="onWantedDec"
+            />
+          </div>
+          <div class="qty-cell">
+            <h4 class="qty-label">
+              <span>Owned</span>
+              <HelpHint
+                text="Physical copies of this card sitting in this deck. − removes one and routes the freed copy to the Review screen so you can decide where it goes (binder, sold, etc.). + opens a dialog where you can add new copies and pick a source for each."
+              />
+            </h4>
+            <QuantityStepper
+              :value="ownedQty"
+              :min="0"
+              :dec-disabled="ownedQty === 0"
+              @inc="onOwnedInc"
+              @dec="onOwnedDec"
+            />
+          </div>
+        </div>
+      </section>
 
       <section class="vk-detail-section">
         <h4>Zone</h4>
@@ -195,41 +230,6 @@ function onPickPrinting(scryfallId) {
           :suggestions="deck.categoriesInDeck"
           @commit="patch({ category: $event || null })"
         />
-      </section>
-
-      <section class="vk-detail-section">
-        <div class="qty-row">
-          <div class="qty-cell">
-            <h4 class="qty-label">
-              <span>Wanted</span>
-              <HelpHint
-                text="Cards on your wishlist for this deck. + adds one to your wishlist; − removes one. When you actually buy a wanted copy, use the Owned + button to convert it into an owned copy."
-              />
-            </h4>
-            <QuantityStepper
-              :value="wantedQty"
-              :min="0"
-              :dec-disabled="wantedQty === 0"
-              @inc="onWantedInc"
-              @dec="onWantedDec"
-            />
-          </div>
-          <div class="qty-cell">
-            <h4 class="qty-label">
-              <span>Owned</span>
-              <HelpHint
-                text="Physical copies of this card sitting in this deck. − removes one and routes the freed copy to the Review screen so you can decide where it goes (binder, sold, etc.). + opens a dialog where you can add new copies and pick a source for each."
-              />
-            </h4>
-            <QuantityStepper
-              :value="ownedQty"
-              :min="0"
-              :dec-disabled="ownedQty === 0"
-              @inc="onOwnedInc"
-              @dec="onOwnedDec"
-            />
-          </div>
-        </div>
       </section>
 
       <section v-if="!isBound" class="vk-detail-section">
