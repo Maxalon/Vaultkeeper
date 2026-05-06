@@ -1,12 +1,10 @@
 <script setup>
 import { computed } from 'vue'
 import { useCollectionStore } from '../stores/collection'
-import { usePricesStore } from '../stores/prices'
-import { formatEur, pickPriceFinish } from '../utils/price'
 import CardDetailBody from './CardDetailBody.vue'
+import PriceLine from './PriceLine.vue'
 
 const collection = useCollectionStore()
-const prices = usePricesStore()
 
 const entry = computed(() => collection.activeEntry)
 const card = computed(() => entry.value?.card || null)
@@ -43,25 +41,6 @@ function onFinishChange(e) {
   else patch({ foil: false, is_etched: false })
 }
 
-const displayPrice = computed(() => {
-  if (!card.value) return null
-  return pickPriceFinish(card.value.prices, {
-    foil: !!entry.value?.foil,
-    isEtched: !!entry.value?.is_etched,
-  })
-})
-
-const lastUpdatedLabel = computed(() => {
-  const t = prices.lastSyncedAt
-  if (!t) return null
-  const ms = Date.now() - Date.parse(t)
-  if (Number.isNaN(ms)) return null
-  const day = 24 * 60 * 60 * 1000
-  if (ms < day) return 'today'
-  const d = Math.round(ms / day)
-  return `${d} day${d === 1 ? '' : 's'} ago`
-})
-
 async function onRemove() {
   if (!entry.value) return
   const name = entry.value.card?.name || 'this card'
@@ -85,12 +64,11 @@ const realLocations = computed(() => collection.locations)
     <div v-else-if="card" class="vk-detail-body">
       <CardDetailBody :card="card" />
 
-      <section v-if="card.prices" class="vk-price-line">
-        <span class="vk-price-amount">≈ {{ formatEur(displayPrice) }}</span>
-        <span class="vk-price-meta">
-          estimated · Cardmarket<span v-if="lastUpdatedLabel"> · updated {{ lastUpdatedLabel }}</span>
-        </span>
-      </section>
+      <PriceLine
+        :prices="card.prices"
+        :foil="!!entry.foil"
+        :is-etched="!!entry.is_etched"
+      />
 
       <section class="vk-detail-section">
         <h4>Your Copies</h4>
@@ -214,29 +192,6 @@ const realLocations = computed(() => collection.locations)
   flex: 1;
   overflow-y: auto;
   padding: 16px 18px 24px;
-}
-
-.vk-price-line {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 10px;
-  background: var(--bg-2, #1d1c1a);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-}
-.vk-price-amount {
-  font-family: var(--font-display), serif;
-  font-size: 18px;
-  color: var(--ink-100);
-  letter-spacing: -0.01em;
-}
-.vk-price-meta {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-50);
 }
 
 .vk-detail-section { margin-top: 20px; }
