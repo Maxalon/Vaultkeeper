@@ -16,6 +16,8 @@ import SidebarGroup from './SidebarGroup.vue'
 import SidebarRow from './SidebarRow.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
+import IconImport from '../assets/icons/import.svg'
+import IconChevron from '../assets/chevron-down.svg'
 
 defineProps({
   collapsed: { type: Boolean, default: false },
@@ -264,16 +266,12 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
         <button type="button" class="mini-btn" @click="groupModalOpen = true">+ Group</button>
       </div>
       <button type="button" class="import-btn" @click="importOpen = true">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <IconImport />
         Import CSV
       </button>
       <div class="deck-import-split">
         <button type="button" class="import-btn split-main" @click="deckImportOpen = true">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <IconImport />
           Import Deck
         </button>
         <button
@@ -285,9 +283,7 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
           :aria-expanded="deckImportMenuOpen"
           aria-label="More import options"
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 4l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <IconChevron />
         </button>
         <div v-if="deckImportMenuOpen" class="split-menu" role="menu">
           <button type="button" class="split-menu-item" role="menuitem" @click="openCsvDeckImport">
