@@ -4,17 +4,12 @@ use App\Http\Controllers\HorizonAuthController;
 use App\Http\Controllers\OpsDbProxyController;
 use Illuminate\Support\Facades\Route;
 
-// ─── Horizon dashboard auth ───────────────────────────────────────────────
-// Horizon is mounted at the root of horizon.vault.* (HORIZON_PATH=/),
-// so these explicit routes must be registered before
-// HorizonServiceProvider's catch-all `/{view?}` for the auth flow to win.
-// The actual ordering is established by AppServiceProvider::register(),
-// which runs in the register phase — before any boot()-time route
-// registration. The declarations below are kept here for visibility;
-// they re-register the same URIs at the booted() phase but, because
-// PHP arrays preserve key positions on re-assignment, the slots in
-// RouteCollection::$routes were already fixed by the register-phase
-// pass and the catch-all stays behind them in iteration order.
+// ─── Horizon dashboard auth ─────────────────────────────────────────────
+// Horizon is mounted at the root of horizon.vault.* (HORIZON_PATH=/), so
+// these explicit routes must register before HorizonServiceProvider's
+// catch-all `/{view?}` for the auth flow to win. routes/web.php is
+// loaded during framework boot, before user providers' boot methods —
+// so order is fine as long as the routes stay here.
 //
 // Throttle: 5 attempts/min/IP on POSTs to slow down brute-forcing the
 // login form and dampen scrapes of the setup endpoint between deploy and
