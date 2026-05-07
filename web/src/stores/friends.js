@@ -10,11 +10,11 @@ import api from '../lib/api'
  */
 export const useFriendsStore = defineStore('friends', {
   state: () => ({
-    /** Array of accepted friend objects: { id, username, display_name, friendship_id, since } */
+    /** Array of accepted friend objects: { id, username, friends_since } */
     friends: [],
-    /** Incoming pending requests: { id, requester: { id, username }, status, created_at } */
+    /** Incoming pending requests: { id, status, direction: 'incoming', user: { id, username }, created_at } */
     incomingRequests: [],
-    /** Outgoing pending requests: { id, addressee: { id, username }, status, created_at } */
+    /** Outgoing pending requests: { id, status, direction: 'outgoing', user: { id, username }, created_at } */
     outgoingRequests: [],
     /** Results from the last /users/search call */
     searchResults: [],
