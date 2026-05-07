@@ -69,6 +69,25 @@ const routes = [
     redirect: { name: 'review' },
   },
   {
+    path: '/friends',
+    name: 'friends',
+    component: () => import('../views/FriendsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('../views/NotificationsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/friends/:userId(\\d+)/collection',
+    name: 'friend-collection',
+    component: () => import('../views/FriendCollectionView.vue'),
+    meta: { requiresAuth: true },
+    props: (route) => ({ userId: Number(route.params.userId), readOnly: true }),
+  },
+  {
     path: '/',
     redirect: { name: 'collection' },
   },

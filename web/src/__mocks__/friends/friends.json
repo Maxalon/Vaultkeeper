@@ -1,0 +1,23 @@
+[
+  {
+    "id": 2,
+    "username": "alice_draws",
+    "display_name": "Alice",
+    "friendship_id": 1,
+    "since": "2026-04-10T12:00:00Z"
+  },
+  {
+    "id": 3,
+    "username": "bob_plays",
+    "display_name": "Bob",
+    "friendship_id": 2,
+    "since": "2026-04-15T09:30:00Z"
+  },
+  {
+    "id": 4,
+    "username": "carol_collects",
+    "display_name": "Carol",
+    "friendship_id": 3,
+    "since": "2026-04-20T18:00:00Z"
+  }
+]

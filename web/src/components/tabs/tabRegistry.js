@@ -4,12 +4,13 @@ import { markRaw, defineAsyncComponent } from 'vue'
  * Map of tab type → component. Used by LeafNode to render the active tab's
  * body. Async imports keep the initial deckbuilder bundle lean.
  */
-const CatalogPanel        = defineAsyncComponent(() => import('../CatalogPanel.vue'))
-const DeckTabContent      = defineAsyncComponent(() => import('../deck/DeckTabContent.vue'))
-const AnalysisTab         = defineAsyncComponent(() => import('../deck/AnalysisTab.vue'))
-const IllegalitiesTab     = defineAsyncComponent(() => import('../deck/IllegalitiesTab.vue'))
-const PhysicalCopiesTab   = defineAsyncComponent(() => import('../deck/PhysicalCopiesTab.vue'))
-const ReviewList = defineAsyncComponent(() => import('../review/ReviewList.vue'))
+const CatalogPanel             = defineAsyncComponent(() => import('../CatalogPanel.vue'))
+const DeckTabContent           = defineAsyncComponent(() => import('../deck/DeckTabContent.vue'))
+const AnalysisTab              = defineAsyncComponent(() => import('../deck/AnalysisTab.vue'))
+const IllegalitiesTab          = defineAsyncComponent(() => import('../deck/IllegalitiesTab.vue'))
+const PhysicalCopiesTab        = defineAsyncComponent(() => import('../deck/PhysicalCopiesTab.vue'))
+const ReviewList               = defineAsyncComponent(() => import('../review/ReviewList.vue'))
+const WantedMatchSummaryTab    = defineAsyncComponent(() => import('../deck/matcher/WantedMatchSummaryTab.vue'))
 
 export const tabRegistry = {
   deck:         { component: markRaw(DeckTabContent),  props: () => ({}) },
@@ -36,5 +37,9 @@ export const tabRegistry = {
       deckId: ctx.deckId ?? null,
       hideHeader: true,
     }),
+  },
+  'wanted-matches': {
+    component: markRaw(WantedMatchSummaryTab),
+    props: () => ({}),
   },
 }

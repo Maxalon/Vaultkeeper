@@ -1,0 +1,83 @@
+[
+  {
+    "scryfall_card_id": "a7c913b3-12d8-4c6e-9b2a-f15d8e4c3291",
+    "card_name": "Rhystic Study",
+    "wanted_quantity": 1,
+    "friends": [
+      {
+        "user_id": 42,
+        "username": "torque_wizard",
+        "available_copies": [
+          {
+            "collection_entry_id": 1001,
+            "condition": "LP",
+            "foil": false,
+            "location_name": "Binder A"
+          }
+        ]
+      },
+      {
+        "user_id": 87,
+        "username": "hexmage_99",
+        "available_copies": [
+          {
+            "collection_entry_id": 1042,
+            "condition": "NM",
+            "foil": true,
+            "location_name": "Trade Box"
+          },
+          {
+            "collection_entry_id": 1043,
+            "condition": "MP",
+            "foil": false,
+            "location_name": "Trade Box"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "scryfall_card_id": "b3e2d4a1-7f9c-4b8e-a23d-6c91e5f20847",
+    "card_name": "Cyclonic Rift",
+    "wanted_quantity": 1,
+    "friends": [
+      {
+        "user_id": 42,
+        "username": "torque_wizard",
+        "available_copies": [
+          {
+            "collection_entry_id": 1055,
+            "condition": "NM",
+            "foil": false,
+            "location_name": "Shelf"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "scryfall_card_id": "c9f17b82-3e4d-4a2c-b8e1-9d05c6f31958",
+    "card_name": "Sol Ring",
+    "wanted_quantity": 2,
+    "friends": []
+  },
+  {
+    "scryfall_card_id": "d4e8a3c2-1b5f-4d9e-a72c-8e04b7f20163",
+    "card_name": "Counterspell",
+    "wanted_quantity": 1,
+    "friends": [
+      {
+        "user_id": 113,
+        "username": "arcane_vault",
+        "available_copies": [
+          {
+            "collection_entry_id": 1099,
+            "condition": "NM",
+            "foil": false,
+            "location_name": "Commander Box"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "id": 10,
+    "requester": {
+      "id": 5,
+      "username": "dave_brews",
+      "display_name": "Dave"
+    },
+    "status": "pending",
+    "created_at": "2026-05-01T14:22:00Z"
+  },
+  {
+    "id": 11,
+    "requester": {
+      "id": 6,
+      "username": "eve_plays",
+      "display_name": "Eve"
+    },
+    "status": "pending",
+    "created_at": "2026-05-05T08:11:00Z"
+  }
+]
