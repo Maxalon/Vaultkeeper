@@ -12,7 +12,7 @@ use Illuminate\Http\Response;
  * Caddy's `forward_auth` calls this endpoint on every request via the
  * internal :9100 HTTP shim and forwards the original cookies. A 204
  * lets the request through to the adminer container; 401 is caught by
- * Caddy and the operator is bounced to https://horizon.vault.*/login
+ * Caddy and the operator is bounced to /login on horizon.vault.*
  * (which itself redirects to /setup when no admin exists yet).
  *
  * The actual adminer.vault.* → adminer:8080 proxy is done by Caddy, so
