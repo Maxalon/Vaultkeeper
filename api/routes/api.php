@@ -219,8 +219,8 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     // The `read-all` literal must be registered before `{id}/read` so the
     // router doesn't try to bind "read-all" as an integer `{id}`.
     // -------------------------------------------------------------------------
-    Route::post('notifications/read-all',          [NotificationController::class, 'markAllRead']);
-    Route::get ('notifications',                   [NotificationController::class, 'index']);
-    Route::post('notifications/{id}/read',         [NotificationController::class, 'markRead']);
+    Route::post('notifications/read-all',           [NotificationController::class, 'markAllRead']);
+    Route::get ('notifications',                    [NotificationController::class, 'index']);
+    Route::post('notifications/{id}/read',          [NotificationController::class, 'markRead']);
     Route::post('notifications/{id}/actions/{key}', [NotificationController::class, 'executeAction']);
 });
