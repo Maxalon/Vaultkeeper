@@ -24,6 +24,7 @@
 import { computed, inject, ref } from 'vue'
 import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
 import HelpHint from '../../HelpHint.vue'
+import NoReservationNotice from './NoReservationNotice.vue'
 
 // DeckTabContent provides the shared wm (useWantedMatches) instance,
 // the openMatchPanel handler, and the noVisibleFriends computed ref.
@@ -156,12 +157,11 @@ function onRowClick(match) {
             friend{{ totalDistinctFriends === 1 ? '' : 's' }} can help
           </span>
         </div>
-        <HelpHint
-          text="No reservation system in v1 — if a friend has one copy and multiple people want it, everyone sees it. Reach out directly to coordinate."
-          position="bottom"
-          :width="260"
-        />
       </header>
+
+      <!-- C5: No-reservation notice — always shown when there are matches,
+           so users understand copies are not held before they reach out. -->
+      <NoReservationNotice v-if="matchedCards.length > 0" />
 
       <!-- Sort controls -->
       <div v-if="matchedCards.length > 1" class="wmst-controls">
