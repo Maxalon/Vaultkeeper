@@ -14,6 +14,10 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\LocationGroupController;
 use App\Http\Controllers\NotificationController;
+<<<<<<< HEAD
+=======
+use App\Http\Controllers\PrivacySettingController;
+>>>>>>> 60f935d ( A1 migrations: friendships, user_privacy_settings, notifications, matcher index)
 use App\Http\Controllers\PricesStatusController;
 use App\Http\Controllers\PrivacySettingController;
 use App\Http\Controllers\ReviewController;
