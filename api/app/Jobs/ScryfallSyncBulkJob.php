@@ -24,10 +24,10 @@ class ScryfallSyncBulkJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public string $connection = 'redis-long';
-    public string $queue      = 'scryfall';
-    public int    $timeout    = 1800;
-    public int    $tries      = 1;
+    public $connection = 'redis-long';
+    public $queue      = 'scryfall';
+    public int $timeout = 1800;
+    public int $tries   = 1;
 
     public function handle(): void
     {
