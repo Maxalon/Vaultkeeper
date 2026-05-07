@@ -16,10 +16,15 @@ use Throwable;
 /**
  * Handles the password-protected entry into the Horizon dashboard.
  *
- * The dashboard now lives at the root of horizon.vault[-staging].*
- * (HORIZON_DOMAIN set, HORIZON_PATH=/), so the auth pages sit alongside
- * it as /setup, /login, /logout — registered ahead of Horizon's SPA
- * catch-all from AppServiceProvider::register().
+ * The dashboard is served at the root of horizon.vault.*
+ * (HORIZON_PATH=/), and these auth pages live alongside it at /setup,
+ * /login, /logout. They are declared in AppServiceProvider::register()
+ * — NOT in routes/web.php — because Laravel 11's withRouting() loads
+ * the web routes file from `$app->booted()`, after every provider's
+ * boot() has run, which means anything declared there loses the route
+ * match against Laravel\Horizon's SPA catch-all (registered during
+ * its provider's boot()). Doing it from a register() body puts these
+ * routes into the collection ahead of every boot()-time registration.
  *
  * First-access setup
  * ──────────────────
@@ -42,9 +47,9 @@ use Throwable;
  *
  * Login
  * ─────
- * Once an admin exists, GET /login renders a single-field password form.
- * POST verifies the bcrypt hash and writes `horizon_authed=true` to the
- * session. The Horizon gate (HorizonServiceProvider) reads that key.
+ * Once an admin exists, GET /login renders a single-field password
+ * form. POST verifies the bcrypt hash and writes `horizon_authed=true` to
+ * the session. The Horizon gate (HorizonServiceProvider) reads that key.
  *
  * Logout
  * ──────
@@ -104,7 +109,7 @@ class HorizonAuthController extends Controller
             Mail::raw(
                 "A Horizon dashboard setup token has been issued for ".config('app.url').".\n\n"
                 ."Token: {$token}\n\n"
-                ."Visit /setup, paste this token, and choose a password.\n"
+                ."Visit /setup on the Horizon subdomain, paste this token, and choose a password.\n"
                 ."The token expires in 24 hours.\n\n"
                 ."If you did not initiate this, someone reached the /setup\n"
                 ."page before an admin was configured. The token alone is harmless\n"
@@ -213,7 +218,7 @@ class HorizonAuthController extends Controller
      * Only same-origin paths are allowed: must start with a single `/`
      * and must not start with `//` (which browsers treat as a
      * protocol-relative URL pointing at another host). Anything else
-     * falls back to `/`, the dashboard root.
+     * falls back to /, the dashboard root.
      */
     private function safeNext(?string $next): string
     {

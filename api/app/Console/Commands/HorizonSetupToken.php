@@ -44,7 +44,7 @@ class HorizonSetupToken extends Command
         $this->line('Setup token:');
         $this->line('  '.$token);
         $this->newLine();
-        $this->line('Visit /setup and paste the token to choose a password.');
+        $this->line('Visit /setup on the Horizon subdomain and paste the token to choose a password.');
         $this->line('Token expires 24h after it was first issued.');
 
         return self::SUCCESS;

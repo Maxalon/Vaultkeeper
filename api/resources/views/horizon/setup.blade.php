@@ -43,8 +43,9 @@
     </form>
 
     <div class="note">
-        The setup token has been logged once. Retrieve it with:
-        <code>docker compose -p &lt;project&gt; logs api | grep HORIZON_SETUP_TOKEN</code>
+        The setup token has been emailed to HORIZON_SETUP_EMAIL. If it
+        didn't arrive, retrieve it inside the api container:
+        <code>docker compose -p &lt;project&gt; exec api php artisan horizon:setup-token</code>
         Token expires after 24h and is single-use. Lost it? Run
         <code>docker compose -p &lt;project&gt; exec api php artisan horizon:reset-credentials</code>
         to clear it and reload this page to mint a new one.
