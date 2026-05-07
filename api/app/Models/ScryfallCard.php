@@ -13,6 +13,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * synced from the Default Cards bulk file by BulkSyncService.
  *
  * collection_entries.scryfall_id and deck_entries.scryfall_id FK here.
+ *
+ * Oracle-invariant fields (cmc, colors, color_identity, type_line,
+ * supertypes/types/subtypes, oracle_text, power/toughness/loyalty,
+ * legalities, keywords, edhrec_rank, reserved, mana_cost) live on
+ * scryfall_oracles and are exposed here via accessors so existing
+ * `$card->cmc` style reads keep working. See issue #33.
  */
 class ScryfallCard extends Model
 {
@@ -29,18 +35,8 @@ class ScryfallCard extends Model
         'rarity',
         'layout',
         'is_dfc',
-        'mana_cost',
-        'cmc',
-        'colors',
-        'color_identity',
         'produced_mana',
-        'type_line',
-        'oracle_text',
-        'power',
-        'toughness',
-        'loyalty',
-        'legalities',
-        'keywords',
+        'finishes',
         'image_small',
         'image_normal',
         'image_large',
@@ -50,13 +46,8 @@ class ScryfallCard extends Model
         'mana_cost_back',
         'type_line_back',
         'oracle_text_back',
-        'edhrec_rank',
-        'reserved',
         'commander_game_changer',
         'partner_scope',
-        'supertypes',
-        'types',
-        'subtypes',
         'released_at',
         'promo',
         'variation',
@@ -71,30 +62,45 @@ class ScryfallCard extends Model
 
     protected $casts = [
         'is_dfc'                 => 'boolean',
-        'reserved'               => 'boolean',
         'commander_game_changer' => 'boolean',
         'promo'                  => 'boolean',
         'variation'              => 'boolean',
         'oversized'              => 'boolean',
         'is_default_eligible'    => 'boolean',
         'is_playtest'            => 'boolean',
-        'colors'                 => 'array',
-        'color_identity'         => 'array',
         'produced_mana'          => 'array',
-        'legalities'             => 'array',
-        'keywords'               => 'array',
-        'supertypes'             => 'array',
-        'types'                  => 'array',
-        'subtypes'               => 'array',
-        'cmc'                    => 'decimal:2',
-        'edhrec_rank'            => 'integer',
+        'finishes'               => 'array',
         'released_at'            => 'date',
         'last_synced_at'         => 'datetime',
+    ];
+
+    /**
+     * Always load the paired oracle row — the accessors below depend on
+     * it and there's a 1:1 invariant (every printing has an oracle).
+     */
+    protected $with = ['oracle'];
+
+    /**
+     * Surface oracle-invariant fields in toArray() / toJson() output as
+     * if they were native columns. Avoids breaking any consumer that
+     * iterates the model's serialized form. The auto-eager-load above
+     * keeps this from going N+1.
+     */
+    protected $appends = [
+        'mana_cost', 'cmc', 'colors', 'color_identity',
+        'type_line', 'supertypes', 'types', 'subtypes',
+        'oracle_text', 'power', 'toughness', 'loyalty',
+        'legalities', 'keywords', 'edhrec_rank', 'reserved',
     ];
 
     public function set(): BelongsTo
     {
         return $this->belongsTo(MtgSet::class, 'set_code', 'code');
+    }
+
+    public function oracle(): BelongsTo
+    {
+        return $this->belongsTo(ScryfallOracle::class, 'oracle_id', 'oracle_id');
     }
 
     public function tags(): HasMany
@@ -107,10 +113,36 @@ class ScryfallCard extends Model
         return $this->hasOne(ScryfallCardRaw::class, 'scryfall_id', 'scryfall_id');
     }
 
+    public function priceRow(): HasOne
+    {
+        return $this->hasOne(CardPrice::class, 'scryfall_id', 'scryfall_id');
+    }
+
     public function getRouteKeyName(): string
     {
         // /api/scryfall-cards/{scryfallCard} resolves by scryfall_id (UUID),
         // not the surrogate auto-increment id.
         return 'scryfall_id';
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Oracle-invariant accessors (proxy to scryfall_oracles).
+    // ─────────────────────────────────────────────────────────────────────
+
+    public function getManaCostAttribute(): ?string         { return $this->oracle?->mana_cost; }
+    public function getCmcAttribute(): ?float               { $v = $this->oracle?->cmc; return $v === null ? null : (float) $v; }
+    public function getColorsAttribute(): ?array            { return $this->oracle?->colors; }
+    public function getColorIdentityAttribute(): ?array     { return $this->oracle?->color_identity; }
+    public function getTypeLineAttribute(): ?string         { return $this->oracle?->type_line; }
+    public function getSupertypesAttribute(): ?array        { return $this->oracle?->supertypes; }
+    public function getTypesAttribute(): ?array             { return $this->oracle?->types; }
+    public function getSubtypesAttribute(): ?array          { return $this->oracle?->subtypes; }
+    public function getOracleTextAttribute(): ?string       { return $this->oracle?->oracle_text; }
+    public function getPowerAttribute(): ?string            { return $this->oracle?->power; }
+    public function getToughnessAttribute(): ?string        { return $this->oracle?->toughness; }
+    public function getLoyaltyAttribute(): ?string          { return $this->oracle?->loyalty; }
+    public function getLegalitiesAttribute(): ?array        { return $this->oracle?->legalities; }
+    public function getKeywordsAttribute(): ?array          { return $this->oracle?->keywords; }
+    public function getEdhrecRankAttribute(): ?int          { $v = $this->oracle?->edhrec_rank; return $v === null ? null : (int) $v; }
+    public function getReservedAttribute(): bool            { return (bool) ($this->oracle?->reserved ?? false); }
 }

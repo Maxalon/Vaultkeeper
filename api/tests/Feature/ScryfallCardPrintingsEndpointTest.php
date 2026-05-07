@@ -150,6 +150,40 @@ class ScryfallCardPrintingsEndpointTest extends TestCase
         $this->assertFalse($resp->json('data.0.ownership.in_collection'));
     }
 
+    public function test_digital_only_printings_are_filtered(): void
+    {
+        // Mirrors the Ephara, God of the Polis case: a paper printing
+        // and a Pioneer Masters (PIO, digital-only) printing of the same
+        // oracle. The picker must not surface the digital one.
+        $oracleId = '11111111-0000-0000-0000-000000000020';
+        MtgSet::create([
+            'scryfall_id' => '33333333-3333-3333-3333-333333333333',
+            'code' => 'bng', 'name' => 'Born of the Gods',
+            'set_type' => 'expansion', 'digital' => false, 'card_count' => 165,
+            'search_uri' => '',
+        ]);
+        MtgSet::create([
+            'scryfall_id' => '44444444-4444-4444-4444-444444444444',
+            'code' => 'pio', 'name' => 'Pioneer Masters',
+            'set_type' => 'masters', 'digital' => true, 'card_count' => 100,
+            'search_uri' => '',
+        ]);
+        ScryfallCard::factory()->create([
+            'oracle_id' => $oracleId, 'name' => 'Ephara', 'set_code' => 'bng',
+            'supertypes' => ['Legendary'], 'types' => ['Creature'], 'subtypes' => ['God'],
+        ]);
+        ScryfallCard::factory()->create([
+            'oracle_id' => $oracleId, 'name' => 'Ephara', 'set_code' => 'pio',
+            'supertypes' => ['Legendary'], 'types' => ['Creature'], 'subtypes' => ['God'],
+        ]);
+
+        $resp = $this->withHeaders($this->headers())
+            ->getJson("/api/scryfall-cards/printings?oracle_id={$oracleId}");
+        $resp->assertOk();
+        $codes = collect($resp->json('data'))->pluck('set_code')->all();
+        $this->assertSame(['bng'], $codes, 'PIO must be filtered as digital-only');
+    }
+
     public function test_set_name_and_icon_svg_uri_joined(): void
     {
         $oracleId = '11111111-0000-0000-0000-000000000004';

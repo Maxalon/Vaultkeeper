@@ -14,16 +14,23 @@ use Illuminate\Support\Facades\Artisan;
  * up in Horizon. The command itself stays usable from the CLI for ad-hoc
  * debugging.
  *
- * Timeout is generous (4h) — full bulk + oracle-tags + oracle-table can
- * push past an hour on production-sized data, and Scryfall rate-limits
- * the per-tag fetches hard.
+ * Routed to the dedicated `scryfall` queue on the `redis-long` connection
+ * so the 60s default-supervisor timeout doesn't kill it mid-run. Job
+ * $timeout (1800s) sits below supervisor-scryfall timeout (1860s) and
+ * the redis-long retry_after (1920s) — that ordering is what prevents
+ * MaxAttemptsExceededException on long jobs.
  */
 class ScryfallSyncBulkJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 14400;
+    public int $timeout = 1800;
     public int $tries   = 1;
+
+    public function __construct()
+    {
+        $this->onConnection('redis-long')->onQueue('scryfall');
+    }
 
     public function handle(): void
     {

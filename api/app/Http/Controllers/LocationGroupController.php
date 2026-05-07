@@ -279,154 +279,191 @@ class LocationGroupController extends Controller
     }
 
     /**
-     * POST /api/location-groups/reorder
+     * POST /api/location-groups/move
      *
-     * Accepts the complete desired sidebar tree:
+     * Atomic single-item drag-and-drop. The frontend issues one of these per
+     * drop; the request body identifies the moved item, its new parent, and
+     * the 0-based position within that parent's merged sibling list (groups
+     * + sidebar-visible locations interleaved by sort_order).
+     *
+     * Body:
      *   {
-     *     "items": [
-     *       { "kind": "location", "id": 3 },
-     *       { "kind": "group", "id": 1, "children": [
-     *         { "kind": "location", "id": 5 },
-     *         { "kind": "group", "id": 9, "children": [
-     *           { "kind": "location", "id": 11 }
-     *         ] },
-     *         { "kind": "location", "id": 7 }
-     *       ] },
-     *       { "kind": "location", "id": 8 }
-     *     ]
+     *     "kind":      "location" | "deck" | "group",
+     *     "id":         int,
+     *     "parent_id":  int | null,    // group id; null = top level
+     *     "position":   int >= 0       // index within destination siblings
      *   }
      *
-     * Each item's `sort_order` is its position in its enclosing array. Each
-     * group item's `parent_group_id` is its enclosing group's id (or NULL at
-     * the top level). Each location item's `group_id` is its enclosing
-     * group's id (or NULL at the top level). Decks are addressed by their
-     * shadow Location's id; their kind in the payload is "location".
-     *
-     * Verifies every group and location belongs to the auth user before any
-     * writes. Wrapped in a transaction; cycles in the payload (a group
-     * appearing inside its own subtree) are rejected with 422.
+     * Compared to the previous "send the whole tree" reorder endpoint, this
+     * shape has no possible cross-request races: each drop is one row's
+     * parent change plus a small per-parent renumber, all inside a single
+     * transaction. Concurrent moves of different items in different parents
+     * don't conflict at all.
      */
-    public function reorder(Request $request): Response
+    public function move(Request $request): Response
     {
         $data = $request->validate([
-            // Top-level cap; the recursive walker below also enforces a
-            // total-node cap so a deeply-nested payload can't blow up.
-            'items'                          => 'present|array|max:500',
-            'items.*'                        => 'array',
+            'kind'      => 'required|in:location,deck,group',
+            'id'        => 'required|integer',
+            'parent_id' => 'nullable|integer',
+            'position'  => 'required|integer|min:0',
         ]);
 
-        $userId = auth()->id();
+        $userId       = auth()->id();
+        $kind         = $data['kind'];
+        $id           = (int) $data['id'];
+        $destParentId = $data['parent_id'] !== null ? (int) $data['parent_id'] : null;
+        $position     = (int) $data['position'];
 
-        $groupIds    = [];
-        $locationIds = [];
-        // Total-node cap on the recursive walk: even with the array-level
-        // max:500 above, a payload could still nest 500 children inside
-        // each top-level item. Without this guard an attacker could
-        // submit a tree with N^2 nodes that we'd walk (and ownership-
-        // check) before any write happens. 1000 is well above the size
-        // of any real-world sidebar.
-        $remaining = 1000;
-        $this->collectIds($data['items'], $groupIds, $locationIds, $remaining);
-        if ($remaining < 0) {
-            throw ValidationException::withMessages([
-                'items' => 'Reorder payload too large.',
-            ]);
+        if ($destParentId !== null) {
+            $owned = LocationGroup::where('id', $destParentId)
+                ->where('user_id', $userId)
+                ->exists();
+            abort_unless($owned, 422, 'Invalid parent group');
         }
 
-        // Reject any group_id appearing more than once in the payload —
-        // that's the structural definition of a cycle.
-        if (count($groupIds) !== count(array_unique($groupIds))) {
-            throw ValidationException::withMessages([
-                'items' => 'A group cannot appear more than once in the tree.',
-            ]);
-        }
-        $locationIds = array_values(array_unique($locationIds));
+        if ($kind === 'group') {
+            $group = LocationGroup::where('id', $id)
+                ->where('user_id', $userId)
+                ->first();
+            abort_unless($group !== null, 403);
 
-        // Ownership check: any mismatched ID = 403, no partial writes.
-        if ($groupIds !== []) {
-            $ownedGroups = LocationGroup::where('user_id', $userId)
-                ->whereIn('id', $groupIds)
-                ->count();
-            abort_if($ownedGroups !== count($groupIds), 403, 'Invalid group id');
-        }
-        if ($locationIds !== []) {
-            $ownedLocs = Location::where('user_id', $userId)
-                ->whereIn('id', $locationIds)
-                ->count();
-            abort_if($ownedLocs !== count($locationIds), 403, 'Invalid location id');
+            if ($destParentId !== null) {
+                if ($destParentId === $group->id) {
+                    throw ValidationException::withMessages([
+                        'parent_id' => 'A group cannot be its own parent.',
+                    ]);
+                }
+                if (in_array($destParentId, $group->descendantIds(), true)) {
+                    throw ValidationException::withMessages([
+                        'parent_id' => 'A group cannot be moved under one of its descendants.',
+                    ]);
+                }
+            }
+
+            $sourceParentId = $group->parent_group_id !== null ? (int) $group->parent_group_id : null;
+        } else {
+            $location = Location::where('id', $id)
+                ->where('user_id', $userId)
+                ->first();
+            abort_unless($location !== null, 403);
+            abort_unless(
+                in_array($location->role, [Location::ROLE_USER, Location::ROLE_DECK], true),
+                422,
+                'This location cannot be moved in the sidebar.'
+            );
+
+            $sourceParentId = $location->group_id !== null ? (int) $location->group_id : null;
         }
 
-        DB::transaction(function () use ($data) {
-            $this->applyReorder($data['items'], null);
+        DB::transaction(function () use ($kind, $id, $destParentId, $sourceParentId, $position, $userId) {
+            // Reparent the moved row first so it shows up in the destination
+            // sibling list during renumbering.
+            if ($kind === 'group') {
+                LocationGroup::where('id', $id)->update(['parent_group_id' => $destParentId]);
+            } else {
+                Location::where('id', $id)->update(['group_id' => $destParentId]);
+            }
+
+            // Renumber destination siblings with the moved item spliced in
+            // at the requested position. Position is clamped to the actual
+            // sibling count so a stale frontend can't push it out of range.
+            $siblings = $this->siblingsOf($userId, $destParentId);
+            $others   = array_values(array_filter(
+                $siblings,
+                fn (array $r) => ! ($r['kind'] === $kind && $r['id'] === $id)
+            ));
+            $clamped  = max(0, min($position, count($others)));
+            array_splice($others, $clamped, 0, [['kind' => $kind, 'id' => $id]]);
+            $this->writeOrder($others);
+
+            // Close the gap left in the source parent. Skipped when the
+            // drop landed inside the same container — siblingsOf already
+            // included the moved item there.
+            if ($sourceParentId !== $destParentId) {
+                $this->writeOrder($this->siblingsOf($userId, $sourceParentId));
+            }
         });
 
         return response()->noContent();
     }
 
     /**
-     * Recursively walk the reorder payload, writing parent_group_id /
-     * group_id and sort_order for every group and location encountered.
+     * Sibling list of a parent container — child groups + sidebar-visible
+     * child locations — merged and sorted by (sort_order, name) to match
+     * exactly what `index()` renders. Each row is a small array of
+     * `{kind, id}`; that's all the renumber loop needs.
      *
-     * @param array<int, array<string, mixed>> $items
+     * @return array<int, array{kind: string, id: int}>
      */
-    private function applyReorder(array $items, ?int $parentGroupId): void
+    private function siblingsOf(int $userId, ?int $parentId): array
     {
-        foreach ($items as $idx => $item) {
-            $kind = $item['kind'] ?? null;
-            $id   = isset($item['id']) ? (int) $item['id'] : null;
-            if ($id === null) {
-                continue;
-            }
+        $rows = [];
 
-            if ($kind === 'group') {
-                LocationGroup::where('id', $id)->update([
-                    'parent_group_id' => $parentGroupId,
-                    'sort_order'      => $idx,
-                ]);
-                $children = $item['children'] ?? [];
-                if (is_array($children)) {
-                    $this->applyReorder($children, $id);
-                }
-            } elseif ($kind === 'location' || $kind === 'deck') {
-                Location::where('id', $id)->update([
-                    'group_id'   => $parentGroupId,
-                    'sort_order' => $idx,
-                ]);
-            }
+        $groups = LocationGroup::query()
+            ->where('user_id', $userId)
+            ->when(
+                $parentId === null,
+                fn ($q) => $q->whereNull('parent_group_id'),
+                fn ($q) => $q->where('parent_group_id', $parentId)
+            )
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'sort_order', 'name']);
+        foreach ($groups as $g) {
+            $rows[] = [
+                'kind'        => 'group',
+                'id'          => (int) $g->id,
+                '_sort_order' => (int) $g->sort_order,
+                '_name'       => (string) $g->name,
+            ];
         }
+
+        $locations = Location::query()
+            ->where('user_id', $userId)
+            ->sidebarVisible()
+            ->when(
+                $parentId === null,
+                fn ($q) => $q->whereNull('group_id'),
+                fn ($q) => $q->where('group_id', $parentId)
+            )
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'sort_order', 'name', 'role']);
+        foreach ($locations as $l) {
+            $rows[] = [
+                'kind'        => $l->role === Location::ROLE_DECK ? 'deck' : 'location',
+                'id'          => (int) $l->id,
+                '_sort_order' => (int) $l->sort_order,
+                '_name'       => (string) $l->name,
+            ];
+        }
+
+        usort($rows, function (array $a, array $b) {
+            return $a['_sort_order'] <=> $b['_sort_order']
+                ?: strcmp($a['_name'], $b['_name']);
+        });
+
+        return array_map(
+            fn (array $r) => ['kind' => $r['kind'], 'id' => $r['id']],
+            $rows
+        );
     }
 
     /**
-     * Walk the payload and accumulate every referenced group_id and
-     * location_id for ownership/cycle checks.
+     * Write `sort_order = idx` for every row in `$rows`, in order. Rows
+     * with kind=group hit `location_groups`; kind=location|deck hit
+     * `locations` (deck shadows are just a Location with role='deck').
      *
-     * @param array<int, array<string, mixed>> $items
-     * @param array<int, int>                  $groupIds
-     * @param array<int, int>                  $locationIds
-     * @param int                               $remaining  decremented per-node; when it drops
-     *                                                     below zero the caller throws 422 to
-     *                                                     reject the payload.
+     * @param array<int, array{kind: string, id: int}> $rows
      */
-    private function collectIds(array $items, array &$groupIds, array &$locationIds, int &$remaining): void
+    private function writeOrder(array $rows): void
     {
-        foreach ($items as $item) {
-            if ($remaining-- < 0) {
-                return;
-            }
-            $kind = $item['kind'] ?? null;
-            $id   = isset($item['id']) ? (int) $item['id'] : null;
-            if ($id === null) {
-                continue;
-            }
-
-            if ($kind === 'group') {
-                $groupIds[] = $id;
-                $children = $item['children'] ?? [];
-                if (is_array($children)) {
-                    $this->collectIds($children, $groupIds, $locationIds, $remaining);
-                }
-            } elseif ($kind === 'location' || $kind === 'deck') {
-                $locationIds[] = $id;
+        foreach ($rows as $idx => $row) {
+            if ($row['kind'] === 'group') {
+                LocationGroup::where('id', $row['id'])->update(['sort_order' => $idx]);
+            } else {
+                Location::where('id', $row['id'])->update(['sort_order' => $idx]);
             }
         }
     }

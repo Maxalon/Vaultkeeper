@@ -72,6 +72,19 @@ return [
             'after_commit' => false,
         ],
 
+        // Dedicated connection for long-running jobs (e.g. ScryfallSyncBulkJob).
+        // retry_after must exceed the Horizon supervisor timeout for this
+        // queue, otherwise an in-flight job gets re-released and fails with
+        // MaxAttemptsExceededException before its handle() can complete.
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_LONG_QUEUE', 'scryfall'),
+            'retry_after' => (int) env('REDIS_LONG_QUEUE_RETRY_AFTER', 1920),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
     ],
 
     /*

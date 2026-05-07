@@ -11,6 +11,7 @@ use App\Http\Controllers\DeckLegalityController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\LocationGroupController;
+use App\Http\Controllers\PricesStatusController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScryfallCardController;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,7 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::get   ('decks/{deck}',                          [DeckController::class, 'show']);
     Route::put   ('decks/{deck}',                          [DeckController::class, 'update']);
     Route::delete('decks/{deck}',                          [DeckController::class, 'destroy']);
+    Route::get   ('decks/{deck}/totals',                   [DeckController::class, 'totals']);
 
     // Assemble/unassemble each fan out to ~deck-size CE writes inside one
     // transaction. The 120/min global floor would let one user do ~12K CE
@@ -103,10 +105,10 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
 
     Route::get('location-groups',               [LocationGroupController::class, 'index']);
     Route::post('location-groups',              [LocationGroupController::class, 'store']);
-    // reorder walks up to 1000 nodes and writes each — tighter throttle
-    // matches the cap on payload size.
-    Route::post('location-groups/reorder',      [LocationGroupController::class, 'reorder'])
-        ->middleware('throttle:30,1');
+    // Single-item move — atomic per drag-and-drop in the sidebar. Renumbers
+    // siblings only within the affected source/destination parents.
+    Route::post('location-groups/move',         [LocationGroupController::class, 'move'])
+        ->middleware('throttle:120,1');
     Route::put('location-groups/{group}',       [LocationGroupController::class, 'update']);
     Route::delete('location-groups/{group}',    [LocationGroupController::class, 'destroy']);
 
@@ -125,10 +127,16 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
 
     Route::get('collection',               [CollectionController::class, 'index']);
     Route::get('collection/copies',        [CollectionController::class, 'copiesForCard']);
+    Route::get('collection/totals',        [CollectionController::class, 'totals']);
     Route::post('collection/batch-move',   [CollectionController::class, 'batchMove']);
     Route::get('collection/{entry}',       [CollectionController::class, 'show']);
     Route::patch('collection/{entry}',     [CollectionController::class, 'update']);
     Route::delete('collection/{entry}',    [CollectionController::class, 'destroy']);
+
+    // Pricing metadata. The actual per-card prices ride on the existing
+    // card payloads (CollectionController, ScryfallCardController); this
+    // endpoint just exposes "when did the last sync run".
+    Route::get('prices/status',            [PricesStatusController::class, 'show']);
 
     // CSV / text bulk import — same heavy-job reasoning as decks/import*.
     Route::post('import', [ImportController::class, 'store'])

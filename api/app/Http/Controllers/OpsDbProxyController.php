@@ -7,19 +7,16 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
- * Auth subrequest backing the /db Adminer mount.
+ * Auth subrequest backing the adminer.vault.* Caddy site.
  *
- * nginx's `auth_request /__db_auth` on the /db location calls this
- * endpoint on every request and forwards the original cookies. A 204
- * lets the request through to the adminer container, 401 is caught by
- * the @db_login named location and the operator is bounced to
- * /horizon-login (which itself redirects to /horizon-setup when no
- * admin exists yet).
+ * Caddy's `forward_auth` calls this endpoint on every request via the
+ * internal :9100 HTTP shim and forwards the original cookies. A 204
+ * lets the request through to the adminer container; 401 is caught by
+ * Caddy and the operator is bounced to https://horizon.vault.*/login
+ * (which itself redirects to /setup when no admin exists yet).
  *
- * The actual /db -> adminer:8080 proxy is done by nginx itself now, so
+ * The actual adminer.vault.* → adminer:8080 proxy is done by Caddy, so
  * the original request method, headers, and body reach Adminer intact.
- * The previous X-Accel-Redirect-from-FastCGI scheme dropped POST bodies
- * on internal subrequests, which silently broke Adminer's login form.
  */
 class OpsDbProxyController extends Controller
 {

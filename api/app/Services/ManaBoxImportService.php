@@ -69,13 +69,19 @@ class ManaBoxImportService
                     continue;
                 }
 
+                $foilRaw = strtolower(trim((string) ($row['Foil'] ?? '')));
                 CollectionEntry::create([
                     'user_id'     => $user->id,
                     'scryfall_id' => $scryfallId,
                     'location_id' => $locationId,
                     'quantity'    => max(1, (int) ($row['Quantity'] ?? 1)),
                     'condition'   => $this->mapCondition((string) ($row['Condition'] ?? ''), $warnings, $rowNumber),
-                    'foil'        => strtolower(trim((string) ($row['Foil'] ?? ''))) === 'foil',
+                    // ManaBox encodes etched as a third value in the Foil
+                    // column ("foil" / "etched" / "" for nonfoil); honour
+                    // the etched value so the etched price column kicks
+                    // in for the imported copy.
+                    'foil'        => $foilRaw === 'foil',
+                    'is_etched'   => $foilRaw === 'etched',
                     'notes'       => $this->buildNotes($row['Language'] ?? null),
                 ]);
 

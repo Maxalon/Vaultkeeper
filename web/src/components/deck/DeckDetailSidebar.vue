@@ -4,6 +4,7 @@ import { useDeckStore } from '../../stores/deck'
 import { useDeckEntryActions } from '../../composables/useDeckEntryActions'
 import CardDetailBody from '../CardDetailBody.vue'
 import HelpHint from '../HelpHint.vue'
+import PriceLine from '../PriceLine.vue'
 import PrintingPickerModal from '../PrintingPickerModal.vue'
 import ZoneSelector from './ZoneSelector.vue'
 import CategoryInput from './CategoryInput.vue'
@@ -135,9 +136,61 @@ function openPrintingPicker() {
   if (!oracleId.value || isBound.value) return
   printingPickerOpen.value = true
 }
-function onPickPrinting(scryfallId) {
+
+const FINISH_OPTIONS = ['nonfoil', 'foil', 'etched']
+const FINISH_LABELS  = { nonfoil: 'Nonfoil', foil: 'Foil', etched: 'Etched' }
+const FINISH_HINTS   = {
+  nonfoil: 'This printing has no non-foil version.',
+  foil:    'This printing has no foil version.',
+  etched:  'This printing has no etched version.',
+}
+
+const printingFinishes = computed(() => {
+  // Pre-sync data: when the printing's `finishes` array is null/missing
+  // (i.e. the row predates the finishes column being populated), fall
+  // back to {nonfoil, foil} rather than allowing all options. Etched is
+  // post-2021 and rare — defaulting it OFF is the safer 95% answer until
+  // the next bulk-sync repopulates the column. Glossy is treated as
+  // nonfoil-equivalent (not user-selectable as its own option).
+  const raw = entry.value?.scryfall_card?.finishes
+  if (!Array.isArray(raw)) return new Set(['nonfoil', 'foil'])
+  const set = new Set(raw)
+  if (set.has('glossy')) set.add('nonfoil')
+  return set
+})
+
+function finishSupported(opt) {
+  return printingFinishes.value.has(opt)
+}
+
+const currentFinish = computed(() => {
+  // Bound entries source finish from the bound CE; unbound from the slot
+  // itself. Defaults to 'nonfoil' when both flags are null/undefined.
+  const src = isBound.value ? (entry.value?.physical_copy || {}) : (entry.value || {})
+  if (src.is_etched) return 'etched'
+  if (src.foil)      return 'foil'
+  return 'nonfoil'
+})
+
+function setFinish(next) {
+  if (!entry.value || !deckId.value || isBound.value) return
+  if (next === currentFinish.value) return
+  if (!finishSupported(next)) return
+  patch({ foil: next === 'foil', is_etched: next === 'etched' })
+}
+
+function onPickPrinting(scryfallId, finishes) {
   if (!entry.value || !deckId.value || scryfallId === entry.value.scryfall_id) return
-  patch({ scryfall_id: scryfallId })
+  const fields = { scryfall_id: scryfallId }
+  // Auto-snap finish when the new printing doesn't support the current
+  // selection. Silently picks the first finish the new printing supports
+  // so the slot never lands in an impossible (printing × finish) state.
+  if (Array.isArray(finishes) && !finishes.includes(currentFinish.value)) {
+    const snap = finishes[0] ?? 'nonfoil'
+    fields.foil      = snap === 'foil'
+    fields.is_etched = snap === 'etched'
+  }
+  patch(fields)
 }
 </script>
 
@@ -158,6 +211,12 @@ function onPickPrinting(scryfallId) {
         <CardDetailBody :card="entry.scryfall_card" :show-legalities="false" />
         <span v-if="isGc" class="gc-badge">GC</span>
       </div>
+
+      <PriceLine
+        :prices="entry.scryfall_card?.prices"
+        :foil="currentFinish === 'foil'"
+        :is-etched="currentFinish === 'etched'"
+      />
 
       <section class="vk-detail-section">
         <div class="qty-row">
@@ -230,6 +289,30 @@ function onPickPrinting(scryfallId) {
           :suggestions="deck.categoriesInDeck"
           @commit="patch({ category: $event || null })"
         />
+      </section>
+
+      <section class="vk-detail-section">
+        <h4>
+          <span>Finish</span>
+          <HelpHint
+            v-if="isBound"
+            text="Bound copies inherit finish from the physical copy. Edit it from the Physical Copies tab."
+          />
+        </h4>
+        <div class="finish-row" role="radiogroup" aria-label="Finish">
+          <button
+            v-for="opt in FINISH_OPTIONS"
+            :key="opt"
+            type="button"
+            role="radio"
+            class="finish-btn"
+            :class="{ selected: currentFinish === opt }"
+            :aria-checked="currentFinish === opt"
+            :disabled="isBound || !finishSupported(opt)"
+            :title="!finishSupported(opt) ? FINISH_HINTS[opt] : null"
+            @click="setFinish(opt)"
+          >{{ FINISH_LABELS[opt] }}</button>
+        </div>
       </section>
 
       <section v-if="!isBound" class="vk-detail-section">
@@ -401,5 +484,35 @@ function onPickPrinting(scryfallId) {
   color: var(--ink-50);
   margin-top: 2px;
   font-weight: 400;
+}
+
+.finish-row {
+  display: flex;
+  gap: 6px;
+}
+.finish-btn {
+  flex: 1;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  color: var(--ink-100);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+.finish-btn:hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--amber-lo);
+}
+.finish-btn.selected {
+  background: var(--amber-lo);
+  border-color: var(--amber);
+  color: #1a1408;
+}
+.finish-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

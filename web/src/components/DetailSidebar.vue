@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useCollectionStore } from '../stores/collection'
 import CardDetailBody from './CardDetailBody.vue'
-import Checkbox from './Checkbox.vue'
+import PriceLine from './PriceLine.vue'
 
 const collection = useCollectionStore()
 
@@ -19,10 +19,26 @@ function onLocationChange(e) {
   const val = e.target.value
   patch({ location_id: val === '' ? null : Number(val) })
 }
-function onFoilChange(e) { patch({ foil: e.target.checked }) }
 function onQuantityChange(e) {
   const q = Math.max(1, Math.min(9999, Number(e.target.value) || 1))
   patch({ quantity: q })
+}
+
+const finishValue = computed(() => {
+  if (!entry.value) return 'nonfoil'
+  if (entry.value.is_etched) return 'etched'
+  if (entry.value.foil) return 'foil'
+  return 'nonfoil'
+})
+
+function onFinishChange(e) {
+  const next = e.target.value
+  // Mutually exclusive: setting one resets the other. Backend enforces
+  // the same invariant; keeping the request shape explicit makes the
+  // optimistic merge in collection.updateEntry land consistently.
+  if (next === 'etched') patch({ foil: false, is_etched: true })
+  else if (next === 'foil') patch({ foil: true, is_etched: false })
+  else patch({ foil: false, is_etched: false })
 }
 
 async function onRemove() {
@@ -47,6 +63,12 @@ const realLocations = computed(() => collection.locations)
 
     <div v-else-if="card" class="vk-detail-body">
       <CardDetailBody :card="card" />
+
+      <PriceLine
+        :prices="card.prices"
+        :foil="!!entry.foil"
+        :is-etched="!!entry.is_etched"
+      />
 
       <section class="vk-detail-section">
         <h4>Your Copies</h4>
@@ -85,16 +107,13 @@ const realLocations = computed(() => collection.locations)
               @change="onQuantityChange"
             />
           </label>
-          <label class="vk-field foil-field">
-            <span class="vk-field-label">Foil</span>
-            <span class="foil-toggle">
-              <Checkbox
-                name="foil"
-                :model-value="!!entry.foil"
-                @update:model-value="(v) => patch({ foil: v })"
-              />
-              <span>{{ entry.foil ? 'Yes' : 'No' }}</span>
-            </span>
+          <label class="vk-field">
+            <span class="vk-field-label">Finish</span>
+            <select name="finish" :value="finishValue" @change="onFinishChange" class="vk-field-input">
+              <option value="nonfoil">Nonfoil</option>
+              <option value="foil">Foil</option>
+              <option value="etched">Etched</option>
+            </select>
           </label>
         </div>
 

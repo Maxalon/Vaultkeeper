@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\BulkSyncService;
+use App\Services\PriceUpsertService;
 use App\Services\ScryfallService;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -21,7 +22,7 @@ class BulkSyncServiceTest extends TestCase
         // Pure function under test has no dependency on ScryfallService state
         // but the constructor still needs one — instantiate with a fresh Http
         // factory so nothing ever tries to call out.
-        return new BulkSyncService(new ScryfallService(new HttpFactory));
+        return new BulkSyncService(new ScryfallService(new HttpFactory), new PriceUpsertService());
     }
 
     /**
@@ -203,6 +204,7 @@ class BulkSyncServiceTest extends TestCase
             'draft_innovation qualifies'       => [[...$base, 'set_type' => 'draft_innovation'],                    true,  'Conspiracy, Battlebond, Clue Edition, …'],
             'commander set qualifies'          => [[...$base, 'set_type' => 'commander'],                           true,  'commander precons'],
             'masters qualifies'                => [[...$base, 'set_type' => 'masters'],                             true,  'reprint sets'],
+            'digital flag disqualifies'        => [[...$base, 'digital' => true],                                   false, 'Arena/MTGO-only printings (Pioneer Masters, Alchemy)'],
             'expansion with missing fields'    => [['set_type' => 'expansion'],                                     false, 'missing nonfoil defaults to false → disqualifies'],
         ];
     }

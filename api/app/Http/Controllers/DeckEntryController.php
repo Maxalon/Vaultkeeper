@@ -35,7 +35,7 @@ class DeckEntryController extends Controller
 
         $query = DeckEntry::query()
             ->where('deck_id', $deck->id)
-            ->with(['card', 'physicalCopy.location:id,name,role']);
+            ->with(['card.priceRow', 'physicalCopy.location:id,name,role']);
 
         if ($zone = $request->query('zone')) {
             $query->where('zone', $zone);
@@ -85,11 +85,19 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            'foil'                   => 'sometimes|nullable|boolean',
+            'is_etched'              => 'sometimes|nullable|boolean',
             // Inline picker: 'create_new_copy' delegates the create to
             // DeckEntryActionService::createWithNewCopy so a fresh CE is
             // created in the deck-location and linked in the same write.
             'mode'                   => 'sometimes|in:create_new_copy',
         ]);
+
+        // Mirror PhysicalCopyEditService's mutual exclusion: setting etched
+        // forces foil=false. Enforced controller-side, not at the DB level.
+        if (! empty($data['is_etched'])) {
+            $data['foil'] = false;
+        }
 
         // Inline-picker shortcut: "I just bought it (and I'm putting it
         // in this deck)". Bypasses the regular store path entirely so
@@ -122,6 +130,8 @@ class DeckEntryController extends Controller
                 'signature_for_entry_id' => $data['signature_for_entry_id'] ?? null,
                 'wanted'                 => $data['wanted'] ?? null,
                 'physical_copy_id'       => $data['physical_copy_id'] ?? null,
+                'foil'                   => array_key_exists('foil', $data) ? $data['foil'] : null,
+                'is_etched'              => array_key_exists('is_etched', $data) ? $data['is_etched'] : null,
             ]);
 
             if (! empty($data['is_commander'])) {
@@ -159,6 +169,25 @@ class DeckEntryController extends Controller
                     if (! $ok) $fail('The physical_copy_id must belong to the authenticated user.');
                 },
             ],
+            // Per-deck-slot finish, used only on unbound entries. Bound
+            // entries source finish from the linked CollectionEntry — edit
+            // those through the Physical Copies surface, not here.
+            'foil'                   => [
+                'sometimes', 'nullable', 'boolean',
+                function ($attr, $value, $fail) use ($entry) {
+                    if ($entry->physical_copy_id !== null) {
+                        $fail('Cannot change finish while a physical copy is bound. Edit the physical copy directly.');
+                    }
+                },
+            ],
+            'is_etched'              => [
+                'sometimes', 'nullable', 'boolean',
+                function ($attr, $value, $fail) use ($entry) {
+                    if ($entry->physical_copy_id !== null) {
+                        $fail('Cannot change finish while a physical copy is bound. Edit the physical copy directly.');
+                    }
+                },
+            ],
             // Swap which printing this slot represents (e.g. via the
             // sidebar's printing-picker). Only allowed for unbound slots
             // — once a CE is bound, the binding pins the printing, so
@@ -189,6 +218,12 @@ class DeckEntryController extends Controller
             'mode'                   => 'sometimes|in:create_new_copy',
             'discard'                => 'sometimes|boolean',
         ]);
+
+        // Mirror PhysicalCopyEditService's mutual exclusion: setting etched
+        // forces foil=false. Enforced controller-side, not at the DB level.
+        if (! empty($data['is_etched'])) {
+            $data['foil'] = false;
+        }
 
         $mode    = $data['mode']    ?? null;
         $discard = (bool) ($data['discard'] ?? false);
@@ -271,6 +306,7 @@ class DeckEntryController extends Controller
             'version'     => ['sometimes', 'nullable', 'integer', 'min:0'],
             'condition'   => ['sometimes', 'in:NM,LP,MP,HP,DMG'],
             'foil'        => ['sometimes', 'boolean'],
+            'is_etched'   => ['sometimes', 'boolean'],
             'notes'       => ['sometimes', 'nullable', 'string', 'max:1000'],
             'scryfall_id' => ['sometimes', 'string', 'size:36', 'exists:scryfall_cards,scryfall_id'],
         ]);
@@ -502,6 +538,7 @@ class DeckEntryController extends Controller
                     'quantity'    => $needed,
                     'condition'   => $locked->condition,
                     'foil'        => (bool) $locked->foil,
+                    'is_etched'   => (bool) $locked->is_etched,
                     'notes'       => $locked->notes,
                 ]);
                 $boundId = $newCopy->id;
@@ -626,11 +663,16 @@ class DeckEntryController extends Controller
 
     private function applySort($query, string $sort)
     {
+        // cmc / color_identity live on scryfall_oracles after issue #33;
+        // those sorts hop through scryfall_cards.oracle_id to reach the
+        // oracle row. rarity and name stay per-printing on scryfall_cards.
         return match ($sort) {
             'cmc'      => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
-                                ->orderBy('scryfall_cards.cmc')->select('deck_entries.*'),
+                                ->join('scryfall_oracles', 'scryfall_oracles.oracle_id', '=', 'scryfall_cards.oracle_id')
+                                ->orderBy('scryfall_oracles.cmc')->select('deck_entries.*'),
             'color'    => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
-                                ->orderBy('scryfall_cards.color_identity')->select('deck_entries.*'),
+                                ->join('scryfall_oracles', 'scryfall_oracles.oracle_id', '=', 'scryfall_cards.oracle_id')
+                                ->orderBy('scryfall_oracles.color_identity')->select('deck_entries.*'),
             'rarity'   => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
                                 ->orderBy('scryfall_cards.rarity')->select('deck_entries.*'),
             'category' => $query->orderBy('category'),
@@ -681,6 +723,12 @@ class DeckEntryController extends Controller
     private function presentEntryBare(DeckEntry $entry): array
     {
         $card = $entry->card;
+        // Make sure the price snapshot is loaded — singular store/update
+        // paths call presentEntryBare on a model freshly hydrated with
+        // just `card`, so the relation isn't always preloaded.
+        if ($card !== null && ! $card->relationLoaded('priceRow')) {
+            $card->loadMissing('priceRow');
+        }
         // Bound-CE detail block — drives the Physical Copies tab and any
         // sidebar surface that wants to show the actual condition/foil/
         // notes the slot is backed by.
@@ -695,6 +743,7 @@ class DeckEntryController extends Controller
                     'quantity'     => (int) $copy->quantity,
                     'condition'    => $copy->condition,
                     'foil'         => (bool) $copy->foil,
+                    'is_etched'    => (bool) $copy->is_etched,
                     'notes'        => $copy->notes,
                     'location_id'  => $copy->location_id,
                     'location_name'=> $copy->location?->name,
@@ -715,6 +764,8 @@ class DeckEntryController extends Controller
             'signature_for_entry_id' => $entry->signature_for_entry_id,
             'wanted'                 => $entry->wanted,
             'physical_copy_id'       => $entry->physical_copy_id,
+            'foil'                   => $entry->foil,
+            'is_etched'              => $entry->is_etched,
             'physical_copy'          => $physical,
             'scryfall_card'          => $card ? [
                 'scryfall_id'    => $card->scryfall_id,
@@ -731,6 +782,7 @@ class DeckEntryController extends Controller
                 'produced_mana'  => $card->produced_mana,
                 'oracle_text'    => $card->oracle_text,
                 'keywords'       => $card->keywords,
+                'finishes'       => $card->finishes,
                 'commander_game_changer' => (bool) $card->commander_game_changer,
                 'legalities'     => $card->legalities,
                 'is_dfc'         => (bool) $card->is_dfc,
@@ -738,7 +790,24 @@ class DeckEntryController extends Controller
                 'image_normal'   => $card->image_normal,
                 'image_small_back'  => $card->image_small_back,
                 'image_normal_back' => $card->image_normal_back,
+                'prices'         => $this->presentPrices($card->priceRow),
             ] : null,
+        ];
+    }
+
+    /**
+     * @return array<string, string|null>|null
+     */
+    private function presentPrices(?\App\Models\CardPrice $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return [
+            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
+            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
+            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'captured_on' => $row->captured_on?->toDateString(),
         ];
     }
 }
