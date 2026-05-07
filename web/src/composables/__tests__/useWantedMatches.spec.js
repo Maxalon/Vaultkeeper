@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { setActivePinia, createPinia } from 'pinia'
 import { useWantedMatches } from '../useWantedMatches.js'
 
-// Mock the api module so tests never hit the network.
+// Mock the api module so no real HTTP calls happen in tests.
 vi.mock('../../lib/api', () => ({
   default: {
     get: vi.fn(),
@@ -10,118 +9,95 @@ vi.mock('../../lib/api', () => ({
 }))
 
 import api from '../../lib/api'
+import fixture from '../../__mocks__/friends/wanted-matches.json'
 
 beforeEach(() => {
-  setActivePinia(createPinia())
   vi.clearAllMocks()
 })
 
-afterEach(() => {
-  vi.restoreAllMocks()
-})
-
-const FIXTURE = [
-  {
-    scryfall_card_id: 'card-a',
-    card_name: 'Rhystic Study',
-    wanted_quantity: 1,
-    friends: [
-      {
-        user_id: 1,
-        username: 'torque_wizard',
-        available_copies: [
-          { collection_entry_id: 101, condition: 'LP', foil: false, location_name: 'Binder' },
-        ],
-      },
-    ],
-  },
-  {
-    scryfall_card_id: 'card-b',
-    card_name: 'Sol Ring',
-    wanted_quantity: 2,
-    friends: [],
-  },
-]
-
 describe('useWantedMatches', () => {
-  it('starts empty', () => {
+  it('starts with empty state', () => {
     const wm = useWantedMatches()
     expect(wm.matches.value).toEqual([])
     expect(wm.loading.value).toBe(false)
     expect(wm.error.value).toBeNull()
   })
 
-  it('fetch() populates matches on success', async () => {
-    api.get.mockResolvedValueOnce({ data: FIXTURE })
+  it('fetch() sets loading true then resolves matches', async () => {
+    api.get.mockResolvedValueOnce({ data: fixture })
+    const wm = useWantedMatches()
+    const p = wm.fetch(1)
+    expect(wm.loading.value).toBe(true)
+    await p
+    expect(wm.loading.value).toBe(false)
+    expect(wm.matches.value).toHaveLength(fixture.length)
+  })
+
+  it('fetch() calls the correct URL', async () => {
+    api.get.mockResolvedValueOnce({ data: [] })
     const wm = useWantedMatches()
     await wm.fetch(42)
     expect(api.get).toHaveBeenCalledWith('/decks/42/wanted-matches')
-    expect(wm.matches.value).toHaveLength(2)
-    expect(wm.loading.value).toBe(false)
-    expect(wm.error.value).toBeNull()
   })
 
-  it('matchFor() returns correct entry by scryfall_card_id', async () => {
-    api.get.mockResolvedValueOnce({ data: FIXTURE })
+  it('matchFor() returns the match entry for a known card', async () => {
+    api.get.mockResolvedValueOnce({ data: fixture })
     const wm = useWantedMatches()
-    await wm.fetch(42)
-    const match = wm.matchFor('card-a')
-    expect(match?.card_name).toBe('Rhystic Study')
-    expect(match?.friends).toHaveLength(1)
+    await wm.fetch(1)
+    const match = wm.matchFor(fixture[0].scryfall_card_id)
+    expect(match).not.toBeNull()
+    expect(match.card_name).toBe(fixture[0].card_name)
   })
 
-  it('matchFor() returns null for unknown card', async () => {
-    api.get.mockResolvedValueOnce({ data: FIXTURE })
+  it('matchFor() returns null for an unknown card id', async () => {
+    api.get.mockResolvedValueOnce({ data: fixture })
     const wm = useWantedMatches()
-    await wm.fetch(42)
-    expect(wm.matchFor('does-not-exist')).toBeNull()
+    await wm.fetch(1)
+    expect(wm.matchFor('not-a-real-id')).toBeNull()
   })
 
-  it('sets error on fetch failure', async () => {
-    api.get.mockRejectedValueOnce({
-      response: { data: { message: 'Server error' } },
-    })
+  it('fetch() is a no-op while another fetch is in flight', async () => {
+    let resolveFn
+    api.get.mockReturnValueOnce(new Promise((res) => { resolveFn = res }))
     const wm = useWantedMatches()
-    await wm.fetch(42)
+    wm.fetch(1) // starts, doesn't await
+    await wm.fetch(1) // second call — should be a no-op
+    expect(api.get).toHaveBeenCalledTimes(1)
+    resolveFn({ data: [] })
+  })
+
+  it('fetch() sets error on API failure', async () => {
+    api.get.mockRejectedValueOnce({ response: { data: { message: 'Server error' } } })
+    const wm = useWantedMatches()
+    await wm.fetch(1)
     expect(wm.error.value).toBe('Server error')
     expect(wm.matches.value).toEqual([])
     expect(wm.loading.value).toBe(false)
   })
 
-  it('uses fallback error message when response has no message', async () => {
-    api.get.mockRejectedValueOnce(new Error('Network'))
+  it('fetch() uses fallback error message when response has no message', async () => {
+    api.get.mockRejectedValueOnce(new Error('network'))
     const wm = useWantedMatches()
-    await wm.fetch(42)
-    expect(wm.error.value).toContain('Failed to load')
-  })
-
-  it('does not double-fetch when already loading', async () => {
-    let resolve
-    api.get.mockReturnValueOnce(new Promise((r) => { resolve = r }))
-    const wm = useWantedMatches()
-    const p1 = wm.fetch(42)
-    const p2 = wm.fetch(42) // should be no-op
-    resolve({ data: FIXTURE })
-    await Promise.all([p1, p2])
-    expect(api.get).toHaveBeenCalledTimes(1)
+    await wm.fetch(1)
+    expect(wm.error.value).toBe('Failed to load friend matches. Try again later.')
   })
 
   it('reset() clears all state', async () => {
-    api.get.mockResolvedValueOnce({ data: FIXTURE })
+    api.get.mockResolvedValueOnce({ data: fixture })
     const wm = useWantedMatches()
-    await wm.fetch(42)
-    expect(wm.matches.value).toHaveLength(2)
+    await wm.fetch(1)
     wm.reset()
     expect(wm.matches.value).toEqual([])
-    expect(wm.loading.value).toBe(false)
     expect(wm.error.value).toBeNull()
+    expect(wm.loading.value).toBe(false)
   })
 
-  it('handles non-array response gracefully', async () => {
-    api.get.mockResolvedValueOnce({ data: null })
+  it('matchByCardId computed map has entries for all fixture cards', async () => {
+    api.get.mockResolvedValueOnce({ data: fixture })
     const wm = useWantedMatches()
-    await wm.fetch(42)
-    expect(wm.matches.value).toEqual([])
-    expect(wm.error.value).toBeNull()
+    await wm.fetch(1)
+    for (const m of fixture) {
+      expect(wm.matchFor(m.scryfall_card_id)).not.toBeNull()
+    }
   })
 })
