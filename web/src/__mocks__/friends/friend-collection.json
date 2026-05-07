@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "id": 201,
+      "scryfall_id": "d24d5d03-5b48-4a9a-9b43-2e6a85e0e41b",
+      "quantity": 2,
+      "condition": "NM",
+      "foil": false,
+      "notes": null,
+      "location_id": 11,
+      "location_name": "Alice's Binder",
+      "version": 1,
+      "card": {
+        "id": "d24d5d03-5b48-4a9a-9b43-2e6a85e0e41b",
+        "name": "Sol Ring",
+        "type_line": "Artifact",
+        "mana_cost": "{1}",
+        "colors": [],
+        "color_identity": [],
+        "rarity": "uncommon",
+        "set": "cmr",
+        "set_name": "Commander Legends",
+        "image_uri": "https://cards.scryfall.io/normal/front/d/2/d24d5d03-5b48-4a9a-9b43-2e6a85e0e41b.jpg"
+      }
+    },
+    {
+      "id": 202,
+      "scryfall_id": "a2a77db4-3ee3-4e44-8b49-ed9f8588de4e",
+      "quantity": 1,
+      "condition": "LP",
+      "foil": true,
+      "notes": null,
+      "location_id": 11,
+      "location_name": "Alice's Binder",
+      "version": 1,
+      "card": {
+        "id": "a2a77db4-3ee3-4e44-8b49-ed9f8588de4e",
+        "name": "Command Tower",
+        "type_line": "Land",
+        "mana_cost": null,
+        "colors": [],
+        "color_identity": [],
+        "rarity": "common",
+        "set": "cmr",
+        "set_name": "Commander Legends",
+        "image_uri": "https://cards.scryfall.io/normal/front/a/2/a2a77db4-3ee3-4e44-8b49-ed9f8588de4e.jpg"
+      }
+    }
+  ],
+  "warnings": []
+}
