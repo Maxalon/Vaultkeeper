@@ -3,12 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\CollectionEntry;
-use App\Models\Deck;
 use App\Models\DeckEntry;
-use App\Models\DeckIgnoredIllegality;
 use App\Models\Location;
 use App\Models\LocationGroup;
-use App\Services\DeckLegalityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -17,16 +14,15 @@ use Illuminate\Validation\ValidationException;
 
 class LocationGroupController extends Controller
 {
-    public function __construct(private DeckLegalityService $legality) {}
 
     /**
      * GET /api/location-groups
      *
      * Returns the sidebar as a recursive tree under `items`. Each entry is
      * one of:
-     *   - kind=group:    has `children` (locations + decks + nested groups)
+     *   - kind=group: has `children` (locations + decks + nested groups)
      *   - kind=location: a regular drawer/binder
-     *   - kind=deck:     a deck shadow (Location with role='deck'), carries
+     *   - kind=deck: a deck shadow (Location with role='deck'), carries
      *                    deck-specific metadata (format, commander, ...)
      *
      * Children of a group are ordered by their shared `sort_order`.
@@ -57,7 +53,7 @@ class LocationGroupController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Pre-compute deck entry counts and active illegalities for shadow rows.
+        // Pre-compute deck entry counts for shadow rows.
         $deckIds = $locations
             ->where('role', Location::ROLE_DECK)
             ->pluck('deck_id')
@@ -73,72 +69,46 @@ class LocationGroupController extends Controller
                 ->groupBy('deck_id')
                 ->pluck('total', 'deck_id');
 
-        $ignoredByDeck = $deckIds === []
-            ? collect()
-            : DeckIgnoredIllegality::query()
-                ->whereIn('deck_id', $deckIds)
-                ->get()
-                ->groupBy('deck_id');
-
-        $presentLocation = function (Location $l) use ($cardCounts, $entryCounts, $ignoredByDeck): array {
+        $presentLocation = function (Location $l) use ($cardCounts, $entryCounts): array {
             if ($l->role === Location::ROLE_DECK && $l->deck) {
                 $deck = $l->deck;
-                $illegalities = $this->legality->check($deck);
-                $ignored = $ignoredByDeck->get($deck->id, collect());
-                $active = 0;
-                foreach ($illegalities as $ill) {
-                    $match = false;
-                    foreach ($ignored as $row) {
-                        if ($row->illegality_type === $ill['type']
-                            && $row->scryfall_id_1 === $ill['scryfall_id_1']
-                            && $row->scryfall_id_2 === $ill['scryfall_id_2']
-                            && $row->oracle_id     === $ill['oracle_id']) {
-                            $match = true;
-                            break;
-                        }
-                    }
-                    if (! $match) {
-                        $active++;
-                    }
-                }
 
                 return [
-                    'kind'             => 'deck',
-                    'id'               => $l->id,
-                    'group_id'         => $l->group_id,
-                    'sort_order'       => $l->sort_order,
-                    'name'             => $deck->name,
-                    'deck_id'          => $deck->id,
-                    'format'           => $deck->format,
-                    'color_identity'   => $deck->color_identity,
-                    'entry_count'      => (int) ($entryCounts[$deck->id] ?? 0),
-                    'illegality_count' => $active,
-                    'commander1'       => $deck->commander1 ? [
-                        'name'        => $deck->commander1->name,
+                    'kind' => 'deck',
+                    'id' => $l->id,
+                    'group_id' => $l->group_id,
+                    'sort_order' => $l->sort_order,
+                    'name' => $deck->name,
+                    'deck_id' => $deck->id,
+                    'format' => $deck->format,
+                    'color_identity' => $deck->color_identity,
+                    'entry_count' => (int)($entryCounts[$deck->id] ?? 0),
+                    'commander1' => $deck->commander1 ? [
+                        'name' => $deck->commander1->name,
                         'image_small' => $deck->commander1->image_small,
                     ] : null,
                 ];
             }
 
             return [
-                'kind'        => 'location',
-                'id'          => $l->id,
-                'group_id'    => $l->group_id,
-                'type'        => $l->type,
-                'name'        => $l->name,
-                'set_codes'   => $l->set_codes,
+                'kind' => 'location',
+                'id' => $l->id,
+                'group_id' => $l->group_id,
+                'type' => $l->type,
+                'name' => $l->name,
+                'set_codes' => $l->set_codes,
                 'description' => $l->description,
-                'sort_order'  => $l->sort_order,
-                'card_count'  => (int) ($cardCounts[$l->id] ?? 0),
+                'sort_order' => $l->sort_order,
+                'card_count' => (int)($cardCounts[$l->id] ?? 0),
             ];
         };
 
-        $locationsByGroup = $locations->groupBy(fn (Location $l) => $l->group_id ?? 0);
-        $groupsByParent   = $groups->groupBy(fn (LocationGroup $g) => $g->parent_group_id ?? 0);
+        $locationsByGroup = $locations->groupBy(fn(Location $l) => $l->group_id ?? 0);
+        $groupsByParent = $groups->groupBy(fn(LocationGroup $g) => $g->parent_group_id ?? 0);
 
         $buildGroup = function (LocationGroup $g) use (&$buildGroup, $locationsByGroup, $groupsByParent, $presentLocation): array {
             $childLocations = $locationsByGroup->get($g->id, collect())->map($presentLocation);
-            $childGroups = $groupsByParent->get($g->id, collect())->map(fn (LocationGroup $cg) => $buildGroup($cg));
+            $childGroups = $groupsByParent->get($g->id, collect())->map(fn(LocationGroup $cg) => $buildGroup($cg));
 
             $children = $childLocations
                 ->concat($childGroups)
@@ -147,16 +117,16 @@ class LocationGroupController extends Controller
                 ->all();
 
             return [
-                'kind'            => 'group',
-                'id'              => $g->id,
-                'name'            => $g->name,
+                'kind' => 'group',
+                'id' => $g->id,
+                'name' => $g->name,
                 'parent_group_id' => $g->parent_group_id,
-                'sort_order'      => $g->sort_order,
-                'children'        => $children,
+                'sort_order' => $g->sort_order,
+                'children' => $children,
             ];
         };
 
-        $topGroups    = $groupsByParent->get(0, collect())->map(fn (LocationGroup $g) => $buildGroup($g));
+        $topGroups = $groupsByParent->get(0, collect())->map(fn(LocationGroup $g) => $buildGroup($g));
         $topLocations = $locationsByGroup->get(0, collect())->map($presentLocation);
 
         $items = $topGroups
@@ -168,9 +138,9 @@ class LocationGroupController extends Controller
         $total = CollectionEntry::where('user_id', $userId)->count();
 
         return response()->json([
-            'items'       => $items,
+            'items' => $items,
             'total_count' => $total,
-            'review'      => $this->sidebarReview($userId),
+            'review' => $this->sidebarReview($userId),
         ]);
     }
 
@@ -201,7 +171,7 @@ class LocationGroupController extends Controller
         $userId = auth()->id();
 
         $data = $request->validate([
-            'name'            => 'required|string|max:100',
+            'name' => 'required|string|max:100',
             'parent_group_id' => 'nullable|integer',
         ]);
 
@@ -218,13 +188,42 @@ class LocationGroupController extends Controller
             : LocationGroup::nextChildSortOrder($userId, $parentId);
 
         $group = LocationGroup::create([
-            'user_id'         => $userId,
+            'user_id' => $userId,
             'parent_group_id' => $parentId,
-            'name'            => $data['name'],
-            'sort_order'      => $sortOrder,
+            'name' => $data['name'],
+            'sort_order' => $sortOrder,
         ]);
 
         return response()->json($this->present($group), 201);
+    }
+
+    /** @return array<string, mixed> */
+    private function present(LocationGroup $group): array
+    {
+        return [
+            'kind' => 'group',
+            'id' => $group->id,
+            'name' => $group->name,
+            'parent_group_id' => $group->parent_group_id,
+            'sort_order' => $group->sort_order,
+            'children' => [],
+        ];
+    }
+
+    public function destroy(LocationGroup $group): Response
+    {
+        abort_if($group->user_id !== auth()->id(), 403);
+
+        DB::transaction(function () use ($group) {
+            // Promote child locations and child groups to top level rather
+            // than orphaning or wiping them. The FK on parent_group_id is
+            // already nullOnDelete so the children update is for child
+            // locations only.
+            Location::where('group_id', $group->id)->update(['group_id' => null]);
+            $group->delete();
+        });
+
+        return response()->noContent();
     }
 
     public function update(Request $request, LocationGroup $group): JsonResponse
@@ -232,7 +231,7 @@ class LocationGroupController extends Controller
         abort_if($group->user_id !== auth()->id(), 403);
 
         $data = $request->validate([
-            'name'            => 'sometimes|required|string|max:100',
+            'name' => 'sometimes|required|string|max:100',
             'parent_group_id' => 'sometimes|nullable|integer',
         ]);
 
@@ -262,22 +261,6 @@ class LocationGroupController extends Controller
         return response()->json($this->present($group));
     }
 
-    public function destroy(LocationGroup $group): Response
-    {
-        abort_if($group->user_id !== auth()->id(), 403);
-
-        DB::transaction(function () use ($group) {
-            // Promote child locations and child groups to top level rather
-            // than orphaning or wiping them. The FK on parent_group_id is
-            // already nullOnDelete so the children update is for child
-            // locations only.
-            Location::where('group_id', $group->id)->update(['group_id' => null]);
-            $group->delete();
-        });
-
-        return response()->noContent();
-    }
-
     /**
      * POST /api/location-groups/move
      *
@@ -303,17 +286,17 @@ class LocationGroupController extends Controller
     public function move(Request $request): Response
     {
         $data = $request->validate([
-            'kind'      => 'required|in:location,deck,group',
-            'id'        => 'required|integer',
+            'kind' => 'required|in:location,deck,group',
+            'id' => 'required|integer',
             'parent_id' => 'nullable|integer',
-            'position'  => 'required|integer|min:0',
+            'position' => 'required|integer|min:0',
         ]);
 
-        $userId       = auth()->id();
-        $kind         = $data['kind'];
-        $id           = (int) $data['id'];
-        $destParentId = $data['parent_id'] !== null ? (int) $data['parent_id'] : null;
-        $position     = (int) $data['position'];
+        $userId = auth()->id();
+        $kind = $data['kind'];
+        $id = (int)$data['id'];
+        $destParentId = $data['parent_id'] !== null ? (int)$data['parent_id'] : null;
+        $position = (int)$data['position'];
 
         if ($destParentId !== null) {
             $owned = LocationGroup::where('id', $destParentId)
@@ -341,7 +324,7 @@ class LocationGroupController extends Controller
                 }
             }
 
-            $sourceParentId = $group->parent_group_id !== null ? (int) $group->parent_group_id : null;
+            $sourceParentId = $group->parent_group_id !== null ? (int)$group->parent_group_id : null;
         } else {
             $location = Location::where('id', $id)
                 ->where('user_id', $userId)
@@ -353,7 +336,7 @@ class LocationGroupController extends Controller
                 'This location cannot be moved in the sidebar.'
             );
 
-            $sourceParentId = $location->group_id !== null ? (int) $location->group_id : null;
+            $sourceParentId = $location->group_id !== null ? (int)$location->group_id : null;
         }
 
         DB::transaction(function () use ($kind, $id, $destParentId, $sourceParentId, $position, $userId) {
@@ -369,11 +352,11 @@ class LocationGroupController extends Controller
             // at the requested position. Position is clamped to the actual
             // sibling count so a stale frontend can't push it out of range.
             $siblings = $this->siblingsOf($userId, $destParentId);
-            $others   = array_values(array_filter(
+            $others = array_values(array_filter(
                 $siblings,
-                fn (array $r) => ! ($r['kind'] === $kind && $r['id'] === $id)
+                fn(array $r) => !($r['kind'] === $kind && $r['id'] === $id)
             ));
-            $clamped  = max(0, min($position, count($others)));
+            $clamped = max(0, min($position, count($others)));
             array_splice($others, $clamped, 0, [['kind' => $kind, 'id' => $id]]);
             $this->writeOrder($others);
 
@@ -404,18 +387,18 @@ class LocationGroupController extends Controller
             ->where('user_id', $userId)
             ->when(
                 $parentId === null,
-                fn ($q) => $q->whereNull('parent_group_id'),
-                fn ($q) => $q->where('parent_group_id', $parentId)
+                fn($q) => $q->whereNull('parent_group_id'),
+                fn($q) => $q->where('parent_group_id', $parentId)
             )
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get(['id', 'sort_order', 'name']);
         foreach ($groups as $g) {
             $rows[] = [
-                'kind'        => 'group',
-                'id'          => (int) $g->id,
-                '_sort_order' => (int) $g->sort_order,
-                '_name'       => (string) $g->name,
+                'kind' => 'group',
+                'id' => (int)$g->id,
+                '_sort_order' => (int)$g->sort_order,
+                '_name' => (string)$g->name,
             ];
         }
 
@@ -424,18 +407,18 @@ class LocationGroupController extends Controller
             ->sidebarVisible()
             ->when(
                 $parentId === null,
-                fn ($q) => $q->whereNull('group_id'),
-                fn ($q) => $q->where('group_id', $parentId)
+                fn($q) => $q->whereNull('group_id'),
+                fn($q) => $q->where('group_id', $parentId)
             )
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get(['id', 'sort_order', 'name', 'role']);
         foreach ($locations as $l) {
             $rows[] = [
-                'kind'        => $l->role === Location::ROLE_DECK ? 'deck' : 'location',
-                'id'          => (int) $l->id,
-                '_sort_order' => (int) $l->sort_order,
-                '_name'       => (string) $l->name,
+                'kind' => $l->role === Location::ROLE_DECK ? 'deck' : 'location',
+                'id' => (int)$l->id,
+                '_sort_order' => (int)$l->sort_order,
+                '_name' => (string)$l->name,
             ];
         }
 
@@ -445,7 +428,7 @@ class LocationGroupController extends Controller
         });
 
         return array_map(
-            fn (array $r) => ['kind' => $r['kind'], 'id' => $r['id']],
+            fn(array $r) => ['kind' => $r['kind'], 'id' => $r['id']],
             $rows
         );
     }
@@ -466,18 +449,5 @@ class LocationGroupController extends Controller
                 Location::where('id', $row['id'])->update(['sort_order' => $idx]);
             }
         }
-    }
-
-    /** @return array<string, mixed> */
-    private function present(LocationGroup $group): array
-    {
-        return [
-            'kind'            => 'group',
-            'id'              => $group->id,
-            'name'            => $group->name,
-            'parent_group_id' => $group->parent_group_id,
-            'sort_order'      => $group->sort_order,
-            'children'        => [],
-        ];
     }
 }
