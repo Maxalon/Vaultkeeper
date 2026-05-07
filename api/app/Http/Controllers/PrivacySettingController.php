@@ -4,12 +4,13 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Manages the authenticated user's privacy settings.
  *
- * Each user gets exactly one `user_privacy_settings` row (created with
- * defaults on first access or via a `User::created` observer in A2).
+ * Each user gets exactly one `user_privacy_settings` row (created eagerly
+ * by the UserObserver on User::created, or lazily via getOrCreatePrivacySettings).
  *
  * Route definitions (all under auth:api + throttle:120,1):
  *
@@ -36,15 +37,12 @@ class PrivacySettingController extends Controller
      *     There is no 'public' value — by design (decision 2).
      *   - `discoverable` controls whether the user appears in username search results.
      */
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        // A0 stub.
+        $settings = $request->user()->getOrCreatePrivacySettings();
+
         return response()->json([
-            'data' => [
-                'collection_visibility' => 'friends',
-                'decks_visibility'      => 'friends',
-                'discoverable'          => true,
-            ],
+            'data' => $this->format($settings),
         ]);
     }
 
@@ -69,13 +67,33 @@ class PrivacySettingController extends Controller
      */
     public function update(Request $request): JsonResponse
     {
-        // A0 stub.
-        return response()->json([
-            'data' => [
-                'collection_visibility' => 'friends',
-                'decks_visibility'      => 'friends',
-                'discoverable'          => true,
-            ],
+        $data = $request->validate([
+            'collection_visibility' => ['sometimes', Rule::in(['friends', 'private'])],
+            'decks_visibility'      => ['sometimes', Rule::in(['friends', 'private'])],
+            'discoverable'          => ['sometimes', 'boolean'],
         ]);
+
+        $settings = $request->user()->getOrCreatePrivacySettings();
+        $settings->update($data);
+
+        return response()->json([
+            'data' => $this->format($settings->fresh()),
+        ]);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function format(\App\Models\UserPrivacySetting $settings): array
+    {
+        return [
+            'collection_visibility' => $settings->collection_visibility,
+            'decks_visibility'      => $settings->decks_visibility,
+            'discoverable'          => (bool) $settings->discoverable,
+        ];
     }
 }
