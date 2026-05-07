@@ -16,9 +16,11 @@ use Throwable;
 /**
  * Handles the password-protected entry into the Horizon dashboard.
  *
- * The dashboard is served at the root of horizon.vault.*
- * (HORIZON_PATH=/), and these auth pages live alongside it at /setup,
- * /login, /logout — see routes/web.php for the route definitions.
+ * The dashboard lives at horizon.vault.*\/dashboard (HORIZON_DOMAIN +
+ * HORIZON_PATH=/dashboard). HORIZON_PATH must not be `/` — the package's
+ * SPA catch-all would shadow every other URL on the subdomain, including
+ * the auth routes here. See routes/web.php for the routing definitions
+ * and the operator-side comment.
  *
  * First-access setup
  * ──────────────────
@@ -212,13 +214,13 @@ class HorizonAuthController extends Controller
      * Only same-origin paths are allowed: must start with a single `/`
      * and must not start with `//` (which browsers treat as a
      * protocol-relative URL pointing at another host). Anything else
-     * falls back to /, the dashboard root.
+     * falls back to /dashboard, the dashboard root.
      */
     private function safeNext(?string $next): string
     {
         if (is_string($next) && str_starts_with($next, '/') && ! str_starts_with($next, '//')) {
             return $next;
         }
-        return '/';
+        return '/dashboard';
     }
 }
