@@ -4,12 +4,17 @@ import { useSettingsStore } from '../../stores/settings'
 import { useDeckStore } from '../../stores/deck'
 import BaseCardStrip from '../strip/BaseCardStrip.vue'
 import EntryActionsMenu from './EntryActionsMenu.vue'
+import WantedMatchAvatarStack from './matcher/WantedMatchAvatarStack.vue'
 
 /**
  * Deck-view strip. Thin wrapper over BaseCardStrip that adds the
  * drag-to-remove payload, the top-right quantity pill (Mode A only —
  * Mode B uses the base's gold corner badge), the Game Changer flag,
  * and the illegal-glow border.
+ *
+ * Also renders the WantedMatchAvatarStack for wanted rows: cheap purely
+ * presentational overlay — no reactive computation per row beyond
+ * reading `matchFriends` from the parent's pre-computed map.
  *
  * Same A/B visual split as the collection strip. Reads
  * settings.displayMode so the Location sidebar toggle applies here too.
@@ -18,8 +23,12 @@ const props = defineProps({
   entry: { type: Object, required: true },
   illegal: { type: Boolean, default: false },
   showGameChanger: { type: Boolean, default: false },
+  /** Friends array from the wanted-matches response for this card, or null. */
+  matchFriends: { type: Array, default: null },
+  /** True while the deck-level wanted-matches fetch is in flight. */
+  matchLoading: { type: Boolean, default: false },
 })
-const emit = defineEmits(['click', 'peek-show', 'peek-hide'])
+const emit = defineEmits(['click', 'peek-show', 'peek-hide', 'match-open'])
 
 const settings = useSettingsStore()
 const deckStore = useDeckStore()
@@ -34,6 +43,15 @@ const isModeA = computed(() => settings.displayMode === 'A')
 const isSplit = computed(() => !!props.entry?._split)
 const ownedQty = computed(() => props.entry?.owned_quantity ?? null)
 const wantedQty = computed(() => props.entry?.wanted_quantity ?? null)
+
+// Show the avatar stack on rows that have a wanted component (either a
+// pure wanted entry or the wanted side of a split row). The stack is
+// hidden when matchFriends is null (card isn't in the wanted-matches
+// response — e.g. fully assembled rows).
+const isWanted = computed(() =>
+  props.entry?.physical_copy_id == null || !!props.entry?._split,
+)
+const showAvatarStack = computed(() => isWanted.value)
 
 function onDragStart(e) {
   e.dataTransfer.effectAllowed = 'move'
@@ -92,6 +110,17 @@ function onPeekShow({ rect }) {
         class="split-badge"
         :title="`Owned ${ownedQty}, wanted ${wantedQty}`"
       >{{ ownedQty }}<span class="sep">/</span>{{ wantedQty }}</span>
+      <!-- Friend avatar stack — only on wanted rows. Sits bottom-left
+           so it doesn't collide with the qty badge (top-right). Cheap:
+           no async or watchers here — matchFriends is pre-computed by
+           the parent DeckGrid using the deck-level matchFor() map. -->
+      <WantedMatchAvatarStack
+        v-if="showAvatarStack"
+        class="strip-avatar-stack"
+        :friends="matchFriends ?? []"
+        :loading="matchLoading && matchFriends === null"
+        @open="emit('match-open', entry)"
+      />
     </template>
     <template #overlay-extras>
       <span
@@ -168,4 +197,16 @@ function onPeekShow({ rect }) {
 
 /* .illegal-glow itself is a global rule in style.css (shared pulse
    with DeckCardTile / CommanderZone); nothing strip-specific to add. */
+
+/* Avatar stack — anchored bottom-left inside the strip clip so it
+   doesn't collide with the qty badge (top-right). pointer-events: auto
+   overrides the parent slot's none so clicks reach the button inside.
+   z-index 4 keeps the stack above the overlay bar (z:3). */
+:deep(.strip-avatar-stack) {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  z-index: 4;
+  pointer-events: auto;
+}
 </style>

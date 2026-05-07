@@ -32,6 +32,7 @@
 import { computed, ref } from 'vue'
 import ConditionBadge from '../../ConditionBadge.vue'
 import HelpHint from '../../HelpHint.vue'
+import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
 
 const props = defineProps({
   match: {
@@ -49,25 +50,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close'])
-
-// ── Avatar colour helpers (duplicated from AvatarStack — kept inline so
-//    the panel doesn't have a hard dep on the stack component) ─────────
-const AVATAR_PALETTE = [
-  '#5b6ee1', '#37946e', '#8b6914', '#9e3030',
-  '#4e7fa0', '#7b5ea7', '#3d7a5f', '#b85c38',
-]
-function avatarColor(username) {
-  if (!username) return AVATAR_PALETTE[0]
-  let h = 5381
-  for (let i = 0; i < username.length; i++) {
-    h = ((h << 5) + h) ^ username.charCodeAt(i)
-    h = h >>> 0
-  }
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length]
-}
-function initials(username) {
-  return username ? username.slice(0, 2).toUpperCase() : '?'
-}
 
 // ── Copy-to-clipboard state ───────────────────────────────────────────
 const copiedUserId = ref(null)
@@ -157,7 +139,7 @@ const totalCopies = computed(() =>
             class="wmp-avatar"
             :style="{ background: avatarColor(friend.username) }"
             aria-hidden="true"
-          >{{ initials(friend.username) }}</span>
+          >{{ avatarInitials(friend.username) }}</span>
 
           <span class="wmp-username">{{ friend.username }}</span>
 
