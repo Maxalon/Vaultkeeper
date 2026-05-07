@@ -39,7 +39,7 @@ export const useFriendsStore = defineStore('friends', {
       this.loading = true
       try {
         const { data } = await api.get('/friends')
-        this.friends = data
+        this.friends = data.data
       } catch (e) {
         this.error = e.response?.data?.message || 'Failed to load friends'
       } finally {
@@ -54,8 +54,8 @@ export const useFriendsStore = defineStore('friends', {
           api.get('/friends/requests', { params: { direction: 'incoming' } }),
           api.get('/friends/requests', { params: { direction: 'outgoing' } }),
         ])
-        this.incomingRequests = incoming.data
-        this.outgoingRequests = outgoing.data
+        this.incomingRequests = incoming.data.data
+        this.outgoingRequests = outgoing.data.data
       } catch (e) {
         this.error = e.response?.data?.message || 'Failed to load requests'
       } finally {
@@ -77,7 +77,7 @@ export const useFriendsStore = defineStore('friends', {
       this.searchLoading = true
       try {
         const { data } = await api.get('/users/search', { params: { q: q.trim() } })
-        this.searchResults = data
+        this.searchResults = data.data
       } catch (e) {
         this.searchResults = []
       } finally {
