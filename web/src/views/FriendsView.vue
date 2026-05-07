@@ -28,7 +28,7 @@ async function acceptRequest(request) {
   respondingId.value = request.id
   try {
     await friends.respondToRequest(request.id, 'accept')
-    toast.success(`You and ${request.requester.username} are now friends.`)
+    toast.success(`You and ${request.user.username} are now friends.`)
   } catch (e) {
     toast.error(e.response?.data?.message || 'Failed to accept request')
   } finally {
@@ -133,7 +133,7 @@ function viewFriendCollection(friend) {
             </div>
             <div class="friend-info">
               <span class="friend-username">{{ friend.username }}</span>
-              <span class="friend-since">friends since {{ new Date(friend.since).toLocaleDateString() }}</span>
+              <span class="friend-since">friends since {{ new Date(friend.friends_since).toLocaleDateString() }}</span>
             </div>
             <div class="friend-actions">
               <button
@@ -169,10 +169,10 @@ function viewFriendCollection(friend) {
               class="request-row"
             >
               <div class="friend-avatar" aria-hidden="true">
-                {{ req.requester.username.charAt(0).toUpperCase() }}
+                {{ req.user.username.charAt(0).toUpperCase() }}
               </div>
               <div class="friend-info">
-                <span class="friend-username">{{ req.requester.username }}</span>
+                <span class="friend-username">{{ req.user.username }}</span>
                 <span class="friend-since">
                   {{ new Date(req.created_at).toLocaleDateString() }}
                 </span>
@@ -209,10 +209,10 @@ function viewFriendCollection(friend) {
               class="request-row"
             >
               <div class="friend-avatar" aria-hidden="true">
-                {{ req.addressee.username.charAt(0).toUpperCase() }}
+                {{ req.user.username.charAt(0).toUpperCase() }}
               </div>
               <div class="friend-info">
-                <span class="friend-username">{{ req.addressee.username }}</span>
+                <span class="friend-username">{{ req.user.username }}</span>
                 <span class="friend-since">Pending · sent {{ new Date(req.created_at).toLocaleDateString() }}</span>
               </div>
               <div class="friend-actions">
