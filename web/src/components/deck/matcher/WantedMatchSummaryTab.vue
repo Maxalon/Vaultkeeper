@@ -25,10 +25,11 @@ import { computed, inject, ref } from 'vue'
 import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
 import HelpHint from '../../HelpHint.vue'
 
-// DeckTabContent provides the shared wm (useWantedMatches) instance and
-// the openMatchPanel handler so this tab stays decoupled from the parent.
+// DeckTabContent provides the shared wm (useWantedMatches) instance,
+// the openMatchPanel handler, and the noVisibleFriends computed ref.
 const wm = inject('wm')
 const openMatchPanel = inject('openMatchPanel')
+const noVisibleFriends = inject('noVisibleFriends', ref(false))
 
 // ── Sort ─────────────────────────────────────────────────────────────
 const SORT_OPTIONS = [
@@ -103,6 +104,26 @@ function onRowClick(match) {
       <p class="wmst-state-text wmst-state-text--sub">{{ wm.error.value }}</p>
     </div>
 
+    <!-- ── C4: No friends at all ────────────────────────────────────── -->
+    <div v-else-if="wm.friendCount.value === 0" class="wmst-state wmst-state--no-friends">
+      <span class="wmst-state-icon" aria-hidden="true">🤝</span>
+      <p class="wmst-state-text wmst-state-text--lead">No friends yet</p>
+      <p class="wmst-state-text wmst-state-text--sub">
+        Add friends to unlock the matcher. Once connected, you'll see who has
+        the cards you need and can coordinate trades directly.
+      </p>
+    </div>
+
+    <!-- ── C4: Friends have collections private ──────────────────────── -->
+    <div v-else-if="noVisibleFriends" class="wmst-state wmst-state--no-visible">
+      <span class="wmst-state-icon" aria-hidden="true">🔒</span>
+      <p class="wmst-state-text wmst-state-text--lead">Collections are private</p>
+      <p class="wmst-state-text wmst-state-text--sub">
+        You have friends, but none have set their collection to visible. Ask
+        them to update their privacy settings — matches will appear automatically.
+      </p>
+    </div>
+
     <!-- ── No wanted cards at all ───────────────────────────────────── -->
     <div v-else-if="wm.matches.value.length === 0" class="wmst-state">
       <span class="wmst-state-icon" aria-hidden="true">🃏</span>
@@ -115,6 +136,13 @@ function onRowClick(match) {
 
     <!-- ── Has data ─────────────────────────────────────────────────── -->
     <template v-else>
+      <!-- C4: Visibility-revoked notice (non-intrusive banner above list) -->
+      <div v-if="wm.visibilityRevoked.value" class="wmst-revoked-notice" role="status">
+        <span aria-hidden="true">🔕</span>
+        A friend updated their collection visibility — this list has been refreshed.
+        Some copies may no longer appear.
+      </div>
+
       <!-- Summary banner -->
       <header class="wmst-banner">
         <div class="wmst-banner-body">
@@ -235,6 +263,21 @@ function onRowClick(match) {
   font-family: var(--font-sans), sans-serif;
 }
 
+/* ── Revoked-visibility notice ──────────────────────────────────────── */
+.wmst-revoked-notice {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--amber, #c9a552) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber, #c9a552) 30%, transparent);
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--ink-70);
+  line-height: 1.4;
+}
+
 /* ── State views (loading / error / empty) ──────────────────────────── */
 .wmst-state {
   flex: 1;
@@ -246,7 +289,9 @@ function onRowClick(match) {
   padding: 3rem 2rem;
   text-align: center;
 }
-.wmst-state--error .wmst-state-icon { color: var(--cond-hp, #d97757); font-size: 22px; }
+.wmst-state--error .wmst-state-icon { color: var(--cond-hp, #d97757); }
+.wmst-state--no-friends .wmst-state-text--lead { color: var(--amber, #c9a552); }
+.wmst-state--no-visible .wmst-state-icon { color: var(--ink-30); }
 .wmst-state-icon { font-size: 32px; line-height: 1; }
 .wmst-state-text { font-size: 13px; color: var(--ink-70, #a8a396); line-height: 1.5; margin: 0; }
 .wmst-state-text--lead { font-size: 15px; font-weight: 600; color: var(--ink-100); }
