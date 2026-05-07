@@ -833,6 +833,13 @@ class DeckImportService
         $safety = 50; // hard cap on pages so a misbehaving API can't loop forever
 
         while ($url !== null && $safety-- > 0) {
+            // Archidekt's `next` cursor comes back with an `http://` scheme
+            // even though the canonical endpoint is https. Upgrade before
+            // the SSRF guard so pagination doesn't bail after page 1.
+            if (str_starts_with($url, 'http://archidekt.com/')) {
+                $url = 'https://'.substr($url, 7);
+            }
+
             // SSRF guard: re-anchor each iteration to archidekt.com. The
             // first URL is hard-coded above; subsequent URLs come from
             // `$json['next']`, which is attacker-influenceable if the
