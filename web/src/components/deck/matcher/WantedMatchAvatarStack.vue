@@ -48,7 +48,7 @@ function totalCopies(friend) {
 function stackTitle(friends) {
   if (!friends.length) return 'No friends have this card available'
   const names = friends.map((f) => f.username).join(', ')
-  return `Available from: ${names}. Click to see details.`
+  return `Available from: ${names}. Click to see details. Note: no reservation system — copies are not held for you.`
 }
 </script>
 

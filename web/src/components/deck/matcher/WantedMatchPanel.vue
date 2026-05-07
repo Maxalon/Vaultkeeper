@@ -35,6 +35,7 @@
 import { computed, ref } from 'vue'
 import ConditionBadge from '../../ConditionBadge.vue'
 import HelpHint from '../../HelpHint.vue'
+import NoReservationNotice from './NoReservationNotice.vue'
 import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
 
 const props = defineProps({
@@ -213,59 +214,54 @@ const isNoCardMatchState = computed(() =>
     </div>
 
     <!-- ── Friend list ───────────────────────────────────────────────── -->
-    <ul v-else class="wmp-friend-list">
-      <li
-        v-for="friend in friends"
-        :key="friend.user_id"
-        class="wmp-friend"
-      >
-        <!-- Friend row header: avatar + username + copy username button -->
-        <div class="wmp-friend-header">
-          <span
-            class="wmp-avatar"
-            :style="{ background: avatarColor(friend.username) }"
-            aria-hidden="true"
-          >{{ avatarInitials(friend.username) }}</span>
+    <template v-else>
+      <!-- C5: No-reservation notice — shown above the list so users see it
+           before they start planning to acquire a card. Compact mode fits
+           in the narrow panel without dominating. -->
+      <NoReservationNotice class="wmp-reservation-notice" compact />
 
-          <span class="wmp-username">{{ friend.username }}</span>
+      <ul class="wmp-friend-list">
+        <li
+          v-for="friend in friends"
+          :key="friend.user_id"
+          class="wmp-friend"
+        >
+          <!-- Friend row header: avatar + username + copy username button -->
+          <div class="wmp-friend-header">
+            <span
+              class="wmp-avatar"
+              :style="{ background: avatarColor(friend.username) }"
+              aria-hidden="true"
+            >{{ avatarInitials(friend.username) }}</span>
 
-          <button
-            type="button"
-            class="wmp-copy-btn"
-            :class="{ 'wmp-copy-btn--done': copiedUserId === friend.user_id }"
-            :title="copiedUserId === friend.user_id ? 'Copied!' : 'Copy username to clipboard'"
-            @click="copyUsername(friend)"
-          >
-            {{ copiedUserId === friend.user_id ? '✓' : 'Copy' }}
-          </button>
-        </div>
+            <span class="wmp-username">{{ friend.username }}</span>
 
-        <!-- Available copies for this friend -->
-        <ul class="wmp-copies">
-          <li
-            v-for="copy in friend.available_copies"
-            :key="copy.collection_entry_id"
-            class="wmp-copy"
-          >
-            <ConditionBadge :value="copy.condition" />
-            <span v-if="copy.foil" class="wmp-foil-badge">Foil</span>
-            <span class="wmp-location">{{ copy.location_name }}</span>
-          </li>
-        </ul>
-      </li>
-    </ul>
+            <button
+              type="button"
+              class="wmp-copy-btn"
+              :class="{ 'wmp-copy-btn--done': copiedUserId === friend.user_id }"
+              :title="copiedUserId === friend.user_id ? 'Copied!' : 'Copy username to clipboard'"
+              @click="copyUsername(friend)"
+            >
+              {{ copiedUserId === friend.user_id ? '✓' : 'Copy' }}
+            </button>
+          </div>
 
-    <!-- ── No-reservation footnote ───────────────────────────────────── -->
-    <footer v-if="!loading && !error && hasFriends" class="wmp-footer">
-      <span class="wmp-no-reservation">
-        No reservation system in v1 — copies shown may be spoken for.
-        <HelpHint
-          text="Vaultkeeper shows all available copies to everyone who wants a card. There's no way to 'hold' or reserve a copy. Reach out to your friend directly to confirm availability before assuming it's yours."
-          position="top"
-          :width="240"
-        />
-      </span>
-    </footer>
+          <!-- Available copies for this friend -->
+          <ul class="wmp-copies">
+            <li
+              v-for="copy in friend.available_copies"
+              :key="copy.collection_entry_id"
+              class="wmp-copy"
+            >
+              <ConditionBadge :value="copy.condition" />
+              <span v-if="copy.foil" class="wmp-foil-badge">Foil</span>
+              <span class="wmp-location">{{ copy.location_name }}</span>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </template>
   </aside>
 </template>
 
@@ -478,20 +474,10 @@ const isNoCardMatchState = computed(() =>
   text-overflow: ellipsis;
 }
 
-/* ── Footer ────────────────────────────────────────────────────────── */
-.wmp-footer {
+/* ── Reservation notice (C5) — sits above the friend list ──────────── */
+.wmp-reservation-notice {
   flex-shrink: 0;
-  padding: 8px 14px;
-  border-top: 1px solid var(--hairline, #33312c);
-  background: var(--bg-0);
-}
-.wmp-no-reservation {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--ink-50);
-  font-family: var(--font-sans), sans-serif;
-  line-height: 1.4;
+  margin: 8px 14px 0;
+  border-radius: 5px;
 }
 </style>
