@@ -18,13 +18,12 @@ use Throwable;
  *
  * The dashboard is served at the root of horizon.vault.*
  * (HORIZON_PATH=/), and these auth pages live alongside it at /setup,
- * /login, /logout. They are declared in AppServiceProvider::register()
- * — NOT in routes/web.php — because Laravel 11's withRouting() loads
- * the web routes file from `$app->booted()`, after every provider's
- * boot() has run, which means anything declared there loses the route
- * match against Laravel\Horizon's SPA catch-all (registered during
- * its provider's boot()). Doing it from a register() body puts these
- * routes into the collection ahead of every boot()-time registration.
+ * /login, /logout. The route SLOTS are claimed by
+ * AppServiceProvider::register() so they sit ahead of
+ * Laravel\Horizon's SPA catch-all in iteration order; routes/web.php
+ * re-registers the same URIs at booted() phase for visibility, which
+ * is harmless because RouteCollection keys by URI and PHP preserves
+ * insertion position on re-assignment.
  *
  * First-access setup
  * ──────────────────
