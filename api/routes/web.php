@@ -5,20 +5,22 @@ use App\Http\Controllers\OpsDbProxyController;
 use Illuminate\Support\Facades\Route;
 
 // ─── Horizon dashboard auth ──────────────────────────────────────────────
-// Horizon is mounted on its own subdomain (HORIZON_DOMAIN). The path
-// MUST NOT be `/` — the Laravel\Horizon package's SPA catch-all
-// (`Route::get('/{view?}')->where('view', '(.*)')`) is registered during
-// the package provider's boot() and shadows every other URL on the
-// configured (domain, prefix). PR #180 tried to outrun this by
-// declaring these auth routes from AppServiceProvider::register(); in
-// Laravel 11 that turns out to lose the match anyway (the package
-// provider's catch-all wins on `/login` for reasons that don't match
-// the documented register/boot ordering — verified empirically with
-// `app('router')->getRoutes()->match()`).
+// Horizon is mounted on its own subdomain (HORIZON_DOMAIN) at a
+// non-root prefix (HORIZON_PATH=`dashboard`). The constraints on
+// HORIZON_PATH are documented at length in .env.prod.example; the
+// summary is:
 //
-// So: keep HORIZON_PATH at a non-root prefix (we use `/dashboard`).
-// That confines Horizon's catch-all to `/dashboard/...` and leaves
-// /, /login, /setup, /logout free for these routes to claim.
+//   1. Empty / `/` lets the package's SPA catch-all
+//      (Route::get('/{view?}')) shadow every URL on the subdomain,
+//      including /login and /setup — redirect loop.
+//   2. A LEADING-SLASH value (e.g. `/dashboard`) breaks Horizon's
+//      frontend, which builds API URLs as `'/' + config.path + ...`.
+//      With path=`/dashboard` that interpolates to `//dashboard/...`
+//      — a protocol-relative URL pointing at host `dashboard`.
+//
+// So HORIZON_PATH must be a non-empty, non-leading-slash prefix; the
+// auth routes below claim /, /login, /setup, /logout under that prefix
+// boundary on the same subdomain.
 //
 // Throttle: 5 attempts/min/IP on POSTs to slow down brute-forcing the
 // login form and dampen scrapes of the setup endpoint between deploy and
