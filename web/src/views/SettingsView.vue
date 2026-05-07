@@ -24,7 +24,7 @@ const privacyLoading = ref(false)
 onMounted(async () => {
   try {
     const { data } = await api.get('/privacy-settings')
-    privacy.value = data
+    privacy.value = data.data
   } catch {
     // Non-fatal: defaults are sensible
   }
@@ -34,7 +34,7 @@ async function savePrivacy(patch) {
   privacyLoading.value = true
   try {
     const { data } = await api.patch('/privacy-settings', patch)
-    privacy.value = data
+    privacy.value = data.data
     toast.success('Privacy settings saved.')
   } catch (e) {
     toast.error(e.response?.data?.message || 'Failed to save privacy settings')
