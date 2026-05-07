@@ -1,0 +1,6 @@
+# Symlinked from web/node_modules at setup time; never commit the link
+node_modules
+
+# Per-run Playwright output and harness screenshots are regenerated on
+# every test run; nothing to track in version control.
+screenshots/

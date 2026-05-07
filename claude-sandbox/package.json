@@ -1,0 +1,7 @@
+{
+  "name": "vaultkeeper-claude-sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "//": "Standalone harness for testing the production web app's components against mock state. Dependencies are NOT listed here — node_modules is symlinked to ../web/node_modules so we use the same versions the app does. The 'type: module' is the only thing this manifest exists for: Playwright loads its config via require() and needs to know our .js files are ESM."
+}

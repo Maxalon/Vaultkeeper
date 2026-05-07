@@ -52,21 +52,11 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
 
   const [parent, values] = useDragAndDrop(seed, {
     group: 'sidebar',
-    // Use synthetic (pointer-event-driven) drag instead of native HTML5
-    // drag. Native drag has two cliff edges that bit us repeatedly here:
-    //   1) `<button draggable="true">` is unreliable in Chromium — the
-    //      browser sometimes consumes the mousedown for click activation
-    //      and never fires dragstart, especially in nested DOM contexts.
-    //   2) The library's per-node dragstart handler calls
-    //      preventDefault() when its handle validator fails, and
-    //      dragstart's preventDefault cancels the *whole* drag. With
-    //      nested containers the inner drag would get cancelled by the
-    //      outer container's failed validation on the bubble, leaving a
-    //      sortable that silently does nothing.
-    // Synth drag uses pointerdown/pointermove/pointerup, the library's
-    // pointerdown handler stops propagation cleanly, and there's no
-    // dragstart preventDefault to cascade.
-    nativeDrag: false,
+    // Native HTML5 drag is the only path that works on desktop with a
+    // mouse. The library's `nativeDrag: false` only swaps in a synth
+    // (pointer-event) fallback when the pointerType is touch — its
+    // handleRootPointermove early-returns for mouse on non-mobile
+    // platforms. So `nativeDrag: false` on desktop = drag is dead.
     // The library's validateDragHandle does an unbounded
     // querySelectorAll within a node, so a flat `.drag-handle` selector
     // would let a group node "claim" a click on any nested row's handle
@@ -78,10 +68,20 @@ export function useSidebarSortable(sourceGetter, parentIdGetter) {
     // structure, so a group only matches its own header handle and a
     // row only matches its own handle.
     dragHandle: ':scope > .group-header > .drag-handle, :scope > .drag-handle',
-    // Slide neighbors out of the way as the dragged element moves over
-    // them, so the user gets the same visual cue they had before. The
-    // animations plugin must be passed explicitly — FormKit ships it
-    // off by default to keep the core small.
+    // The library's default handleNodeFocus runs in capture phase and
+    // sets `state.pointerDown.node.el.draggable = false` whenever a
+    // focus event passes through a node listener with target ≠
+    // currentTarget. With nested containers that fires when an inner
+    // row's auto-focus bubbles through the outer group's node listener
+    // — disabling the inner row's `draggable` attribute *before*
+    // Chromium decides which element is the drag source. Chromium then
+    // walks up to the still-draggable outer group and a row-drag
+    // becomes a group-drag. Override the handler with a no-op; we
+    // don't rely on the active-state focus tracking it provides.
+    handleNodeFocus: () => {},
+    // Slide neighbours out of the way as the dragged element passes
+    // over them. FormKit ships the animations plugin separately to
+    // keep the core small.
     plugins: [animations()],
 
     // Same-container reorder. `position` is the index in the destination
