@@ -91,6 +91,17 @@ jobs:
           echo "mysql did not become ready in time" >&2
           exit 1
 
+      - name: Migrate (initial)
+        run: php artisan migrate --no-interaction --ansi
+
+      - name: Rollback verification (migrate:rollback + re-migrate)
+        # Verifies that all new migrations (A1: friendships, user_privacy_settings,
+        # notifications, ce_matcher index) roll back cleanly and can be re-applied.
+        # The rollback must complete without FK violations, orphaned indexes, or errors.
+        run: |
+          php artisan migrate:rollback --step=4 --no-interaction --ansi
+          php artisan migrate --no-interaction --ansi
+
       - name: Run Unit tests
         run: php artisan test --testsuite=Unit
 
