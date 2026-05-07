@@ -16,11 +16,20 @@ use Throwable;
 /**
  * Handles the password-protected entry into the Horizon dashboard.
  *
- * The dashboard lives at horizon.vault.*\/dashboard (HORIZON_DOMAIN +
- * HORIZON_PATH=/dashboard). HORIZON_PATH must not be `/` — the package's
- * SPA catch-all would shadow every other URL on the subdomain, including
- * the auth routes here. See routes/web.php for the routing definitions
- * and the operator-side comment.
+ * The dashboard lives at horizon.vault.*\/dashboard. HORIZON_DOMAIN
+ * scopes Horizon's routes to that subdomain; HORIZON_PATH=`dashboard`
+ * (no leading slash) chooses the prefix. The path config has two hard
+ * constraints documented in detail in .env.prod.example:
+ *
+ *   1. Empty / `/` would let the package's SPA catch-all
+ *      (Route::get('/{view?}')) shadow these auth routes.
+ *   2. A LEADING-SLASH value (e.g. `/dashboard`) would break the
+ *      Horizon frontend's API URL construction (`'/' + path + ...`
+ *      becomes `'//foo/...'`, a protocol-relative URL).
+ *
+ * The auth pages here sit at the subdomain root, ABOVE the dashboard
+ * prefix — so /login, /setup, /logout, and `/` are unambiguously
+ * Laravel routes; `/dashboard/...` is unambiguously Horizon.
  *
  * First-access setup
  * ──────────────────
@@ -214,7 +223,8 @@ class HorizonAuthController extends Controller
      * Only same-origin paths are allowed: must start with a single `/`
      * and must not start with `//` (which browsers treat as a
      * protocol-relative URL pointing at another host). Anything else
-     * falls back to /dashboard, the dashboard root.
+     * falls back to /dashboard, the dashboard root URL on the
+     * horizon subdomain.
      */
     private function safeNext(?string $next): string
     {
