@@ -6,6 +6,7 @@ import VaultMark from './VaultMark.vue'
 import FilterChip from './FilterChip.vue'
 import SyntaxSearch from './SyntaxSearch.vue'
 import TopbarTabBar from './tabs/TopbarTabBar.vue'
+import NotificationBell from './NotificationBell.vue'
 
 const props = defineProps({
   sidebarCollapsed: { type: Boolean, default: false },
@@ -183,6 +184,7 @@ function openSettings() {
         :class="{ active: collection.selecting }"
         @click="collection.toggleSelecting()"
       >Select</button>
+      <NotificationBell />
       <button
         class="vk-icon-btn"
         title="Settings"
