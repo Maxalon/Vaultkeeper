@@ -1,13 +1,47 @@
 <script setup>
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '../stores/settings'
 import { useAuthStore } from '../stores/auth'
+import { useToast } from '../composables/useToast'
+import api from '../lib/api'
 import VaultMark from '../components/VaultMark.vue'
 import HelpHint from '../components/HelpHint.vue'
 
 const router = useRouter()
 const settings = useSettingsStore()
 const auth = useAuthStore()
+const toast = useToast()
+
+// ── Privacy settings (B5) ──────────────────────────────────────────────────
+const privacy = ref({
+  collection_visibility: 'friends',
+  decks_visibility: 'friends',
+  discoverable: true,
+})
+const privacyLoading = ref(false)
+
+onMounted(async () => {
+  try {
+    const { data } = await api.get('/privacy-settings')
+    privacy.value = data
+  } catch {
+    // Non-fatal: defaults are sensible
+  }
+})
+
+async function savePrivacy(patch) {
+  privacyLoading.value = true
+  try {
+    const { data } = await api.patch('/privacy-settings', patch)
+    privacy.value = data
+    toast.success('Privacy settings saved.')
+  } catch (e) {
+    toast.error(e.response?.data?.message || 'Failed to save privacy settings')
+  } finally {
+    privacyLoading.value = false
+  }
+}
 
 async function logout() {
   await auth.logout()
@@ -218,6 +252,65 @@ const groupCounterOptions = [
                 @click="settings.setSidebarGroupCounter(opt.k)"
               >{{ opt.n }}</button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- B5: Privacy settings panel -->
+      <section class="settings-group">
+        <h3 class="group-title">Privacy</h3>
+        <div class="settings-list">
+          <div class="row">
+            <div class="row-label">
+              <span class="row-title">Collection visibility</span>
+              <HelpHint text="Who can see your card collection. 'Friends' means accepted friends only. 'Private' hides it from everyone." />
+            </div>
+            <div class="seg">
+              <button
+                :class="{ active: privacy.collection_visibility === 'friends' }"
+                :disabled="privacyLoading"
+                @click="savePrivacy({ collection_visibility: 'friends' })"
+              >Friends</button>
+              <button
+                :class="{ active: privacy.collection_visibility === 'private' }"
+                :disabled="privacyLoading"
+                @click="savePrivacy({ collection_visibility: 'private' })"
+              >Private</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="row-label">
+              <span class="row-title">Decks visibility</span>
+              <HelpHint text="Who can see your decks. Independent of collection visibility." />
+            </div>
+            <div class="seg">
+              <button
+                :class="{ active: privacy.decks_visibility === 'friends' }"
+                :disabled="privacyLoading"
+                @click="savePrivacy({ decks_visibility: 'friends' })"
+              >Friends</button>
+              <button
+                :class="{ active: privacy.decks_visibility === 'private' }"
+                :disabled="privacyLoading"
+                @click="savePrivacy({ decks_visibility: 'private' })"
+              >Private</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="row-label">
+              <span class="row-title">Discoverable</span>
+              <HelpHint text="When off, your username won't appear in search results. Existing friends are unaffected." />
+            </div>
+            <button
+              type="button"
+              class="switch"
+              :class="{ on: privacy.discoverable }"
+              :aria-pressed="privacy.discoverable"
+              :disabled="privacyLoading"
+              @click="savePrivacy({ discoverable: !privacy.discoverable })"
+            />
           </div>
         </div>
       </section>
