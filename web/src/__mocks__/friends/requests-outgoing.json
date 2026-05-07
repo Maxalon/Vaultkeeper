@@ -1,0 +1,12 @@
+[
+  {
+    "id": 20,
+    "addressee": {
+      "id": 7,
+      "username": "frank_draft",
+      "display_name": "Frank"
+    },
+    "status": "pending",
+    "created_at": "2026-05-06T10:00:00Z"
+  }
+]
