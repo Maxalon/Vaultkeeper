@@ -4,7 +4,7 @@ use App\Http\Controllers\HorizonAuthController;
 use App\Http\Controllers\OpsDbProxyController;
 use Illuminate\Support\Facades\Route;
 
-// ─── Horizon dashboard auth ─────────────────────────────────────────────
+// ─── Horizon dashboard auth ──────────────────────────────────────────────
 // Horizon is mounted at the root of horizon.vault.* (HORIZON_PATH=/), so
 // these explicit routes must register before HorizonServiceProvider's
 // catch-all `/{view?}` for the auth flow to win. routes/web.php is
