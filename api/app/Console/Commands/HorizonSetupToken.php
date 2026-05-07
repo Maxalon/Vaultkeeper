@@ -8,15 +8,15 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
- * Backup retrieval channel for the /horizon-setup token.
+ * Backup retrieval channel for the /setup token.
  *
  * Email is the primary delivery mechanism (HORIZON_SETUP_EMAIL), but if
  * the operator never received it (mail outage, env var missing, lost the
  * message) this command surfaces the currently-cached token, or mints a
  * new one if none is pending.
  *
- * Refuses to run once an admin row exists — at that point /horizon-setup
- * is closed and there is no setup token to print.
+ * Refuses to run once an admin row exists — at that point /setup is
+ * closed and there is no setup token to print.
  */
 class HorizonSetupToken extends Command
 {
@@ -24,7 +24,7 @@ class HorizonSetupToken extends Command
 
     protected $signature = 'horizon:setup-token';
 
-    protected $description = 'Print the pending /horizon-setup token (mints one if none is cached)';
+    protected $description = 'Print the pending /setup token (mints one if none is cached)';
 
     public function handle(): int
     {
@@ -44,7 +44,7 @@ class HorizonSetupToken extends Command
         $this->line('Setup token:');
         $this->line('  '.$token);
         $this->newLine();
-        $this->line('Visit /horizon-setup and paste the token to choose a password.');
+        $this->line('Visit /setup and paste the token to choose a password.');
         $this->line('Token expires 24h after it was first issued.');
 
         return self::SUCCESS;
