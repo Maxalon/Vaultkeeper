@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, provide, ref, watch, onBeforeUnmount } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import DeckInfoPanel from './DeckInfoPanel.vue'
 import DeckFilterBar from './DeckFilterBar.vue'
@@ -51,6 +51,24 @@ function onMatchOpen(entry) {
 function closeMatchPanel() {
   activeMatch.value = null
 }
+
+// ── Provide wm + openMatchPanel so WantedMatchSummaryTab (C3) can ────
+// ── inject them without prop-drilling through LeafNode/tabRegistry. ──
+
+// openMatchPanel accepts either a raw match object (from WantedMatchSummaryTab)
+// or a deck-entry object (from the avatar stacks on DeckCardStrip/Tile).
+function openMatchPanel(matchOrEntry) {
+  // If the argument has a `scryfall_card_id` it's already a match object.
+  // If it has `scryfall_id` it came from an entry click (C2 path).
+  if (matchOrEntry && 'scryfall_card_id' in matchOrEntry) {
+    activeMatch.value = matchOrEntry
+  } else {
+    onMatchOpen(matchOrEntry)
+  }
+}
+
+provide('wm', wm)
+provide('openMatchPanel', openMatchPanel)
 
 // ── Deck edit ───────────────────────────────────────────────────────
 const editOpen = ref(false)
