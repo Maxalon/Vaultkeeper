@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\LocationGroup;
 use App\Models\User;
 use App\Services\DeckImportService;
+use App\Services\NotificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -168,6 +169,23 @@ class BulkImportUserDecksJob implements ShouldQueue
             'warnings' => array_slice($warnings, 0, 50),
             'message'  => $message.'.',
         ]);
+
+        // Persist an in-app notification so the user sees the result even
+        // if they closed the import modal while the job was running.
+        app(NotificationService::class)->notify(
+            user:    $user,
+            type:    'collection.bulk_import_completed',
+            payload: [
+                'source'   => $this->source,
+                'username' => $this->username,
+                'total'    => $total,
+                'imported' => $imported,
+                'updated'  => $updated,
+                'skipped'  => $skipped,
+                'failed'   => $failed,
+                'message'  => $message.'.',
+            ],
+        );
     }
 
     private function emitProgress(

@@ -5,6 +5,8 @@ namespace App\Observers;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\Location;
+use App\Models\User;
+use App\Services\NotificationService;
 use App\Services\ReviewQueueService;
 
 class DeckObserver
@@ -64,6 +66,8 @@ class DeckObserver
             ->where('role', Location::ROLE_DECK)
             ->value('id');
 
+        $copiesMarked = 0;
+
         if ($deckLocationId !== null) {
             $copies = CollectionEntry::query()
                 ->where('location_id', $deckLocationId)
@@ -71,6 +75,7 @@ class DeckObserver
 
             foreach ($copies as $copy) {
                 $this->reviewQueue->markCopyForReview($copy, $deck, deckBeingDeleted: true);
+                $copiesMarked++;
             }
         }
 
@@ -80,6 +85,22 @@ class DeckObserver
         CollectionEntry::query()
             ->where('source_deck_id', $deck->id)
             ->update(['source_deck_deleted' => true]);
+
+        // Notify the deck owner if any physical copies were moved to the
+        // review queue as a result of the deletion.
+        if ($copiesMarked > 0) {
+            $owner = User::find($deck->user_id);
+            if ($owner) {
+                app(NotificationService::class)->notify(
+                    user:    $owner,
+                    type:    'deck.card_marked_for_review',
+                    payload: [
+                        'deck_name'     => $deck->name,
+                        'copies_count'  => $copiesMarked,
+                    ],
+                );
+            }
+        }
     }
 
     private function locationName(string $deckName): string

@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppNotification;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Centralized notification inbox.
+ * Centralized notification inbox (A5).
  *
  * All notification types funnel through a single `notifications` table
  * (see plan §Data Model). The actions array is declarative — each action
@@ -22,6 +24,8 @@ use Illuminate\Http\Request;
  */
 class NotificationController extends Controller
 {
+    public function __construct(private NotificationService $notifications) {}
+
     /**
      * GET /api/notifications
      *
@@ -32,43 +36,40 @@ class NotificationController extends Controller
      *   unread=1   — only return notifications where read_at IS NULL
      *
      * Response 200:
-     *   { "data": [
-     *       {
-     *         "id":         1,
-     *         "type":       "friend.request_received",
-     *         "payload":    { "requester_id": 3, "requester_username": "alice" },
-     *         "read_at":    null,
-     *         "created_at": "<iso8601>",
-     *         "actions": [
-     *           {
-     *             "key":              "accept",
-     *             "label":            "Accept",
-     *             "kind":             "default",
-     *             "endpoint":         "/friends/requests/7",
-     *             "method":           "PATCH",
-     *             "body":             { "action": "accept" },
-     *             "invalidates_on":   [
-     *               { "model": "Friendship", "id": 7, "field": "status" }
-     *             ],
-     *             "available":        true
-     *           }
-     *         ]
-     *       }
-     *     ],
-     *     "meta": { "current_page": 1, "last_page": 1, "total": 1 }
-     *   }
+     *   { "data": [ { "id": 1, "type": "...", "payload": {}, "read_at": null,
+     *                 "created_at": "...", "actions": [{ ..., "available": true }] } ],
+     *     "meta": { "current_page": 1, "last_page": 1, "total": 1 } }
      *
      * The `available` field on each action is computed at read time by
      * checking the `invalidates_on` conditions against the current model
-     * state. When `available=false` the SPA shows "no longer available"
-     * rather than the action button.
+     * state via HasOptimisticVersion version comparison.
      */
     public function index(Request $request): JsonResponse
     {
-        // A0 stub.
+        /** @var \App\Models\User $user */
+        $user = $request->user();
+
+        $query = AppNotification::query()
+            ->where('user_id', $user->id)
+            ->latest();
+
+        if ($request->query('unread') === '1') {
+            $query->unread();
+        }
+
+        $paginated = $query->paginate(25);
+
+        $data = $paginated->map(function (AppNotification $n) {
+            return $this->formatNotification($n);
+        });
+
         return response()->json([
-            'data' => [],
-            'meta' => ['current_page' => 1, 'last_page' => 1, 'total' => 0],
+            'data' => $data,
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'total'        => $paginated->total(),
+            ],
         ]);
     }
 
@@ -84,8 +85,22 @@ class NotificationController extends Controller
      */
     public function markRead(int $id): JsonResponse
     {
-        // A0 stub.
-        return response()->json(['data' => ['id' => $id, 'read_at' => now()->toIso8601String()]]);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $notification = AppNotification::query()
+            ->where('id', $id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $notification->markRead();
+
+        return response()->json([
+            'data' => [
+                'id'      => $notification->id,
+                'read_at' => $notification->read_at?->toIso8601String(),
+            ],
+        ]);
     }
 
     /**
@@ -98,8 +113,15 @@ class NotificationController extends Controller
      */
     public function markAllRead(): JsonResponse
     {
-        // A0 stub.
-        return response()->json(['marked_read' => 0]);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $count = AppNotification::query()
+            ->where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
+
+        return response()->json(['marked_read' => $count]);
     }
 
     /**
@@ -110,16 +132,15 @@ class NotificationController extends Controller
      *
      * This is the ONLY route the SPA should call when executing a
      * notification action — direct calls to the underlying endpoint bypass
-     * staleness re-validation and audit logging.
+     * staleness re-validation.
      *
-     * Flow (A5):
+     * Flow:
      *   1. Load the notification (must belong to caller).
-     *   2. Find the action with matching `key` in `actions`.
-     *   3. Evaluate every `invalidates_on` condition. If any condition is
-     *      met (record mutated / deleted), return 409 with the "stale action"
-     *      body — the SPA should refresh the notification list.
-     *   4. Execute the underlying HTTP action internally (no external HTTP
-     *      round-trip — dispatch to the appropriate controller method).
+     *   2. Find the action with matching `key`.
+     *   3. Evaluate every `invalidates_on` condition via NotificationService.
+     *      If stale → 409.
+     *   4. Dispatch internally to the appropriate controller method via
+     *      app()->call() or Route::dispatch() to avoid external HTTP round-trip.
      *   5. Return the underlying response.
      *
      * Responses:
@@ -127,15 +148,77 @@ class NotificationController extends Controller
      *   404         — notification or action key not found
      *   409         — action is stale: { "message": "Action is no longer available.",
      *                                    "reason": "record_mutated" | "record_deleted" }
-     *
-     * The staleness mechanism (A5) uses `HasOptimisticVersion`: each
-     * `invalidates_on` entry records the model's `version` at notification
-     * creation time; the gateway compares it to the current version on
-     * re-fetch. Version mismatch → stale.
      */
     public function executeAction(int $id, string $key): JsonResponse
     {
-        // A0 stub.
-        return response()->json(['message' => 'Action executed.']);
+        /** @var \App\Models\User $user */
+        $user = auth()->user();
+
+        $notification = AppNotification::query()
+            ->where('id', $id)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $action = $notification->findAction($key);
+        if ($action === null) {
+            return response()->json(['message' => 'Action not found.'], 404);
+        }
+
+        // Re-check staleness before executing.
+        if (! NotificationService::isActionAvailable($action)) {
+            return response()->json([
+                'message' => 'Action is no longer available.',
+                'reason'  => 'record_mutated',
+            ], 409);
+        }
+
+        // Dispatch internally — resolve method from endpoint + method.
+        $endpoint = $action['endpoint'] ?? '';
+        $method   = strtoupper($action['method'] ?? 'GET');
+        $body     = $action['body'] ?? [];
+
+        $internalRequest = Request::create(
+            '/api'.$endpoint,
+            $method,
+            $body,
+        );
+
+        // Carry the auth token forward so the internal request passes JWT auth.
+        $internalRequest->headers->set('Authorization', request()->header('Authorization'));
+        $internalRequest->setUserResolver(fn () => $user);
+
+        $response = app()->handle($internalRequest);
+
+        return response()->json(
+            json_decode($response->getContent(), true),
+            $response->getStatusCode(),
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Format a notification row for the API response, computing `available`
+     * on each action at read time.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatNotification(AppNotification $n): array
+    {
+        $actions = array_map(function (array $action) {
+            $action['available'] = NotificationService::isActionAvailable($action);
+            return $action;
+        }, $n->actions ?? []);
+
+        return [
+            'id'         => $n->id,
+            'type'       => $n->type,
+            'payload'    => $n->payload,
+            'read_at'    => $n->read_at?->toIso8601String(),
+            'created_at' => $n->created_at?->toIso8601String(),
+            'actions'    => $actions,
+        ];
     }
 }

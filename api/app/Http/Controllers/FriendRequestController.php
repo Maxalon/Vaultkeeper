@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Friendship;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -24,6 +25,7 @@ use Illuminate\Validation\Rule;
  */
 class FriendRequestController extends Controller
 {
+    public function __construct(private NotificationService $notifications) {}
     /**
      * POST /api/friends/requests
      *
@@ -98,6 +100,40 @@ class FriendRequestController extends Controller
         ]);
 
         $friendship->load(['userA', 'userB']);
+
+        // Notify the addressee that they have a new friend request.
+        $this->notifications->notify(
+            user:    $target,
+            type:    'friend.request_received',
+            payload: [
+                'requester_id'       => $caller->id,
+                'requester_username' => $caller->username,
+            ],
+            actions: [
+                [
+                    'key'            => 'accept',
+                    'label'          => 'Accept',
+                    'kind'           => 'default',
+                    'endpoint'       => '/friends/requests/'.$friendship->id,
+                    'method'         => 'PATCH',
+                    'body'           => ['action' => 'accept'],
+                    'invalidates_on' => [
+                        NotificationService::invalidatesOn($friendship),
+                    ],
+                ],
+                [
+                    'key'            => 'decline',
+                    'label'          => 'Decline',
+                    'kind'           => 'danger',
+                    'endpoint'       => '/friends/requests/'.$friendship->id,
+                    'method'         => 'PATCH',
+                    'body'           => ['action' => 'decline'],
+                    'invalidates_on' => [
+                        NotificationService::invalidatesOn($friendship),
+                    ],
+                ],
+            ],
+        );
 
         return response()->json([
             'data' => $this->formatRequest($friendship, $caller),
@@ -206,7 +242,20 @@ class FriendRequestController extends Controller
             'responded_at' => now(),
         ]);
 
-        // TODO (A5): dispatch friend.request_accepted notification when accepted.
+        if ($newStatus === 'accepted') {
+            // Notify the original requester that their request was accepted.
+            $requester = User::find($friendship->requester_id);
+            if ($requester) {
+                $this->notifications->notify(
+                    user:    $requester,
+                    type:    'friend.request_accepted',
+                    payload: [
+                        'accepter_id'       => $caller->id,
+                        'accepter_username' => $caller->username,
+                    ],
+                );
+            }
+        }
 
         return response()->json([
             'data' => ['id' => $friendship->id, 'status' => $friendship->status],
