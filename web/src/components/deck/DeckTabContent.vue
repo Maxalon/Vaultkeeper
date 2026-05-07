@@ -10,6 +10,7 @@ import WantedMatchPanel from './matcher/WantedMatchPanel.vue'
 import { copyDeckToClipboard, downloadDeck } from '../../utils/deckExport'
 import { useToast } from '../../composables/useToast'
 import { useWantedMatches } from '../../composables/useWantedMatches'
+import { useNotificationsStore } from '../../stores/notifications'
 
 defineProps({
   zone: { type: String, default: null },  // when set (side|maybe), render only that zone
@@ -34,6 +35,33 @@ watch(
 
 onBeforeUnmount(() => wm.reset())
 
+// ── C4: Watch notifications store for friend.visibility_changed ──────
+// When a friend revokes collection visibility mid-session, the notifications
+// store (stream-b B1) pushes a new item of type 'friend.visibility_changed'.
+// We watch for it and re-fetch the match list, marking visibilityRevoked
+// so the panels can show the dedicated revoked state.
+// The stub notifications store (replaced by B1) has an empty items array,
+// so this watcher is a no-op until B1 lands.
+const notifications = useNotificationsStore()
+
+watch(
+  () => notifications.items,
+  (items) => {
+    const hasRevoke = items.some(
+      (n) => n.type === 'friend.visibility_changed' && !n.read_at,
+    )
+    if (hasRevoke && !wm.visibilityRevoked.value) {
+      wm.markVisibilityRevoked()
+      const deckId = deck.deck?.id
+      if (deckId) {
+        wm.reset()
+        wm.fetch(deckId)
+      }
+    }
+  },
+  { deep: true },
+)
+
 // Active match side panel (C2). Set when user clicks an avatar stack.
 const activeMatch = ref(null)
 
@@ -52,6 +80,18 @@ function closeMatchPanel() {
   activeMatch.value = null
 }
 
+// ── C4: Infer "no visible friends" state ─────────────────────────────
+// When the user has friends (friendCount > 0) but none appear in ANY
+// wanted-match entry, it means all friends have collection_visibility =
+// 'private'. Show a distinct state in WantedMatchPanel.
+const noVisibleFriends = computed(() => {
+  const count = wm.friendCount.value
+  if (count === null || count === 0) return false
+  if (wm.loading.value || wm.error.value) return false
+  // If any match has at least one friend, visibility is working.
+  return wm.matches.value.every((m) => m.friends.length === 0)
+})
+
 // ── Provide wm + openMatchPanel so WantedMatchSummaryTab (C3) can ────
 // ── inject them without prop-drilling through LeafNode/tabRegistry. ──
 
@@ -69,6 +109,7 @@ function openMatchPanel(matchOrEntry) {
 
 provide('wm', wm)
 provide('openMatchPanel', openMatchPanel)
+provide('noVisibleFriends', noVisibleFriends)
 
 // ── Deck edit ───────────────────────────────────────────────────────
 const editOpen = ref(false)
@@ -156,11 +197,16 @@ async function onEditClosed() {
     </div>
 
     <!-- C2: side panel, mounted when an avatar stack is clicked -->
+    <!-- C4 props: friendCount + noVisibleFriends + visibilityRevoked give
+         the panel enough context to show a distinct state for each scenario. -->
     <WantedMatchPanel
       v-if="activeMatch"
       :match="activeMatch"
       :loading="wm.loading"
       :error="wm.error"
+      :friend-count="wm.friendCount.value"
+      :no-visible-friends="noVisibleFriends"
+      :visibility-revoked="wm.visibilityRevoked.value"
       @close="closeMatchPanel"
     />
   </div>

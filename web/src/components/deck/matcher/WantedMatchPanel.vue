@@ -21,9 +21,12 @@
  * plus the raw `loading` / `error` state from the parent store.
  *
  * Props
- *  match   — one element from the wanted-matches array, or null
- *  loading — true while GET is in flight
- *  error   — truthy string when the fetch failed
+ *  match             — one element from the wanted-matches array, or null
+ *  loading           — true while GET is in flight
+ *  error             — truthy string when the fetch failed
+ *  friendCount       — total accepted friends (null = unknown, 0 = no friends)
+ *  visibilityRevoked — true when a friend revoked collection visibility
+ *                      mid-session (C4 state)
  *
  * Emits
  *  close   — user dismissed the panel
@@ -46,6 +49,26 @@ const props = defineProps({
   error: {
     type: String,
     default: null,
+  },
+  /** Total accepted-friend count. null = not yet known; 0 = no friends. */
+  friendCount: {
+    type: Number,
+    default: null,
+  },
+  /** True when a friend.visibility_changed notification arrived mid-session. */
+  visibilityRevoked: {
+    type: Boolean,
+    default: false,
+  },
+  /**
+   * True when the user has friends but none have shared their collection
+   * (all have collection_visibility = 'private'). Inferred by the parent
+   * when friendCount > 0 and the wanted-matches response has zero friends
+   * across ALL cards.
+   */
+  noVisibleFriends: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -76,6 +99,38 @@ const hasFriends = computed(() => friends.value.length > 0)
 /** Total available copy count across all friends — used in the header. */
 const totalCopies = computed(() =>
   friends.value.reduce((s, f) => s + (f.available_copies?.length ?? 0), 0),
+)
+
+// ── C4: Distinct empty-state discrimination ───────────────────────────
+/** User has zero accepted friends. Show onboarding nudge. */
+const isNoFriendsState = computed(() =>
+  !props.loading && !props.error && !hasFriends.value && props.friendCount === 0,
+)
+
+/**
+ * User has friends, but none have made their collection visible.
+ * We infer this when friendCount > 0 and there are zero matches for ANY
+ * card in the deck (the caller sets this via props from wm.matches).
+ * If we only check per-card, we can't distinguish "this card isn't owned"
+ * from "all friends are private". Use the noVisibleFriends prop for this.
+ */
+const isNoVisibleFriendsState = computed(() =>
+  !props.loading && !props.error && !hasFriends.value &&
+  props.friendCount !== null && props.friendCount > 0 && props.noVisibleFriends === true,
+)
+
+/**
+ * Friend revoked collection visibility mid-session — the most disruptive
+ * case. Show a prominent banner rather than the generic "no matches" state.
+ */
+const isVisibilityRevokedState = computed(() =>
+  !props.loading && !props.error && props.visibilityRevoked,
+)
+
+/** Generic "0 matches for this specific card" (friends exist + are visible). */
+const isNoCardMatchState = computed(() =>
+  !props.loading && !props.error && !hasFriends.value &&
+  !isNoFriendsState.value && !isNoVisibleFriendsState.value && !isVisibilityRevokedState.value,
 )
 </script>
 
@@ -116,13 +171,44 @@ const totalCopies = computed(() =>
       <span class="wmp-state-text">{{ error }}</span>
     </div>
 
-    <!-- ── No friends at all ─────────────────────────────────────────── -->
-    <div v-else-if="!hasFriends" class="wmp-state">
+    <!-- ── C4: No friends at all ────────────────────────────────────── -->
+    <div v-else-if="isNoFriendsState" class="wmp-state wmp-state--no-friends">
+      <span class="wmp-state-icon" aria-hidden="true">🤝</span>
+      <p class="wmp-state-text wmp-state-text--lead">No friends yet</p>
+      <p class="wmp-state-text wmp-state-text--sub">
+        Add friends to see who has a spare copy of <strong>{{ cardName }}</strong>.
+        Vaultkeeper is social — the matcher works as soon as you connect.
+      </p>
+    </div>
+
+    <!-- ── C4: Friends exist but all have visibility = private ────────── -->
+    <div v-else-if="isNoVisibleFriendsState" class="wmp-state wmp-state--no-visible">
+      <span class="wmp-state-icon" aria-hidden="true">🔒</span>
+      <p class="wmp-state-text wmp-state-text--lead">Collections are private</p>
+      <p class="wmp-state-text wmp-state-text--sub">
+        Your friends haven't shared their collections yet. Ask them to set
+        <em>collection visibility</em> to "Friends" in their privacy settings.
+      </p>
+    </div>
+
+    <!-- ── C4: Friend revoked visibility mid-session ─────────────────── -->
+    <div v-else-if="isVisibilityRevokedState" class="wmp-state wmp-state--revoked">
+      <span class="wmp-state-icon wmp-state-icon--revoked" aria-hidden="true">🔕</span>
+      <p class="wmp-state-text wmp-state-text--lead">Visibility changed</p>
+      <p class="wmp-state-text wmp-state-text--sub">
+        A friend updated their collection visibility. The list has been refreshed.
+        Some previously visible copies may no longer appear.
+      </p>
+    </div>
+
+    <!-- ── C4: 0 matches for THIS card (friends are visible, just don't
+         have it) — the original generic no-match state ──────────────── -->
+    <div v-else-if="isNoCardMatchState" class="wmp-state">
       <span class="wmp-state-icon" aria-hidden="true">👥</span>
       <p class="wmp-state-text wmp-state-text--lead">No matches found</p>
       <p class="wmp-state-text wmp-state-text--sub">
         None of your friends have an available copy of <strong>{{ cardName }}</strong>.
-        Add more friends or ask someone to make their collection visible.
+        Try trading or sourcing it from a local game store.
       </p>
     </div>
 
@@ -253,7 +339,14 @@ const totalCopies = computed(() =>
   padding: 2rem 1.5rem;
   text-align: center;
 }
-.wmp-state--error .wmp-state-icon { color: var(--cond-hp, #d97757); font-size: 22px; }
+.wmp-state--error .wmp-state-icon { color: var(--cond-hp, #d97757); }
+/* Revoked state: amber tint to signal "something changed" non-destructively */
+.wmp-state--revoked { background: color-mix(in srgb, var(--amber, #c9a552) 4%, transparent); }
+.wmp-state-icon--revoked { color: var(--amber, #c9a552); }
+/* No-friends state: soft nudge tone */
+.wmp-state--no-friends .wmp-state-text--lead { color: var(--amber, #c9a552); }
+/* No-visible-friends: lock icon is neutral, text is muted */
+.wmp-state--no-visible .wmp-state-icon { color: var(--ink-30); }
 .wmp-state-icon { font-size: 28px; line-height: 1; }
 .wmp-state-text {
   font-size: 13px;
