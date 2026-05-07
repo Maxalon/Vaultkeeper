@@ -42,8 +42,8 @@ class FriendVisibilityPolicyTest extends TestCase
         $this->alice = User::factory()->create(['username' => 'alice']);
         $this->bob   = User::factory()->create(['username' => 'bob']);
 
-        $this->aliceToken = auth('api')->login($this->alice);
-        $this->bobToken   = auth('api')->login($this->bob);
+        $this->aliceToken = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->alice);
+        $this->bobToken   = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->bob);
     }
 
     private function headers(string $token): array

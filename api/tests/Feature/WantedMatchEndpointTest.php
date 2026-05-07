@@ -72,11 +72,14 @@ class WantedMatchEndpointTest extends TestCase
 
     private function makeDeckLocation(User $user, Deck $deck): Location
     {
-        return Location::factory()->create([
-            'user_id' => $user->id,
-            'deck_id' => $deck->id,
-            'role'    => Location::ROLE_DECK,
-        ]);
+        // DeckObserver::created() already creates the deck location automatically
+        // when a deck is created. Retrieve that auto-created row rather than
+        // attempting to insert a second one (which would violate the
+        // locations_user_id_deck_id_unique constraint).
+        return Location::where('user_id', $user->id)
+            ->where('deck_id', $deck->id)
+            ->where('role', Location::ROLE_DECK)
+            ->firstOrFail();
     }
 
     private function addWanted(Deck $deck, ScryfallCard $card, int $qty = 1): DeckEntry

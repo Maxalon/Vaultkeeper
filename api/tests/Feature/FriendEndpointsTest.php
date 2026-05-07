@@ -40,8 +40,8 @@ class FriendEndpointsTest extends TestCase
         $this->bob   = User::factory()->create(['username' => 'bob']);
         $this->carol = User::factory()->create(['username' => 'carol_hidden']);
 
-        $this->aliceToken = auth('api')->login($this->alice);
-        $this->bobToken   = auth('api')->login($this->bob);
+        $this->aliceToken = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->alice);
+        $this->bobToken   = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->bob);
     }
 
     private function headers(string $token): array
@@ -117,7 +117,7 @@ class FriendEndpointsTest extends TestCase
     public function test_list_requests_without_direction_returns_both(): void
     {
         $carol = User::factory()->create(['username' => 'carol2']);
-        $carolToken = auth('api')->login($carol);
+        $carolToken = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($carol);
 
         // Alice → Bob (pending), Carol → Alice (pending)
         Friendship::factory()->between($this->alice, $this->bob)->create();

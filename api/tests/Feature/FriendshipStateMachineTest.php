@@ -40,9 +40,9 @@ class FriendshipStateMachineTest extends TestCase
         $this->bob   = User::factory()->create(['username' => 'bob']);
         $this->carol = User::factory()->create(['username' => 'carol']);
 
-        $this->aliceToken = auth('api')->login($this->alice);
-        $this->bobToken   = auth('api')->login($this->bob);
-        $this->carolToken = auth('api')->login($this->carol);
+        $this->aliceToken = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->alice);
+        $this->bobToken   = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->bob);
+        $this->carolToken = \Tymon\JWTAuth\Facades\JWTAuth::fromUser($this->carol);
     }
 
     private function headers(string $token): array
