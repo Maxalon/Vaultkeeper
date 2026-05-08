@@ -1,7 +1,9 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
+import { useWantedMatchesStore } from '../../stores/wantedMatches'
 import { useDeckEntryActions } from '../../composables/useDeckEntryActions'
+import { avatarColor, avatarInitials } from '../../utils/avatarColor'
 import CardDetailBody from '../CardDetailBody.vue'
 import HelpHint from '../HelpHint.vue'
 import PriceLine from '../PriceLine.vue'
@@ -13,6 +15,7 @@ import PhysicalCopyDropdown from './PhysicalCopyDropdown.vue'
 import AddCopiesModal from './AddCopiesModal.vue'
 
 const deck = useDeckStore()
+const wm = useWantedMatchesStore()
 
 const entry = computed(() =>
   deck.entries.find((e) => e.id === deck.activeEntryId) || null,
@@ -76,6 +79,18 @@ function siblings(e) {
 const sibs       = computed(() => siblings(entry.value))
 const wantedQty  = computed(() => sibs.value.wantedQty)
 const ownedQty   = computed(() => sibs.value.bound?.quantity ?? 0)
+
+// Friends who own a copy of this entry's card. Resolves once
+// wantedMatches.fetch completes; empty until then or when no friend has
+// the card. Click opens the WantedMatchPanel with full per-copy detail.
+const matchFriends = computed(() => {
+  if (!entry.value) return []
+  return wm.matchFor(entry.value.scryfall_id)?.friends ?? []
+})
+
+function openMatchPanel() {
+  if (entry.value) wm.openPanel(entry.value)
+}
 
 function onWantedInc() {
   if (!entry.value || !deckId.value) return
@@ -251,6 +266,34 @@ function onPickPrinting(scryfallId, finishes) {
             />
           </div>
         </div>
+
+        <!-- Friend availability for the wanted side. Renders only when
+             this card is on the wishlist AND the matches fetch has
+             surfaced at least one friend with an available copy. Click
+             opens WantedMatchPanel with conditions / locations / foil. -->
+        <button
+          v-if="wantedQty > 0 && matchFriends.length > 0"
+          type="button"
+          class="match-hint"
+          @click="openMatchPanel"
+        >
+          <span class="match-hint-avatars" aria-hidden="true">
+            <span
+              v-for="(friend, i) in matchFriends.slice(0, 3)"
+              :key="friend.user_id"
+              class="match-hint-avatar"
+              :style="{
+                background: avatarColor(friend.username),
+                zIndex: matchFriends.length - i,
+                marginLeft: i === 0 ? '0' : '-5px',
+              }"
+            >{{ avatarInitials(friend.username) }}</span>
+          </span>
+          <span class="match-hint-text">
+            {{ matchFriends.length }} friend{{ matchFriends.length === 1 ? '' : 's' }} own{{ matchFriends.length === 1 ? 's' : '' }} this
+          </span>
+          <span class="match-hint-caret" aria-hidden="true">›</span>
+        </button>
       </section>
 
       <section class="vk-detail-section">
@@ -443,6 +486,56 @@ function onPickPrinting(scryfallId, finishes) {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.match-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 10px;
+  background: var(--bg-0);
+  border: 1px solid var(--amber-lo, #6e5421);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--ink-100);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.match-hint:hover {
+  background: color-mix(in srgb, var(--amber, #c9a552) 8%, var(--bg-0));
+  border-color: var(--amber, #c9a552);
+}
+.match-hint-avatars {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.match-hint-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 7.5px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 0 0 1.5px var(--bg-0, #1a1610);
+  user-select: none;
+}
+.match-hint-text {
+  flex: 1;
+  min-width: 0;
+}
+.match-hint-caret {
+  color: var(--ink-50);
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .role-actions {

@@ -1,9 +1,8 @@
 /**
  * avatarColor.js — shared avatar colour + initials helpers.
  *
- * Used by WantedMatchAvatarStack and WantedMatchPanel (and any future
- * friend-avatar context). Centralised here so the djb2-style hash and
- * colour palette stay in sync across every place avatars appear.
+ * Centralised here so the djb2-style hash and colour palette stay in
+ * sync across every place avatars appear.
  */
 
 export const AVATAR_PALETTE = [
