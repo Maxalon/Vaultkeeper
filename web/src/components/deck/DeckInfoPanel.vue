@@ -133,9 +133,18 @@ function onLegalClick() {
   if (hasIllegality.value) tabs.openTab('illegalities')
 }
 
-function onCommanderClick(card) {
+function onCommanderClick(card, slotIndex = 0) {
   if (!card) return
-  const entry = deck.entries.find((e) => e.scryfall_id === card.scryfall_id)
+  // Prefer scryfall_id match, but fall back to the is_commander flag —
+  // the deck's commander_*_scryfall_id can drift out of sync with the
+  // commander entry's scryfall_id when state gets shuffled (demote +
+  // re-promote, duplicate cleanup), and a stale lookup left the click
+  // doing nothing instead of opening the sidebar.
+  let entry = deck.entries.find((e) => e.scryfall_id === card.scryfall_id)
+  if (!entry) {
+    const commanders = deck.commanderEntries
+    entry = commanders[slotIndex] || commanders[0] || null
+  }
   if (entry) deck.setActiveEntry(entry.id)
 }
 
@@ -363,7 +372,7 @@ watch(
 
           <div
             class="commander-portrait"
-            @click="onCommanderClick(slot.card)"
+            @click="onCommanderClick(slot.card, slot.index)"
           >
             <img
               v-if="slot.card.image_normal || slot.card.image_small"
