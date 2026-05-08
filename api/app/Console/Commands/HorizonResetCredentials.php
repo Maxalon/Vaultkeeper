@@ -16,7 +16,7 @@ class HorizonResetCredentials extends Command
 {
     protected $signature = 'horizon:reset-credentials {--force : Skip confirmation}';
 
-    protected $description = 'Clear the Horizon dashboard password so /horizon-setup is available again';
+    protected $description = 'Clear the Horizon dashboard password so /setup is available again';
 
     public function handle(): int
     {
@@ -43,9 +43,8 @@ class HorizonResetCredentials extends Command
         // Active sessions are invalidated automatically: the gate +
         // RequireHorizonAuth middleware compare the session token to the
         // current admin row's password hash, and there's no admin row to
-        // compare against now. A fresh /horizon-setup is the only path back
-        // in.
-        $this->info('Cleared. Visit /horizon-setup to choose a new password.');
+        // compare against now. A fresh /setup is the only path back in.
+        $this->info('Cleared. Visit /setup to choose a new password.');
         return self::SUCCESS;
     }
 }

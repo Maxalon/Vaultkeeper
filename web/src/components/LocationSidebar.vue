@@ -1,9 +1,9 @@
 <script setup>
-import { provide, ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { provide, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { vDraggable } from 'vue-draggable-plus'
 import { useCollectionStore } from '../stores/collection'
 import { useSettingsStore } from '../stores/settings'
+import { useSidebarSortable } from '../composables/useSidebarSortable'
 import { confirm as confirmDialog } from '../composables/useConfirm'
 import LocationModal from './LocationModal.vue'
 import ImportModal from './ImportModal.vue'
@@ -16,6 +16,8 @@ import SidebarGroup from './SidebarGroup.vue'
 import SidebarRow from './SidebarRow.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
+import IconImport from '../assets/icons/import.svg'
+import IconChevron from '../assets/chevron-down.svg'
 
 defineProps({
   collapsed: { type: Boolean, default: false },
@@ -182,14 +184,18 @@ provide('sidebarCtx', {
   activeDeckId,
 })
 
-const outerOptions = {
-  group: { name: 'sidebar', pull: true, put: true },
-  handle: '.drag-handle',
-  animation: 150,
-  ghostClass: 'sortable-ghost',
-  chosenClass: 'sortable-chosen',
-  onEnd: () => collection.reorderAll(),
-}
+// Bind the root dropzone to @formkit/drag-and-drop. The composable
+// returns the parent ref + a values ref that the library mutates on
+// drop; we render from `rootItems`. External Pinia changes flow in
+// through the source getter — the composable watches the external
+// epoch and rehydrates the values when it bumps. We do NOT remount the
+// dropzone div on external changes because the library's parent
+// binding is set up via a self-stopping watch and only ever attaches
+// to the first element it sees; remounting would orphan it.
+const [rootDropzone, rootItems] = useSidebarSortable(
+  () => collection.sidebarItems,
+  () => null,
+)
 
 function itemKey(item) { return `${item.kind}:${item.id}` }
 </script>
@@ -243,10 +249,11 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
       </button>
 
       <div
+        ref="rootDropzone"
         class="sidebar-dropzone"
-        v-draggable="[collection.sidebarItems, outerOptions]"
+        data-sidebar-container="root"
       >
-        <template v-for="item in collection.sidebarItems" :key="itemKey(item)">
+        <template v-for="item in rootItems" :key="itemKey(item)">
           <SidebarGroup v-if="item.kind === 'group'" :group="item" />
           <SidebarRow v-else :item="item" />
         </template>
@@ -259,16 +266,12 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
         <button type="button" class="mini-btn" @click="groupModalOpen = true">+ Group</button>
       </div>
       <button type="button" class="import-btn" @click="importOpen = true">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
+        <IconImport />
         Import CSV
       </button>
       <div class="deck-import-split">
         <button type="button" class="import-btn split-main" @click="deckImportOpen = true">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M6 2v6M3 5l3 3 3-3M2 10h8" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <IconImport />
           Import Deck
         </button>
         <button
@@ -280,9 +283,7 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
           :aria-expanded="deckImportMenuOpen"
           aria-label="More import options"
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 4l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          <IconChevron />
         </button>
         <div v-if="deckImportMenuOpen" class="split-menu" role="menu">
           <button type="button" class="split-menu-item" role="menuitem" @click="openCsvDeckImport">
@@ -493,15 +494,18 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
   padding-bottom: 40px;
 }
 
-/* SortableJS ghost / drag states — applied at runtime by vue-draggable-plus */
+/* Drag states from @formkit/drag-and-drop. The library applies
+   `.dragging` to the source row while a drag is in progress — we
+   visually subdue it so the floating drag image is the only "live"
+   copy on screen. `.dropZone` highlights the destination container
+   when the cursor is over it. */
 /*noinspection CssUnusedSymbol*/
-:deep(.sortable-ghost) {
-  opacity: 0.4;
-  background: rgba(240, 195, 92, 0.08);
+:deep(.dragging) {
+  opacity: 0.35;
 }
 /*noinspection CssUnusedSymbol*/
-:deep(.sortable-chosen) {
-  background: var(--bg-2);
+:deep(.dropZone) {
+  background: color-mix(in oklab, var(--amber) 8%, transparent);
 }
 
 /* ── Footer ─────────────────────────────────────────────────────── */

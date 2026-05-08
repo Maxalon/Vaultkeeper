@@ -16,6 +16,7 @@ defineProps({
 const deck = useDeckStore()
 const toast = useToast()
 
+// ── Deck edit ───────────────────────────────────────────────────────
 const editOpen = ref(false)
 const editLocation = computed(() =>
   deck.deck ? { ...deck.deck, kind: 'deck' } : null,
@@ -51,30 +52,32 @@ async function onEditClosed() {
 
 <template>
   <div v-if="deck.deck" class="deck-tab-content" :class="{ 'zone-only': !!zone }">
-    <!-- Zone-scoped undocked view -->
-    <template v-if="zone">
-      <DeckFilterBar />
-      <DeckGrid :zone="zone" fill />
-    </template>
-
-    <!-- Full deck layout -->
-    <template v-else>
-      <DeckInfoPanel @edit="onEdit" @export="onExport" />
-
-      <DeckFilterBar />
-
-      <DeckGrid zone="main" />
-
-      <template v-if="!deck.sideUndocked">
-        <ZoneDivider zone="side" />
-        <DeckGrid zone="side" />
+    <div class="dtc-body">
+      <!-- Zone-scoped undocked view -->
+      <template v-if="zone">
+        <DeckFilterBar />
+        <DeckGrid :zone="zone" fill />
       </template>
 
-      <template v-if="!deck.maybeUndocked">
-        <ZoneDivider zone="maybe" />
-        <DeckGrid zone="maybe" />
+      <!-- Full deck layout -->
+      <template v-else>
+        <DeckInfoPanel @edit="onEdit" @export="onExport" />
+
+        <DeckFilterBar />
+
+        <DeckGrid zone="main" />
+
+        <template v-if="!deck.sideUndocked">
+          <ZoneDivider zone="side" />
+          <DeckGrid zone="side" />
+        </template>
+
+        <template v-if="!deck.maybeUndocked">
+          <ZoneDivider zone="maybe" />
+          <DeckGrid zone="maybe" />
+        </template>
       </template>
-    </template>
+    </div>
   </div>
   <LocationModal
     v-if="editOpen && editLocation"
@@ -86,13 +89,23 @@ async function onEditClosed() {
 <style scoped>
 .deck-tab-content {
   height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+
+/* The scrollable body that holds info panel + filter bar + grids. */
+.dtc-body {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-y: auto;
 }
+
 /* Make the filter bar + grid a flex column so the grid (with its `fill`
    class) can flex-grow into all leftover height. Drops anywhere in the
    tab — including the empty area below the last card — then land in
    this zone. */
-.deck-tab-content.zone-only {
+.deck-tab-content.zone-only .dtc-body {
   display: flex;
   flex-direction: column;
 }

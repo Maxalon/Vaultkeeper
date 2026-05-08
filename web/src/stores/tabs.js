@@ -14,7 +14,7 @@ import { nanoid } from 'nanoid'
 const STORAGE_KEY = 'vaultkeeper_tab_layout'
 
 /** Tab types that are single-instance across the layout (shared state). */
-const SINGLE_INSTANCE = new Set(['deck', 'side', 'maybe', 'review', 'physical'])
+const SINGLE_INSTANCE = new Set(['deck', 'side', 'maybe', 'review', 'physical', 'wanted-matches'])
 
 function defaultLayout() {
   return {
@@ -310,6 +310,7 @@ function labelFor(type) {
       side: 'Sideboard',
       maybe: 'Maybeboard',
       review: 'Review',
+      'wanted-matches': 'Wanted Matches',
     }[type] || type
   )
 }

@@ -8,20 +8,28 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "sandbox:setup": "node ../claude-sandbox/setup.js",
+    "sandbox": "npm run sandbox:setup && vite --config ../claude-sandbox/vite.config.js",
+    "sandbox:test": "npm run sandbox:setup && playwright test --config ../claude-sandbox/playwright.config.js",
+    "e2e": "playwright test --config ../e2e/playwright.config.ts",
+    "e2e:headed": "playwright test --config ../e2e/playwright.config.ts --project=chromium --headed",
+    "e2e:ui": "playwright test --config ../e2e/playwright.config.ts --ui",
+    "e2e:reset": "docker compose -f ../docker-compose.yml exec api php artisan migrate:fresh --seed --force"
   },
   "dependencies": {
     "@fontsource/inter-tight": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/newsreader": "^5.2.10",
-    "axios": "^1.15.0",
+    "@formkit/drag-and-drop": "^0.5.3",
+    "axios": "^1.16.0",
     "nanoid": "^5.0.7",
     "pinia": "^3.0.4",
     "vue": "^3.5.32",
-    "vue-draggable-plus": "^0.6.1",
     "vue-router": "^5.0.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^20.9.0",

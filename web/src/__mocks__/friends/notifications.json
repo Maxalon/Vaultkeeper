@@ -1,0 +1,108 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "type": "friend.request_received",
+      "payload": {
+        "requester_id": 5,
+        "requester_username": "dave_brews",
+        "request_id": 10
+      },
+      "actions": [
+        {
+          "key": "accept",
+          "label": "Accept",
+          "kind": "primary",
+          "endpoint": "/notifications/1/actions/accept",
+          "method": "POST",
+          "body": {},
+          "available": true
+        },
+        {
+          "key": "decline",
+          "label": "Decline",
+          "kind": "danger",
+          "endpoint": "/notifications/1/actions/decline",
+          "method": "POST",
+          "body": {},
+          "available": true
+        }
+      ],
+      "read_at": null,
+      "created_at": "2026-05-01T14:22:00Z"
+    },
+    {
+      "id": 2,
+      "type": "friend.request_accepted",
+      "payload": {
+        "acceptor_id": 3,
+        "acceptor_username": "bob_plays",
+        "friendship_id": 2
+      },
+      "actions": [],
+      "read_at": null,
+      "created_at": "2026-04-15T09:30:00Z"
+    },
+    {
+      "id": 3,
+      "type": "collection.bulk_import_completed",
+      "payload": {
+        "import_id": 99,
+        "card_count": 24,
+        "location_name": "Main Drawer"
+      },
+      "actions": [
+        {
+          "key": "undo",
+          "label": "Undo import",
+          "kind": "danger",
+          "endpoint": "/notifications/3/actions/undo",
+          "method": "POST",
+          "body": { "import_id": 99 },
+          "available": true
+        }
+      ],
+      "read_at": "2026-05-03T11:00:00Z",
+      "created_at": "2026-05-03T10:58:00Z"
+    },
+    {
+      "id": 4,
+      "type": "deck.card_marked_for_review",
+      "payload": {
+        "deck_id": 101,
+        "deck_name": "Blank Deck",
+        "collection_entry_id": 42,
+        "card_name": "Sol Ring"
+      },
+      "actions": [
+        {
+          "key": "sold_or_discarded",
+          "label": "Sold / discarded",
+          "kind": "danger",
+          "endpoint": "/notifications/4/actions/sold_or_discarded",
+          "method": "POST",
+          "body": { "collection_entry_id": 42, "discard": true },
+          "available": false
+        },
+        {
+          "key": "move_to_drawer",
+          "label": "Move to Main Drawer",
+          "kind": "default",
+          "endpoint": "/notifications/4/actions/move_to_drawer",
+          "method": "POST",
+          "body": { "collection_entry_id": 42, "target_location_id": 1 },
+          "available": false
+        }
+      ],
+      "read_at": null,
+      "created_at": "2026-04-28T16:45:00Z"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "last_page": 1,
+    "per_page": 20,
+    "total": 4,
+    "unread_count": 2
+  }
+}

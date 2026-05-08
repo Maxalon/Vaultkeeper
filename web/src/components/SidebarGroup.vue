@@ -1,9 +1,9 @@
 <script setup>
 import { inject, ref } from 'vue'
-import { vDraggable } from 'vue-draggable-plus'
 import { useSettingsStore } from '../stores/settings'
 import { useCollectionStore } from '../stores/collection'
 import { confirm as confirmDialog } from '../composables/useConfirm'
+import { useSidebarSortable } from '../composables/useSidebarSortable'
 import SidebarRow from './SidebarRow.vue'
 import GroupModal from './GroupModal.vue'
 import IconChevron from '../assets/chevron-down.svg'
@@ -23,19 +23,14 @@ function itemKey(item) {
   return `${item.kind}:${item.id}`
 }
 
-function groupCardCount(g) {
-  return (g.children || []).reduce((sum, child) => {
-    if (child.kind === 'deck') return sum + (child.entry_count || 0)
-    if (child.kind === 'location') return sum + (child.card_count || 0)
-    if (child.kind === 'group') return sum + groupCardCount(child)
-    return sum
-  }, 0)
-}
-function groupCounterValue(g) {
-  if (settings.sidebarGroupCounter === 'locations') {
-    return (g.children || []).filter((c) => c.kind !== 'group').length
-  }
-  return groupCardCount(g)
+// Counter reads from the canonical Pinia tree (kept in sync on every
+// move) rather than walking `props.group.children`, which is a snapshot
+// of the children at mount time and drifts during drag-and-drop. Pinia
+// has the live state across the whole subtree — including child groups
+// this component can't see directly.
+function counterValue() {
+  const mode = settings.sidebarGroupCounter === 'locations' ? 'locations' : 'cards'
+  return collection.groupCounter(props.group.id, mode)
 }
 
 async function deleteGroup() {
@@ -49,18 +44,22 @@ async function deleteGroup() {
   await collection.deleteGroup(props.group.id)
 }
 
-const childrenOptions = {
-  group: { name: 'sidebar', pull: true, put: true },
-  handle: '.drag-handle',
-  animation: 150,
-  ghostClass: 'sortable-ghost',
-  chosenClass: 'sortable-chosen',
-  onEnd: () => collection.reorderAll(),
-}
+// The drag container is owned by the FormKit composable: it returns the
+// element ref to bind, and the values ref we render from. The source
+// getter lets the composable rehydrate from Pinia when an external
+// mutation bumps the sidebar's external epoch — no remount required.
+const [childrenContainer, children] = useSidebarSortable(
+  () => props.group.children,
+  () => props.group.id,
+)
 </script>
 
 <template>
-  <div class="group-section">
+  <div
+    class="group-section"
+    data-kind="group"
+    :data-id="group.id"
+  >
     <div
       class="group-header"
       :class="{ collapsed: ctx.isCollapsed(group.id) }"
@@ -71,7 +70,7 @@ const childrenOptions = {
         <IconChevron />
       </span>
       <span class="label">{{ group.name }}</span>
-      <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ groupCounterValue(group) }}</span>
+      <span v-if="settings.sidebarGroupCounter !== 'off'" class="num">{{ counterValue() }}</span>
       <span class="group-actions" @click.stop>
         <button v-if="settings.sidebarShowEdit" type="button" class="edit-btn" @click="modalOpen = true" title="Edit group">
           <IconEdit />
@@ -82,10 +81,12 @@ const childrenOptions = {
 
     <div
       v-show="!ctx.isCollapsed(group.id)"
+      ref="childrenContainer"
       class="group-locations"
-      v-draggable="[group.children, childrenOptions]"
+      data-sidebar-container="group"
+      :data-parent-id="group.id"
     >
-      <template v-for="child in group.children" :key="itemKey(child)">
+      <template v-for="child in children" :key="itemKey(child)">
         <SidebarGroup v-if="child.kind === 'group'" :group="child" />
         <SidebarRow v-else :item="child" :nested="true" />
       </template>

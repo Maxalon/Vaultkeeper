@@ -34,6 +34,15 @@ app/build/
 app/.gradle/
 app/local.properties
 
+# Local-only Podman compose override (uid mapping fix on rootless Podman)
+docker-compose.override.yml
+
+# Playwright E2E
+e2e/node_modules
+e2e/.auth/
+e2e/test-results/
+e2e/playwright-report/
+
 # OS
 .DS_Store
 Thumbs.db

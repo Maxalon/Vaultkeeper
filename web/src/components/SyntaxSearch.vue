@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import IconSearch from '../assets/icons/search.svg'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -27,11 +28,7 @@ function onInput(event) {
 
 <template>
   <div class="vk-syntax-search" :class="{ focused }">
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
-         style="color: var(--ink-50); flex-shrink: 0;">
-      <circle cx="7" cy="7" r="5" />
-      <path d="m11 11 3 3" stroke-linecap="round" />
-    </svg>
+    <IconSearch class="vk-syntax-icon" style="color: var(--ink-50); flex-shrink: 0;" />
     <div class="vk-syntax-field">
       <div class="vk-syntax-tokens" aria-hidden="true">
         <template v-for="t in tokens" :key="t.i">

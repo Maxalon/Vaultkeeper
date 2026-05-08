@@ -227,11 +227,19 @@ class ScryfallCardController extends Controller
             $this->overlayPrintingForSet($rows, $oracleIds, $printingFilters['set']);
         }
 
+        // Per-row EUR prices. Keyed off the post-overlay default
+        // scryfall_id so a `set:` swap reads the swapped printing's price
+        // (each printing has its own Cardmarket trend) rather than the
+        // oracle default's price.
+        $priceMap = $this->priceMapForScryfallIds(array_values(array_filter(
+            array_map(fn ($r) => $r->default_scryfall_id, $rows),
+        )));
+
         // 7. Reshape to match the existing present() output, then attach
         //    ownership fields plus grouping metadata.
-        $data = array_map(function ($r) use ($ownership) {
+        $data = array_map(function ($r) use ($ownership, $priceMap) {
             $own = $ownership[$r->oracle_id] ?? ['owned' => 0, 'available' => 0, 'wanted_by_others' => 0];
-            return $this->presentRow($r, $own);
+            return $this->presentRow($r, $own, $priceMap[$r->default_scryfall_id] ?? null);
         }, $rows);
 
         $paginator = new LengthAwarePaginator(
@@ -264,7 +272,10 @@ class ScryfallCardController extends Controller
         $userId = auth()->id();
         $oracleId = $data['oracle_id'];
 
-        // Same hard exclusion as search.
+        // Same hard exclusion as search, plus a digital-set filter so
+        // Arena-only / MTGO-only printings (Pioneer Masters, Alchemy,
+        // Historic Anthology, …) don't surface in the picker even when
+        // their oracle has paper printings too.
         $excluded = "'" . implode("','", BulkSyncService::INELIGIBLE_SET_TYPES) . "'";
 
         $rows = DB::select("
@@ -276,6 +287,7 @@ class ScryfallCardController extends Controller
             LEFT JOIN sets ms ON ms.code = sc.set_code
             WHERE sc.oracle_id = ?
               AND (ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}) OR sc.is_playtest = 1)
+              AND COALESCE(ms.digital, 0) = 0
             ORDER BY COALESCE(sc.released_at, ms.released_at) DESC, sc.set_code ASC
         ", [$oracleId]);
 
@@ -284,6 +296,11 @@ class ScryfallCardController extends Controller
         }
 
         $sids = array_map(fn ($r) => $r->scryfall_id, $rows);
+
+        // Per-printing EUR prices. The printings panel is finish-aware
+        // (separate badges for nonfoil / foil / etched), so the frontend
+        // needs the full price triad per printing.
+        $priceMap = $this->priceMapForScryfallIds($sids);
 
         // Per-printing nonfoil / foil ownership.
         $ownedRows = CollectionEntry::query()
@@ -333,7 +350,7 @@ class ScryfallCardController extends Controller
             ->all();
         $inCollection = array_flip($collectionSids);
 
-        $out = array_map(function ($r) use ($owned, $committed, $inCollection) {
+        $out = array_map(function ($r) use ($owned, $committed, $inCollection, $priceMap) {
             $o = $owned[$r->scryfall_id] ?? [];
             $c = $committed[$r->scryfall_id] ?? [];
             $nonfoil = (int) ($o['nonfoil'] ?? 0);
@@ -360,6 +377,13 @@ class ScryfallCardController extends Controller
                 'is_default_eligible' => (bool) $r->is_default_eligible,
                 'promo'               => (bool) $r->promo,
                 'variation'           => (bool) $r->variation,
+                // Drives the deck sidebar's per-printing finish toggle —
+                // disable Foil when the array doesn't contain 'foil', etc.
+                // Comes back as a raw JSON string from DB::select; decode
+                // here so the API contract stays a real array.
+                'finishes'            => isset($r->finishes)
+                    ? (json_decode($r->finishes, true) ?: null)
+                    : null,
                 'ownership' => [
                     'nonfoil'           => $nonfoil,
                     'foil'              => $foil,
@@ -367,6 +391,7 @@ class ScryfallCardController extends Controller
                     'available_foil'    => max(0, $foil    - $usedFoil),
                     'in_collection'     => isset($inCollection[$r->scryfall_id]),
                 ],
+                'prices' => $this->presentPriceRow($priceMap[$r->scryfall_id] ?? null),
             ];
         }, $rows);
 
@@ -379,7 +404,7 @@ class ScryfallCardController extends Controller
 
     public function show(ScryfallCard $scryfallCard): JsonResponse
     {
-        $scryfallCard->load('tags');
+        $scryfallCard->load(['tags', 'priceRow']);
 
         $ownership = $this->ownershipMap([$scryfallCard->oracle_id], auth()->id());
 
@@ -519,9 +544,10 @@ class ScryfallCardController extends Controller
      * back as strings — decode them here.
      *
      * @param  array{owned: int, available: int, wanted_by_others: int}  $own
+     * @param  object|null  $priceRow  raw card_prices row for the default printing, or null
      * @return array<string, mixed>
      */
-    private function presentRow(object $r, array $own): array
+    private function presentRow(object $r, array $own, ?object $priceRow = null): array
     {
         $out = [
             'scryfall_id'      => $r->default_scryfall_id,
@@ -559,6 +585,7 @@ class ScryfallCardController extends Controller
             'owned_count'      => $own['owned'],
             'available_count'  => $own['available'],
             'wanted_by_others' => $own['wanted_by_others'],
+            'prices'           => $this->presentPriceRow($priceRow),
         ];
 
         if ($r->is_dfc) {
@@ -626,6 +653,7 @@ class ScryfallCardController extends Controller
             'owned_count'      => $own['owned'],
             'available_count'  => $own['available'],
             'wanted_by_others' => $own['wanted_by_others'],
+            'prices'           => $this->presentPriceFromModel($card->priceRow ?? null),
         ];
 
         if ($card->is_dfc) {
@@ -644,6 +672,67 @@ class ScryfallCardController extends Controller
     // ─────────────────────────────────────────────────────────────────────
     // Small utilities
     // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Shape a raw card_prices row (stdClass from DB::table or null) into
+     * the JSON payload. Returns null when no price snapshot exists for
+     * the printing — the frontend renders that as `—`.
+     *
+     * @return array<string, string|null>|null
+     */
+    private function presentPriceRow(?object $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return [
+            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
+            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
+            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'captured_on' => $row->captured_on ?? null,
+        ];
+    }
+
+    /**
+     * Eloquent variant of presentPriceRow — used by the show endpoint
+     * which loads the CardPrice via the priceRow relation. Same JSON
+     * shape as presentPriceRow.
+     *
+     * @return array<string, string|null>|null
+     */
+    private function presentPriceFromModel(?\App\Models\CardPrice $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        return [
+            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
+            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
+            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'captured_on' => $row->captured_on?->toDateString(),
+        ];
+    }
+
+    /**
+     * Bulk-fetch card_prices for a list of scryfall_ids, keyed by id.
+     * Used by the search and printings endpoints to avoid N+1 reads
+     * when shaping a paged response.
+     *
+     * @param  array<int, string>  $scryfallIds
+     * @return array<string, object>
+     */
+    private function priceMapForScryfallIds(array $scryfallIds): array
+    {
+        if (empty($scryfallIds)) return [];
+        $rows = DB::table('card_prices')
+            ->whereIn('scryfall_id', $scryfallIds)
+            ->get();
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row->scryfall_id] = $row;
+        }
+        return $map;
+    }
 
     private function decodeJson($v): mixed
     {

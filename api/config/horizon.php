@@ -212,6 +212,22 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+
+        // Long-running jobs land here so the 60s default-supervisor timeout
+        // can stay tight. Timeout must be < the redis-long retry_after
+        // (1920s) and > the job's own $timeout (1800s).
+        'supervisor-scryfall' => [
+            'connection' => 'redis-long',
+            'queue' => ['scryfall'],
+            'balance' => 'simple',
+            'maxProcesses' => 1,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 256,
+            'tries' => 1,
+            'timeout' => 1860,
+            'nice' => 0,
+        ],
     ],
 
     // Horizon looks up supervisors by APP_ENV. Any environment missing from
@@ -225,6 +241,9 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-scryfall' => [
+                'maxProcesses' => 1,
+            ],
         ],
 
         'staging' => [
@@ -233,11 +252,17 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-scryfall' => [
+                'maxProcesses' => 1,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'maxProcesses' => 3,
+            ],
+            'supervisor-scryfall' => [
+                'maxProcesses' => 1,
             ],
         ],
     ],

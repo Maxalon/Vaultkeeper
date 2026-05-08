@@ -72,6 +72,11 @@ RUN set -eux; \
 # Prod opcache posture.
 COPY docker/php/opcache-prod.ini /usr/local/etc/php/conf.d/zz-opcache.ini
 
+# Prod runtime posture (memory_limit + error logging to stderr). Without
+# this, the base image left log_errors=Off and a 128M memory_limit, so a
+# fatal under FPM produced an empty-body 500 with nothing in the logs.
+COPY docker/php/runtime-prod.ini /usr/local/etc/php/conf.d/zz-runtime.ini
+
 # Non-root user for the php-fpm pool. UID/GID fixed to 1000 so that bind
 # mounts or mounted volumes from a typical host stay consistent.
 RUN addgroup -g 1000 app \

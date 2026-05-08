@@ -1,17 +1,27 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDeckStore } from '../../stores/deck'
+import { usePricesStore } from '../../stores/prices'
 import { useTabsStore } from '../../stores/tabs'
 import { confirm as confirmDialog } from '../../composables/useConfirm'
 import { useToast } from '../../composables/useToast'
+import { formatEur } from '../../utils/price'
 import ManaSymbol from '../ManaSymbol.vue'
 import ExportMenu from './ExportMenu.vue'
 import AssembleDeckModal from '../AssembleDeckModal.vue'
 
 const deck = useDeckStore()
+const prices = usePricesStore()
 const tabs = useTabsStore()
 const toast = useToast()
 const emit = defineEmits(['edit', 'export'])
+
+const deckTotals = computed(() => {
+  const id = deck.deck?.id
+  if (id == null) return null
+  return prices.deckTotalsByDeckId[id] || null
+})
+const missingPriceCount = computed(() => deckTotals.value?.missing_price_count ?? 0)
 
 // "Assembled" = any entry is bound to a physical copy. We don't have a
 // flag on the deck itself (locked decision 1: ownership is implicit
@@ -123,9 +133,18 @@ function onLegalClick() {
   if (hasIllegality.value) tabs.openTab('illegalities')
 }
 
-function onCommanderClick(card) {
+function onCommanderClick(card, slotIndex = 0) {
   if (!card) return
-  const entry = deck.entries.find((e) => e.scryfall_id === card.scryfall_id)
+  // Prefer scryfall_id match, but fall back to the is_commander flag —
+  // the deck's commander_*_scryfall_id can drift out of sync with the
+  // commander entry's scryfall_id when state gets shuffled (demote +
+  // re-promote, duplicate cleanup), and a stale lookup left the click
+  // doing nothing instead of opening the sidebar.
+  let entry = deck.entries.find((e) => e.scryfall_id === card.scryfall_id)
+  if (!entry) {
+    const commanders = deck.commanderEntries
+    entry = commanders[slotIndex] || commanders[0] || null
+  }
   if (entry) deck.setActiveEntry(entry.id)
 }
 
@@ -195,7 +214,19 @@ onMounted(() => {
     window.addEventListener('resize', drawBg)
   }
   document.addEventListener('click', onDocClickAssemble)
+
+  // Fire-and-forget pricing fetches. Header re-renders when totals land
+  // (the deck-id watch below covers route changes / deck swaps).
+  prices.fetchStatus().catch(() => {})
+  if (deck.deck?.id != null) prices.fetchDeckTotals(deck.deck.id).catch(() => {})
 })
+
+watch(
+  () => deck.deck?.id,
+  (id) => {
+    if (id != null) prices.fetchDeckTotals(id).catch(() => {})
+  },
+)
 
 onBeforeUnmount(() => {
   if (ro) ro.disconnect()
@@ -248,6 +279,24 @@ watch(
           >
             <span class="dot" :class="hasIllegality ? 'bad' : 'ok'">●</span>
             {{ hasIllegality ? 'Illegal' : 'Legal' }}
+          </span>
+        </div>
+
+        <div v-if="deckTotals" class="price-pills">
+          <div class="price-pill">
+            <span class="price-pill-k">Total</span>
+            <span class="price-pill-v">≈ {{ formatEur(deckTotals.total) }}</span>
+          </div>
+          <div class="price-pill">
+            <span class="price-pill-k">Owned</span>
+            <span class="price-pill-v">≈ {{ formatEur(deckTotals.owned_total) }}</span>
+          </div>
+          <div class="price-pill price-pill--missing" :class="{ 'is-zero': !deckTotals.missing_total }">
+            <span class="price-pill-k">Missing</span>
+            <span class="price-pill-v">≈ {{ formatEur(deckTotals.missing_total) }}</span>
+          </div>
+          <span class="price-meta">
+            estimated · Cardmarket<span v-if="missingPriceCount"> · {{ missingPriceCount }} unpriced</span>
           </span>
         </div>
 
@@ -323,7 +372,7 @@ watch(
 
           <div
             class="commander-portrait"
-            @click="onCommanderClick(slot.card)"
+            @click="onCommanderClick(slot.card, slot.index)"
           >
             <img
               v-if="slot.card.image_normal || slot.card.image_small"
@@ -443,6 +492,44 @@ watch(
   gap: 2px;
   font-size: 20px;
   line-height: 1;
+}
+
+.price-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+.price-pill {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 10px;
+  background: rgba(20, 15, 9, 0.55);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 3px;
+}
+.price-pill-k {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-50);
+}
+.price-pill-v {
+  font-family: var(--font-display), serif;
+  font-size: 14px;
+  color: var(--ink-100);
+  letter-spacing: -0.01em;
+}
+.price-pill--missing .price-pill-v { color: var(--cond-hp, #d97757); }
+.price-pill--missing.is-zero .price-pill-v { color: var(--ink-70); }
+.price-meta {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-50);
 }
 
 .btn {

@@ -7,6 +7,7 @@ use App\Models\DeckEntry;
 use App\Models\DeckIgnoredIllegality;
 use App\Models\ScryfallCard;
 use App\Services\DeckLegalityService;
+use App\Services\DeckOwnershipService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -16,7 +17,10 @@ class DeckController extends Controller
 {
     private const FORMATS = ['commander', 'oathbreaker', 'pauper', 'standard', 'modern'];
 
-    public function __construct(private DeckLegalityService $legality) {}
+    public function __construct(
+        private DeckLegalityService $legality,
+        private DeckOwnershipService $ownership,
+    ) {}
 
     public function index(): JsonResponse
     {
@@ -97,14 +101,14 @@ class DeckController extends Controller
             return $deck;
         });
 
-        return response()->json($this->presentDetail($deck->fresh(['entries.card', 'commander1', 'commander2', 'companion'])), 201);
+        return response()->json($this->presentDetail($deck->fresh(['entries.card.priceRow', 'commander1', 'commander2', 'companion'])), 201);
     }
 
     public function show(Deck $deck): JsonResponse
     {
         $this->authorizeOwner($deck);
         return response()->json($this->presentDetail(
-            $deck->load(['entries.card', 'commander1', 'commander2', 'companion', 'ignoredIllegalities'])
+            $deck->load(['entries.card.priceRow', 'commander1', 'commander2', 'companion', 'ignoredIllegalities'])
         ));
     }
 
@@ -135,7 +139,7 @@ class DeckController extends Controller
         });
 
         return response()->json($this->presentDetail(
-            $deck->fresh(['entries.card', 'commander1', 'commander2', 'companion', 'ignoredIllegalities'])
+            $deck->fresh(['entries.card.priceRow', 'commander1', 'commander2', 'companion', 'ignoredIllegalities'])
         ));
     }
 
@@ -144,6 +148,19 @@ class DeckController extends Controller
         $this->authorizeOwner($deck);
         $deck->delete();
         return response()->noContent();
+    }
+
+    /**
+     * GET /api/decks/{deck}/totals
+     *
+     * EUR cost-to-complete summary for a deck. Returns total / owned /
+     * missing / missing_price_count, with finish-aware pricing (etched
+     * and foil deck-bound copies use their dedicated columns).
+     */
+    public function totals(Deck $deck): JsonResponse
+    {
+        $this->authorizeOwner($deck);
+        return response()->json($this->ownership->totalsForDeck($deck));
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -275,6 +292,9 @@ class DeckController extends Controller
     private function presentEntry(DeckEntry $entry): array
     {
         $card = $entry->card;
+        if ($card !== null && ! $card->relationLoaded('priceRow')) {
+            $card->loadMissing('priceRow');
+        }
         return [
             'id'                     => $entry->id,
             'scryfall_id'            => $entry->scryfall_id,
@@ -301,6 +321,12 @@ class DeckController extends Controller
                 'image_normal'    => $card->image_normal,
                 'image_small_back'  => $card->image_small_back,
                 'image_normal_back' => $card->image_normal_back,
+                'prices'          => $card->priceRow ? [
+                    'eur'         => $card->priceRow->eur !== null        ? (string) $card->priceRow->eur        : null,
+                    'eur_foil'    => $card->priceRow->eur_foil !== null   ? (string) $card->priceRow->eur_foil   : null,
+                    'eur_etched'  => $card->priceRow->eur_etched !== null ? (string) $card->priceRow->eur_etched : null,
+                    'captured_on' => $card->priceRow->captured_on?->toDateString(),
+                ] : null,
             ] : null,
         ];
     }

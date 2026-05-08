@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import api from '../lib/api'
 import { useToast } from '../composables/useToast'
 import { useCollectionStore } from './collection'
+import { usePricesStore } from './prices'
 import {
   parseSearch as parseSearchGeneric,
   serializeQuery as serializeQueryGeneric,
@@ -268,6 +269,7 @@ export const useDeckStore = defineStore('deck', {
           this.loadIllegalities(deckId),
           useCollectionStore().fetchGroups(),
         ])
+        usePricesStore().scheduleRefresh({ deckId })
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Failed to add card')
@@ -299,6 +301,7 @@ export const useDeckStore = defineStore('deck', {
           this.loadIllegalities(deckId),
           useCollectionStore().fetchDecks(),
         ])
+        usePricesStore().scheduleRefresh({ deckId })
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Failed to add card')
@@ -315,6 +318,11 @@ export const useDeckStore = defineStore('deck', {
       this.saving.add(entryId)
       // Quantity / zone edits change the mainboard size shown in the sidebar.
       const countChanged = 'quantity' in patch || 'zone' in patch
+      // Re-printing a commander shifts decks.commander_*_scryfall_id on
+      // the server (so deck.commander1/2 now resolve to a different
+      // ScryfallCard); reload the deck so the info-header tile picks up
+      // the new printing's image.
+      const commanderPrintingChanged = 'scryfall_id' in patch && prev.is_commander
       try {
         const { data } = await api.patch(
           `/decks/${deckId}/entries/${entryId}`,
@@ -325,7 +333,9 @@ export const useDeckStore = defineStore('deck', {
         await Promise.all([
           this.loadIllegalities(deckId),
           countChanged ? useCollectionStore().fetchGroups() : null,
+          commanderPrintingChanged ? this.loadDeck(deckId) : null,
         ])
+        usePricesStore().scheduleRefresh({ deckId })
         return data
       } catch (e) {
         this.entries[idx] = prev
@@ -360,6 +370,7 @@ export const useDeckStore = defineStore('deck', {
           this.loadEntries(deckId),
           this.loadIllegalities(deckId),
         ])
+        usePricesStore().scheduleRefresh({ deckId })
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Edit failed')
@@ -392,6 +403,7 @@ export const useDeckStore = defineStore('deck', {
           // queue, so this is a no-op there, but it's cheap.
           useCollectionStore().fetchGroups(),
         ])
+        usePricesStore().scheduleRefresh({ deckId })
         if (willQueueForReview) {
           // Default path queued the freed copy for review with reason
           // `no_location`. Offer the user a one-click override to
@@ -450,10 +462,25 @@ export const useDeckStore = defineStore('deck', {
 
     async updateDeck(id, patch) {
       const toast = useToast()
+      // Commander slot changes trigger syncCommanderEntries on the
+      // backend, which flips is_commander on entries (and may insert a
+      // freshly-created commander row). Without reloading entries
+      // locally, DeckGrid's `!is_commander` filter would still hide a
+      // just-demoted card, or still show a just-promoted one in the
+      // mainboard list, until the next page load.
+      const commandersChanged =
+        'commander_1_scryfall_id' in patch || 'commander_2_scryfall_id' in patch
       try {
         const { data } = await api.put(`/decks/${id}`, patch)
         this.deck = data
-        await this.loadIllegalities(id)
+        await Promise.all([
+          this.loadIllegalities(id),
+          commandersChanged ? this.loadEntries(id) : null,
+        ])
+        // Commander / companion changes flip auto-managed deck_entries
+        // around in the backend, which can shift the deck total. Cheap
+        // refresh covers the case without forcing every caller to know.
+        usePricesStore().scheduleRefresh({ deckId: id })
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Deck update failed')
@@ -580,6 +607,9 @@ export const useDeckStore = defineStore('deck', {
         // rows from partial-excludes show up immediately.
         await this.loadEntries(id)
         await useCollectionStore().fetchGroups()
+        // Bound copies inherit their finish from the source CE — total /
+        // owned / missing math depends on those flags, so refresh.
+        usePricesStore().scheduleRefresh({ deckId: id })
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Assemble failed')
@@ -598,6 +628,7 @@ export const useDeckStore = defineStore('deck', {
         const { data } = await api.post(`/decks/${id}/unassemble`)
         await this.loadEntries(id)
         await useCollectionStore().fetchGroups()
+        usePricesStore().scheduleRefresh({ deckId: id })
         return data
       } catch (e) {
         toast.error(e.response?.data?.message || 'Unassemble failed')

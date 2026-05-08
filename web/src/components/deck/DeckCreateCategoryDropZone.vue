@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
+import IconFolderPlus from '../../assets/icons/folder-plus.svg'
 
 /**
  * Floating "drop to create category" target. Mirrors DeckRemoveDropZone
@@ -53,11 +54,7 @@ function onDrop(e) {
       @dragleave="onDragLeave"
       @drop="onDrop"
     >
-      <svg class="icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-        <path d="M12 11v6" />
-        <path d="M9 14h6" />
-      </svg>
+      <IconFolderPlus class="icon" aria-hidden="true" />
       <span class="label">Drop to create category</span>
     </div>
   </Teleport>

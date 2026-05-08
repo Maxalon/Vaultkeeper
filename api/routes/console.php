@@ -2,6 +2,7 @@
 
 use App\Jobs\ScryfallCheckSetsJob;
 use App\Jobs\ScryfallSyncBulkJob;
+use App\Jobs\ScryfallSyncPricesJob;
 use App\Jobs\SyncSetsJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -28,3 +29,10 @@ Schedule::job(new ScryfallCheckSetsJob)->dailyAt('04:00');
 // resolution, and the backfill step reads icon_svg_uri to fill rarity
 // slots that mtg-vectors doesn't cover (e.g. SLD, some promos).
 Schedule::job(new SyncSetsJob)->dailyAt('04:30');
+
+// Daily EUR price refresh (Cardmarket trend prices via Scryfall bulk).
+// Runs at 05:00 — after the set-symbol job at 04:30 — so the broader
+// reference data is fresh before prices are reconciled. Cheap when
+// Scryfall hasn't published a new bulk file (manifest mtime check
+// short-circuits the download).
+Schedule::job(new ScryfallSyncPricesJob)->dailyAt('05:00');

@@ -57,12 +57,20 @@ class CardController extends Controller
             ->pluck('code')
             ->all();
 
+        // type_line moved off scryfall_cards to scryfall_oracles in #177
+        // (drop_oracle_invariant_columns_from_scryfall_cards). Join the oracle
+        // table to keep the "exclude lands" filter working. select() is needed
+        // so the join doesn't leak oracle columns into the model's attributes
+        // (which would shadow the printing-level columns we actually want).
         $card = ScryfallCard::query()
-            ->whereIn('set_code', $setCodes)
+            ->join('scryfall_oracles', 'scryfall_cards.oracle_id', '=', 'scryfall_oracles.oracle_id')
+            ->whereIn('scryfall_cards.set_code', $setCodes)
+            ->whereNotNull('scryfall_cards.image_normal')
             ->where(function ($q) {
-                $q->whereNull('type_line')->orWhere('type_line', 'not like', '%Land%');
+                $q->whereNull('scryfall_oracles.type_line')
+                  ->orWhere('scryfall_oracles.type_line', 'not like', '%Land%');
             })
-            ->whereNotNull('image_normal')
+            ->select('scryfall_cards.*')
             ->inRandomOrder()
             ->first();
 
@@ -70,6 +78,10 @@ class CardController extends Controller
             return response()->json(null);
         }
 
+        // Oracle-invariant fields (type_line, mana_cost, oracle_text,
+        // power, toughness) are exposed via accessors on ScryfallCard that
+        // proxy to the auto-loaded oracle relation — they look like native
+        // columns to the caller.
         return response()->json([
             'name'             => $card->name,
             'type_line'        => $card->type_line,

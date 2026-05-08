@@ -1,9 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
+import { useWantedMatchesStore } from '../../stores/wantedMatches'
 import { useDeckEntryActions } from '../../composables/useDeckEntryActions'
+import { avatarColor, avatarInitials } from '../../utils/avatarColor'
 import CardDetailBody from '../CardDetailBody.vue'
 import HelpHint from '../HelpHint.vue'
+import PriceLine from '../PriceLine.vue'
 import PrintingPickerModal from '../PrintingPickerModal.vue'
 import ZoneSelector from './ZoneSelector.vue'
 import CategoryInput from './CategoryInput.vue'
@@ -12,6 +15,7 @@ import PhysicalCopyDropdown from './PhysicalCopyDropdown.vue'
 import AddCopiesModal from './AddCopiesModal.vue'
 
 const deck = useDeckStore()
+const wm = useWantedMatchesStore()
 
 const entry = computed(() =>
   deck.entries.find((e) => e.id === deck.activeEntryId) || null,
@@ -76,6 +80,18 @@ const sibs       = computed(() => siblings(entry.value))
 const wantedQty  = computed(() => sibs.value.wantedQty)
 const ownedQty   = computed(() => sibs.value.bound?.quantity ?? 0)
 
+// Friends who own a copy of this entry's card. Resolves once
+// wantedMatches.fetch completes; empty until then or when no friend has
+// the card. Click opens the WantedMatchPanel with full per-copy detail.
+const matchFriends = computed(() => {
+  if (!entry.value) return []
+  return wm.matchFor(entry.value.scryfall_id)?.friends ?? []
+})
+
+function openMatchPanel() {
+  if (entry.value) wm.openPanel(entry.value)
+}
+
 function onWantedInc() {
   if (!entry.value || !deckId.value) return
   const w = sibs.value.wanted
@@ -135,9 +151,61 @@ function openPrintingPicker() {
   if (!oracleId.value || isBound.value) return
   printingPickerOpen.value = true
 }
-function onPickPrinting(scryfallId) {
+
+const FINISH_OPTIONS = ['nonfoil', 'foil', 'etched']
+const FINISH_LABELS  = { nonfoil: 'Nonfoil', foil: 'Foil', etched: 'Etched' }
+const FINISH_HINTS   = {
+  nonfoil: 'This printing has no non-foil version.',
+  foil:    'This printing has no foil version.',
+  etched:  'This printing has no etched version.',
+}
+
+const printingFinishes = computed(() => {
+  // Pre-sync data: when the printing's `finishes` array is null/missing
+  // (i.e. the row predates the finishes column being populated), fall
+  // back to {nonfoil, foil} rather than allowing all options. Etched is
+  // post-2021 and rare — defaulting it OFF is the safer 95% answer until
+  // the next bulk-sync repopulates the column. Glossy is treated as
+  // nonfoil-equivalent (not user-selectable as its own option).
+  const raw = entry.value?.scryfall_card?.finishes
+  if (!Array.isArray(raw)) return new Set(['nonfoil', 'foil'])
+  const set = new Set(raw)
+  if (set.has('glossy')) set.add('nonfoil')
+  return set
+})
+
+function finishSupported(opt) {
+  return printingFinishes.value.has(opt)
+}
+
+const currentFinish = computed(() => {
+  // Bound entries source finish from the bound CE; unbound from the slot
+  // itself. Defaults to 'nonfoil' when both flags are null/undefined.
+  const src = isBound.value ? (entry.value?.physical_copy || {}) : (entry.value || {})
+  if (src.is_etched) return 'etched'
+  if (src.foil)      return 'foil'
+  return 'nonfoil'
+})
+
+function setFinish(next) {
+  if (!entry.value || !deckId.value || isBound.value) return
+  if (next === currentFinish.value) return
+  if (!finishSupported(next)) return
+  patch({ foil: next === 'foil', is_etched: next === 'etched' })
+}
+
+function onPickPrinting(scryfallId, finishes) {
   if (!entry.value || !deckId.value || scryfallId === entry.value.scryfall_id) return
-  patch({ scryfall_id: scryfallId })
+  const fields = { scryfall_id: scryfallId }
+  // Auto-snap finish when the new printing doesn't support the current
+  // selection. Silently picks the first finish the new printing supports
+  // so the slot never lands in an impossible (printing × finish) state.
+  if (Array.isArray(finishes) && !finishes.includes(currentFinish.value)) {
+    const snap = finishes[0] ?? 'nonfoil'
+    fields.foil      = snap === 'foil'
+    fields.is_etched = snap === 'etched'
+  }
+  patch(fields)
 }
 </script>
 
@@ -158,6 +226,12 @@ function onPickPrinting(scryfallId) {
         <CardDetailBody :card="entry.scryfall_card" :show-legalities="false" />
         <span v-if="isGc" class="gc-badge">GC</span>
       </div>
+
+      <PriceLine
+        :prices="entry.scryfall_card?.prices"
+        :foil="currentFinish === 'foil'"
+        :is-etched="currentFinish === 'etched'"
+      />
 
       <section class="vk-detail-section">
         <div class="qty-row">
@@ -192,6 +266,34 @@ function onPickPrinting(scryfallId) {
             />
           </div>
         </div>
+
+        <!-- Friend availability for the wanted side. Renders only when
+             this card is on the wishlist AND the matches fetch has
+             surfaced at least one friend with an available copy. Click
+             opens WantedMatchPanel with conditions / locations / foil. -->
+        <button
+          v-if="wantedQty > 0 && matchFriends.length > 0"
+          type="button"
+          class="match-hint"
+          @click="openMatchPanel"
+        >
+          <span class="match-hint-avatars" aria-hidden="true">
+            <span
+              v-for="(friend, i) in matchFriends.slice(0, 3)"
+              :key="friend.user_id"
+              class="match-hint-avatar"
+              :style="{
+                background: avatarColor(friend.username),
+                zIndex: matchFriends.length - i,
+                marginLeft: i === 0 ? '0' : '-5px',
+              }"
+            >{{ avatarInitials(friend.username) }}</span>
+          </span>
+          <span class="match-hint-text">
+            {{ matchFriends.length }} friend{{ matchFriends.length === 1 ? '' : 's' }} own{{ matchFriends.length === 1 ? 's' : '' }} this
+          </span>
+          <span class="match-hint-caret" aria-hidden="true">›</span>
+        </button>
       </section>
 
       <section class="vk-detail-section">
@@ -230,6 +332,30 @@ function onPickPrinting(scryfallId) {
           :suggestions="deck.categoriesInDeck"
           @commit="patch({ category: $event || null })"
         />
+      </section>
+
+      <section class="vk-detail-section">
+        <h4>
+          <span>Finish</span>
+          <HelpHint
+            v-if="isBound"
+            text="Bound copies inherit finish from the physical copy. Edit it from the Physical Copies tab."
+          />
+        </h4>
+        <div class="finish-row" role="radiogroup" aria-label="Finish">
+          <button
+            v-for="opt in FINISH_OPTIONS"
+            :key="opt"
+            type="button"
+            role="radio"
+            class="finish-btn"
+            :class="{ selected: currentFinish === opt }"
+            :aria-checked="currentFinish === opt"
+            :disabled="isBound || !finishSupported(opt)"
+            :title="!finishSupported(opt) ? FINISH_HINTS[opt] : null"
+            @click="setFinish(opt)"
+          >{{ FINISH_LABELS[opt] }}</button>
+        </div>
       </section>
 
       <section v-if="!isBound" class="vk-detail-section">
@@ -362,6 +488,56 @@ function onPickPrinting(scryfallId) {
   gap: 4px;
 }
 
+.match-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 10px;
+  background: var(--bg-0);
+  border: 1px solid var(--amber-lo, #6e5421);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--ink-100);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.match-hint:hover {
+  background: color-mix(in srgb, var(--amber, #c9a552) 8%, var(--bg-0));
+  border-color: var(--amber, #c9a552);
+}
+.match-hint-avatars {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.match-hint-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 7.5px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 0 0 1.5px var(--bg-0, #1a1610);
+  user-select: none;
+}
+.match-hint-text {
+  flex: 1;
+  min-width: 0;
+}
+.match-hint-caret {
+  color: var(--ink-50);
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .role-actions {
   display: flex;
   flex-direction: column;
@@ -401,5 +577,35 @@ function onPickPrinting(scryfallId) {
   color: var(--ink-50);
   margin-top: 2px;
   font-weight: 400;
+}
+
+.finish-row {
+  display: flex;
+  gap: 6px;
+}
+.finish-btn {
+  flex: 1;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  color: var(--ink-100);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+.finish-btn:hover:not(:disabled) {
+  background: var(--bg-2);
+  border-color: var(--amber-lo);
+}
+.finish-btn.selected {
+  background: var(--amber-lo);
+  border-color: var(--amber);
+  color: #1a1408;
+}
+.finish-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

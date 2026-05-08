@@ -1,6 +1,7 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useCollectionStore } from '../stores/collection'
+import { usePricesStore } from '../stores/prices'
 import { useSettingsStore } from '../stores/settings'
 import AppTopBar from '../components/AppTopBar.vue'
 import LocationSidebar from '../components/LocationSidebar.vue'
@@ -9,14 +10,34 @@ import CardListPanel from '../components/CardListPanel.vue'
 import DetailSidebar from '../components/DetailSidebar.vue'
 
 const collection = useCollectionStore()
+const prices = usePricesStore()
 const settings = useSettingsStore()
+
+// Totals track whatever location the user is currently viewing — null
+// (the "All Cards" pseudo-location) gets the collection-wide total,
+// any numeric id constrains to that drawer/binder. Re-fetch on every
+// active-location change so the StatsBar doesn't lag behind the list.
+function refreshTotals() {
+  const loc = collection.activeLocationId
+  if (loc === null) {
+    prices.fetchCollectionTotals().catch(() => {})
+  } else {
+    prices.fetchCollectionTotals(loc).catch(() => {})
+  }
+}
 
 onMounted(async () => {
   await collection.fetchLocations()
   if (collection.activeLocationId === null) {
     await collection.fetchEntries()
   }
+  // Fire-and-forget: the totals + last-synced hint render once they
+  // arrive; we don't block the collection list on them.
+  prices.fetchStatus().catch(() => {})
+  refreshTotals()
 })
+
+watch(() => collection.activeLocationId, refreshTotals)
 </script>
 
 <template>

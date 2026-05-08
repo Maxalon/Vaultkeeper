@@ -38,6 +38,8 @@ function isActive() {
     type="button"
     class="loc-row sidebar-item"
     :class="{ nested, 'sidebar-deck': item.kind === 'deck', active: isActive() }"
+    :data-kind="item.kind"
+    :data-id="item.id"
     @click="onClick"
   >
     <span v-if="settings.sidebarShowDrag" class="drag drag-handle" @click.stop>⠿</span>

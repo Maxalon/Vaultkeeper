@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Sandbox control · vanilla FormKit drag</title>
+    <style>
+      html, body { margin: 0; padding: 24px; background: #1a1a1a; color: #eee; font-family: system-ui; }
+      ul { list-style: none; padding: 0; margin: 24px 0; max-width: 320px; border: 1px dashed #555; min-height: 60px; }
+      li { padding: 12px; background: #2a2a2a; margin: 4px; cursor: grab; user-select: none; }
+      li.dragging { opacity: 0.4; }
+      pre { background: #2a2a2a; padding: 12px; }
+    </style>
+  </head>
+  <body>
+    <h2>Vanilla FormKit drag-and-drop control</h2>
+    <p>
+      Two flat lists, single FormKit instance per list, sharing the
+      <code>group: 'control'</code> name. If Playwright can drive a
+      cross-list drag here, our test infrastructure is sound.
+    </p>
+    <h3>List A</h3>
+    <ul id="list-a">
+      <li data-id="a1">apple</li>
+      <li data-id="a2">apricot</li>
+      <li data-id="a3">avocado</li>
+    </ul>
+    <h3>List B</h3>
+    <ul id="list-b">
+      <li data-id="b1">banana</li>
+      <li data-id="b2">blueberry</li>
+    </ul>
+    <h3>Sort/transfer log</h3>
+    <pre id="event-log"></pre>
+    <script type="module" src="./control.js"></script>
+  </body>
+</html>

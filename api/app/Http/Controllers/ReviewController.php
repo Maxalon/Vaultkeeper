@@ -130,6 +130,7 @@ class ReviewController extends Controller
             'assignments.*.accept_defaults'      => 'sometimes|boolean',
             'assignments.*.condition'            => 'sometimes|in:NM,LP,MP,HP,DMG',
             'assignments.*.foil'                 => 'sometimes|boolean',
+            'assignments.*.is_etched'            => 'sometimes|boolean',
         ]);
 
         $resolved  = 0;
@@ -193,6 +194,12 @@ class ReviewController extends Controller
                     if (array_key_exists('foil', $row)) {
                         $patch['foil'] = (bool) $row['foil'];
                     }
+                    if (array_key_exists('is_etched', $row)) {
+                        $patch['is_etched'] = (bool) $row['is_etched'];
+                        if ($patch['is_etched']) {
+                            $patch['foil'] = false;
+                        }
+                    }
                     $copy->forceFill($patch)->save();
                     $accepted++;
                     continue;
@@ -226,6 +233,7 @@ class ReviewController extends Controller
                     ->where('scryfall_id', $copy->scryfall_id)
                     ->where('condition', $copy->condition)
                     ->where('foil', (bool) $copy->foil)
+                    ->where('is_etched', (bool) $copy->is_etched)
                     ->where('id', '!=', $copy->id)
                     ->lockForUpdate()
                     ->first();
@@ -285,6 +293,7 @@ class ReviewController extends Controller
             'quantity'       => (int) $entry->quantity,
             'condition'      => $entry->condition,
             'foil'           => (bool) $entry->foil,
+            'is_etched'      => (bool) $entry->is_etched,
             'notes'          => $entry->notes,
             'review_reason'  => $entry->review_reason?->value,
             'location_id'    => $entry->location_id,

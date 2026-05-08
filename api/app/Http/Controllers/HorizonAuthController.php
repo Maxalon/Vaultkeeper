@@ -16,9 +16,24 @@ use Throwable;
 /**
  * Handles the password-protected entry into the Horizon dashboard.
  *
+ * The dashboard lives at horizon.vault.*\/dashboard. HORIZON_DOMAIN
+ * scopes Horizon's routes to that subdomain; HORIZON_PATH=`dashboard`
+ * (no leading slash) chooses the prefix. The path config has two hard
+ * constraints documented in detail in .env.prod.example:
+ *
+ *   1. Empty / `/` would let the package's SPA catch-all
+ *      (Route::get('/{view?}')) shadow these auth routes.
+ *   2. A LEADING-SLASH value (e.g. `/dashboard`) would break the
+ *      Horizon frontend's API URL construction (`'/' + path + ...`
+ *      becomes `'//foo/...'`, a protocol-relative URL).
+ *
+ * The auth pages here sit at the subdomain root, ABOVE the dashboard
+ * prefix — so /login, /setup, /logout, and `/` are unambiguously
+ * Laravel routes; `/dashboard/...` is unambiguously Horizon.
+ *
  * First-access setup
  * ──────────────────
- * When no admin row exists, GET /horizon-setup renders a "choose a password"
+ * When no admin row exists, GET /setup renders a "choose a password"
  * form gated by a one-time setup token. The token is generated lazily on
  * the first GET and cached in Redis for 24h.
  *
@@ -37,13 +52,13 @@ use Throwable;
  *
  * Login
  * ─────
- * Once an admin exists, GET /horizon-login renders a single-field password
+ * Once an admin exists, GET /login renders a single-field password
  * form. POST verifies the bcrypt hash and writes `horizon_authed=true` to
  * the session. The Horizon gate (HorizonServiceProvider) reads that key.
  *
  * Logout
  * ──────
- * POST /horizon-logout drops the session flag and bounces back to login.
+ * POST /logout drops the session flag and bounces back to login.
  */
 class HorizonAuthController extends Controller
 {
@@ -56,7 +71,7 @@ class HorizonAuthController extends Controller
         if (HorizonAdmin::query()->exists()) {
             // Already configured — push the operator to the login form
             // instead of rendering 404 (less confusing).
-            return redirect('/horizon-login');
+            return redirect('/login');
         }
 
         $token = Cache::get(self::SETUP_TOKEN_KEY);
@@ -99,9 +114,9 @@ class HorizonAuthController extends Controller
             Mail::raw(
                 "A Horizon dashboard setup token has been issued for ".config('app.url').".\n\n"
                 ."Token: {$token}\n\n"
-                ."Visit /horizon-setup, paste this token, and choose a password.\n"
+                ."Visit /setup on the Horizon subdomain, paste this token, and choose a password.\n"
                 ."The token expires in 24 hours.\n\n"
-                ."If you did not initiate this, someone reached the /horizon-setup\n"
+                ."If you did not initiate this, someone reached the /setup\n"
                 ."page before an admin was configured. The token alone is harmless\n"
                 ."until the password form is submitted, but you should investigate.",
                 function ($msg) use ($recipient) {
@@ -122,7 +137,7 @@ class HorizonAuthController extends Controller
     public function setup(Request $request): RedirectResponse
     {
         if (HorizonAdmin::query()->exists()) {
-            return redirect('/horizon-login');
+            return redirect('/login');
         }
 
         $data = $request->validate([
@@ -150,7 +165,7 @@ class HorizonAuthController extends Controller
     public function showLogin(): View|RedirectResponse
     {
         if (! HorizonAdmin::query()->exists()) {
-            return redirect('/horizon-setup');
+            return redirect('/setup');
         }
         return view('horizon.login');
     }
@@ -158,7 +173,7 @@ class HorizonAuthController extends Controller
     public function login(Request $request): RedirectResponse
     {
         if (! HorizonAdmin::query()->exists()) {
-            return redirect('/horizon-setup');
+            return redirect('/setup');
         }
 
         $data = $request->validate([
@@ -182,7 +197,7 @@ class HorizonAuthController extends Controller
     {
         $request->session()->forget(self::SESSION_AUTHED);
         $request->session()->regenerate();
-        return redirect('/horizon-login');
+        return redirect('/login');
     }
 
     /**
@@ -208,13 +223,14 @@ class HorizonAuthController extends Controller
      * Only same-origin paths are allowed: must start with a single `/`
      * and must not start with `//` (which browsers treat as a
      * protocol-relative URL pointing at another host). Anything else
-     * falls back to /horizon, the default destination.
+     * falls back to /dashboard, the dashboard root URL on the
+     * horizon subdomain.
      */
     private function safeNext(?string $next): string
     {
         if (is_string($next) && str_starts_with($next, '/') && ! str_starts_with($next, '//')) {
             return $next;
         }
-        return '/horizon';
+        return '/dashboard';
     }
 }

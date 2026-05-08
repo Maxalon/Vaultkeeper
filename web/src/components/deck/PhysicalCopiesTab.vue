@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
+import { useWantedMatchesStore } from '../../stores/wantedMatches'
+import { avatarColor, avatarInitials } from '../../utils/avatarColor'
 import CardPeek from '../CardPeek.vue'
 import ConditionBadge from '../ConditionBadge.vue'
 import AddCopiesModal from './AddCopiesModal.vue'
@@ -13,6 +15,19 @@ import EditPhysicalCopyModal from './EditPhysicalCopyModal.vue'
  * the deckbuilder tab system.
  */
 const deck = useDeckStore()
+const wm = useWantedMatchesStore()
+
+// Friend-availability lookup for missing rows. Returns the array of
+// friends who own a copy of `scryfall_id`, or [] when there is no entry
+// in the wanted-matches response (card not wanted, or zero matches).
+function friendsForRow(row) {
+  const m = wm.matchFor(row.scryfall_id)
+  return m?.friends ?? []
+}
+
+function openMatchPanel(row) {
+  wm.openPanel(row)
+}
 
 const ZONES = [
   { key: 'main',  label: 'Main deck' },
@@ -33,9 +48,7 @@ const groups = computed(() => {
   const out = {}
   for (const z of ZONES) {
     const inZone = sortedEntries.value.filter((e) => e.zone === z.key)
-    const missing = inZone.filter(
-      (e) => e.physical_copy_id == null && !e.is_commander,
-    )
+    const missing = inZone.filter((e) => e.physical_copy_id == null)
     const bound = inZone.filter((e) => e.physical_copy_id != null)
     out[z.key] = { missing, bound, total: missing.length + bound.length }
   }
@@ -159,6 +172,13 @@ function onRowLeave() {
       </template>
     </header>
 
+    <!-- Wanted-matches loading: indeterminate barber-pole stripe + caption.
+         Disappears once wm.loading flips false. -->
+    <div v-if="wm.loading" class="match-loading" role="status" aria-live="polite">
+      <div class="stripe" aria-hidden="true" />
+      <span class="match-loading-text">Checking which friends own missing cards…</span>
+    </div>
+
     <template v-for="z in ZONES" :key="z.key">
       <section
         v-if="groups[z.key].total"
@@ -209,6 +229,33 @@ function onRowLeave() {
                   @click="jumpToCard(row)"
                 >{{ row.scryfall_card?.name || '—' }}</button>
                 <span class="row-qty">×{{ row.quantity }}</span>
+                <!-- Friend availability: appears once wm.fetch resolves
+                     and at least one friend has a copy. Click opens the
+                     WantedMatchPanel with full per-copy detail. -->
+                <button
+                  v-if="!wm.loading && friendsForRow(row).length > 0"
+                  type="button"
+                  class="friend-meta"
+                  :title="`Available from ${friendsForRow(row).map((f) => f.username).join(', ')} — click to see copies`"
+                  @click.stop="openMatchPanel(row)"
+                >
+                  <span class="friend-meta-dot" aria-hidden="true">·</span>
+                  <span class="friend-avatars" aria-hidden="true">
+                    <span
+                      v-for="(friend, i) in friendsForRow(row).slice(0, 3)"
+                      :key="friend.user_id"
+                      class="friend-avatar"
+                      :style="{
+                        background: avatarColor(friend.username),
+                        zIndex: friendsForRow(row).length - i,
+                        marginLeft: i === 0 ? '0' : '-5px',
+                      }"
+                    >{{ avatarInitials(friend.username) }}</span>
+                  </span>
+                  <span class="friend-label">
+                    {{ friendsForRow(row)[0].username }}<template v-if="friendsForRow(row).length > 1"> +{{ friendsForRow(row).length - 1 }}</template>
+                  </span>
+                </button>
                 <span class="spacer" />
                 <button type="button" class="action" @click="openAdd(row)">Add copies…</button>
               </li>
@@ -309,6 +356,87 @@ function onRowLeave() {
 }
 .banner.ok { color: #7cb98e; }
 .check { font-weight: 700; font-size: 1.1rem; }
+
+/* ── Wanted-matches indeterminate loading ─────────────────────────── */
+/* Barber-pole stripe: amber/transparent diagonal bands scrolling
+   left→right at a steady cadence. Width is 200% so the loop is
+   seamless when translated by -50%. Caption sits beneath. */
+.match-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: -0.4rem;  /* nestle under the banner */
+}
+.match-loading .stripe {
+  height: 3px;
+  border-radius: 2px;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--amber, #c9a552) 0,
+    var(--amber, #c9a552) 6px,
+    color-mix(in srgb, var(--amber, #c9a552) 20%, transparent) 6px,
+    color-mix(in srgb, var(--amber, #c9a552) 20%, transparent) 12px
+  );
+  background-size: 200% 100%;
+  animation: barber-pole 1.1s linear infinite;
+}
+@keyframes barber-pole {
+  from { background-position: 0 0; }
+  to   { background-position: -34px 0; } /* 2× pattern unit (12+12 + slack) */
+}
+.match-loading-text {
+  font-size: 0.78rem;
+  color: var(--ink-50, #7a7568);
+  font-style: italic;
+}
+
+/* ── Friend-availability meta (inline on missing rows) ──────────────── */
+.friend-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-70, #a8a396);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.friend-meta:hover {
+  background: var(--bg-1, #1d1c1a);
+  border-color: var(--amber-lo, #6e5421);
+  color: var(--ink-100, #f0e9d6);
+}
+.friend-meta-dot {
+  color: var(--ink-30, #4f4d47);
+  font-weight: 700;
+  margin-right: 2px;
+}
+.friend-avatars {
+  display: inline-flex;
+  align-items: center;
+}
+.friend-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 7px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 0 0 1.5px var(--bg-2, #26241f);
+  user-select: none;
+}
+.friend-label {
+  color: inherit;
+}
 
 .zone {
   display: flex;
