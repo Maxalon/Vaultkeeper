@@ -17,16 +17,9 @@
  *      ]}]
  *   }]
  *
- * This component receives a single element of that array as `match` prop
- * plus the raw `loading` / `error` state from the parent store.
- *
- * Props
- *  match             — one element from the wanted-matches array, or null
- *  loading           — true while GET is in flight
- *  error             — truthy string when the fetch failed
- *  friendCount       — total accepted friends (null = unknown, 0 = no friends)
- *  visibilityRevoked — true when a friend revoked collection visibility
- *                      mid-session (C4 state)
+ * Reads everything from the wantedMatches Pinia store (active match,
+ * loading, error, friend-count + derived states). DeckView mounts a
+ * single instance whenever the store has an activeMatch.
  *
  * Emits
  *  close   — user dismissed the panel
@@ -37,41 +30,9 @@ import ConditionBadge from '../../ConditionBadge.vue'
 import HelpHint from '../../HelpHint.vue'
 import NoReservationNotice from './NoReservationNotice.vue'
 import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
+import { useWantedMatchesStore } from '../../../stores/wantedMatches'
 
-const props = defineProps({
-  match: {
-    type: Object,
-    default: null,
-  },
-  loading: {
-    type: Boolean,
-    default: false,
-  },
-  error: {
-    type: String,
-    default: null,
-  },
-  /** Total accepted-friend count. null = not yet known; 0 = no friends. */
-  friendCount: {
-    type: Number,
-    default: null,
-  },
-  /** True when a friend.visibility_changed notification arrived mid-session. */
-  visibilityRevoked: {
-    type: Boolean,
-    default: false,
-  },
-  /**
-   * True when the user has friends but none have shared their collection
-   * (all have collection_visibility = 'private'). Inferred by the parent
-   * when friendCount > 0 and the wanted-matches response has zero friends
-   * across ALL cards.
-   */
-  noVisibleFriends: {
-    type: Boolean,
-    default: false,
-  },
-})
+const wm = useWantedMatchesStore()
 
 const emit = defineEmits(['close'])
 
@@ -91,9 +52,9 @@ async function copyUsername(friend) {
 }
 
 // ── Computed helpers ──────────────────────────────────────────────────
-const friends = computed(() => props.match?.friends ?? [])
-const cardName = computed(() => props.match?.card_name ?? '')
-const wantedQty = computed(() => props.match?.wanted_quantity ?? 1)
+const friends = computed(() => wm.activeMatch?.friends ?? [])
+const cardName = computed(() => wm.activeMatch?.card_name ?? '')
+const wantedQty = computed(() => wm.activeMatch?.wanted_quantity ?? 1)
 
 const hasFriends = computed(() => friends.value.length > 0)
 
@@ -105,19 +66,18 @@ const totalCopies = computed(() =>
 // ── C4: Distinct empty-state discrimination ───────────────────────────
 /** User has zero accepted friends. Show onboarding nudge. */
 const isNoFriendsState = computed(() =>
-  !props.loading && !props.error && !hasFriends.value && props.friendCount === 0,
+  !wm.loading && !wm.error && !hasFriends.value && wm.friendCount === 0,
 )
 
 /**
  * User has friends, but none have made their collection visible.
- * We infer this when friendCount > 0 and there are zero matches for ANY
- * card in the deck (the caller sets this via props from wm.matches).
- * If we only check per-card, we can't distinguish "this card isn't owned"
- * from "all friends are private". Use the noVisibleFriends prop for this.
+ * Inferred via the store getter (friendCount > 0 and zero matches across
+ * the entire deck — distinguishes "this card isn't owned" from "all
+ * friends are private").
  */
 const isNoVisibleFriendsState = computed(() =>
-  !props.loading && !props.error && !hasFriends.value &&
-  props.friendCount !== null && props.friendCount > 0 && props.noVisibleFriends === true,
+  !wm.loading && !wm.error && !hasFriends.value &&
+  wm.friendCount !== null && wm.friendCount > 0 && wm.noVisibleFriends,
 )
 
 /**
@@ -125,12 +85,12 @@ const isNoVisibleFriendsState = computed(() =>
  * case. Show a prominent banner rather than the generic "no matches" state.
  */
 const isVisibilityRevokedState = computed(() =>
-  !props.loading && !props.error && props.visibilityRevoked,
+  !wm.loading && !wm.error && wm.visibilityRevoked,
 )
 
 /** Generic "0 matches for this specific card" (friends exist + are visible). */
 const isNoCardMatchState = computed(() =>
-  !props.loading && !props.error && !hasFriends.value &&
+  !wm.loading && !wm.error && !hasFriends.value &&
   !isNoFriendsState.value && !isNoVisibleFriendsState.value && !isVisibilityRevokedState.value,
 )
 </script>
@@ -154,22 +114,22 @@ const isNoCardMatchState = computed(() =>
           @click="emit('close')"
         >✕</button>
       </div>
-      <p v-if="!loading && !error && hasFriends" class="wmp-subtitle">
+      <p v-if="!wm.loading && !wm.error && hasFriends" class="wmp-subtitle">
         {{ friends.length }} friend{{ friends.length === 1 ? '' : 's' }} ·
         {{ totalCopies }} copy{{ totalCopies === 1 ? '' : 'ies' }} available
       </p>
     </header>
 
     <!-- ── Loading ───────────────────────────────────────────────────── -->
-    <div v-if="loading" class="wmp-state">
+    <div v-if="wm.loading" class="wmp-state">
       <span class="wmp-spinner" aria-label="Loading…" />
       <span class="wmp-state-text">Checking friend collections…</span>
     </div>
 
     <!-- ── Error ─────────────────────────────────────────────────────── -->
-    <div v-else-if="error" class="wmp-state wmp-state--error">
+    <div v-else-if="wm.error" class="wmp-state wmp-state--error">
       <span class="wmp-state-icon" aria-hidden="true">⚠</span>
-      <span class="wmp-state-text">{{ error }}</span>
+      <span class="wmp-state-text">{{ wm.error }}</span>
     </div>
 
     <!-- ── C4: No friends at all ────────────────────────────────────── -->
@@ -267,15 +227,28 @@ const isNoCardMatchState = computed(() =>
 
 <style scoped>
 /* ── Shell ─────────────────────────────────────────────────────────── */
+/* Fixed slide-in over the right rail so any tab can open it without
+   competing for layout space with the tab system or detail sidebars.
+   z-index sits above the right rail (CatalogDetailSidebar / DeckDetailSidebar)
+   so opening a match panel temporarily overlays whichever detail was visible. */
 .wmp {
+  position: fixed;
+  top: 56px; /* topbar height */
+  right: 0;
+  bottom: 0;
   width: var(--detail-width, 340px);
-  flex-shrink: 0;
-  border-left: 1px solid var(--hairline, #33312c);
   background: var(--bg-1);
+  border-left: 1px solid var(--hairline, #33312c);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: 100%;
+  z-index: 50;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.35);
+  animation: wmp-slide 160ms ease-out;
+}
+@keyframes wmp-slide {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
 }
 
 /* ── Header ────────────────────────────────────────────────────────── */

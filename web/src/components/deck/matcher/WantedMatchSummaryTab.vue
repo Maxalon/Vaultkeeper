@@ -3,34 +3,19 @@
  * WantedMatchSummaryTab — aggregated, sortable list of all wanted-card
  * matches across the entire deck.
  *
- * Reuses `useWantedMatches` (via the singleton injected from DeckTabContent
- * through provide/inject). The tab renders every wanted entry that has at
- * least one friend match, sorted by the user's chosen column.
- *
- * Sort options
- *  'card'    — card name, A-Z (default)
- *  'friends' — descending total distinct-friend count
- *  'copies'  — descending total available copy count
- *
- * Each row is clickable: clicking opens the WantedMatchPanel side panel
- * for that card (emits `match-open` with the match object, which
- * DeckTabContent handles).
- *
- * This component is intentionally read-only and allocation-cheap: it
- * derives everything from the already-fetched `wm.matches` ref and does
- * no additional network calls.
+ * Reads everything from the wantedMatches Pinia store (matches, loading,
+ * friend-count, derived states). The store's lifecycle is owned by
+ * DeckView, so this tab works in any pane regardless of whether the
+ * deck tab is open in the same leaf.
  */
 
-import { computed, inject, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
 import HelpHint from '../../HelpHint.vue'
 import NoReservationNotice from './NoReservationNotice.vue'
+import { useWantedMatchesStore } from '../../../stores/wantedMatches'
 
-// DeckTabContent provides the shared wm (useWantedMatches) instance,
-// the openMatchPanel handler, and the noVisibleFriends computed ref.
-const wm = inject('wm')
-const openMatchPanel = inject('openMatchPanel')
-const noVisibleFriends = inject('noVisibleFriends', ref(false))
+const wm = useWantedMatchesStore()
 
 // ── Sort ─────────────────────────────────────────────────────────────
 const SORT_OPTIONS = [
@@ -45,7 +30,7 @@ const sortBy = ref('card')
 /** Total distinct friends across all matched cards (union of user_ids). */
 const totalDistinctFriends = computed(() => {
   const ids = new Set()
-  for (const m of wm.matches.value) {
+  for (const m of wm.matches) {
     for (const f of m.friends) ids.add(f.user_id)
   }
   return ids.size
@@ -53,12 +38,12 @@ const totalDistinctFriends = computed(() => {
 
 /** Cards that have at least one friend with available copies. */
 const matchedCards = computed(() =>
-  wm.matches.value.filter((m) => m.friends.length > 0),
+  wm.matches.filter((m) => m.friends.length > 0),
 )
 
 /** Cards that are wanted but have zero friend matches. */
 const unmatchedCards = computed(() =>
-  wm.matches.value.filter((m) => m.friends.length === 0),
+  wm.matches.filter((m) => m.friends.length === 0),
 )
 
 function friendCount(match) {
@@ -86,27 +71,27 @@ const sortedMatches = computed(() => {
 })
 
 function onRowClick(match) {
-  if (openMatchPanel) openMatchPanel(match)
+  wm.openPanel(match)
 }
 </script>
 
 <template>
   <div class="wmst">
     <!-- ── Loading ──────────────────────────────────────────────────── -->
-    <div v-if="wm.loading.value" class="wmst-state">
+    <div v-if="wm.loading" class="wmst-state">
       <span class="wmst-spinner" aria-label="Loading…" />
       <span class="wmst-state-text">Checking friend collections…</span>
     </div>
 
     <!-- ── Error ────────────────────────────────────────────────────── -->
-    <div v-else-if="wm.error.value" class="wmst-state wmst-state--error">
+    <div v-else-if="wm.error" class="wmst-state wmst-state--error">
       <span class="wmst-state-icon" aria-hidden="true">⚠</span>
       <p class="wmst-state-text wmst-state-text--lead">Could not load matches</p>
-      <p class="wmst-state-text wmst-state-text--sub">{{ wm.error.value }}</p>
+      <p class="wmst-state-text wmst-state-text--sub">{{ wm.error }}</p>
     </div>
 
     <!-- ── C4: No friends at all ────────────────────────────────────── -->
-    <div v-else-if="wm.friendCount.value === 0" class="wmst-state wmst-state--no-friends">
+    <div v-else-if="wm.friendCount === 0" class="wmst-state wmst-state--no-friends">
       <span class="wmst-state-icon" aria-hidden="true">🤝</span>
       <p class="wmst-state-text wmst-state-text--lead">No friends yet</p>
       <p class="wmst-state-text wmst-state-text--sub">
@@ -116,7 +101,7 @@ function onRowClick(match) {
     </div>
 
     <!-- ── C4: Friends have collections private ──────────────────────── -->
-    <div v-else-if="noVisibleFriends" class="wmst-state wmst-state--no-visible">
+    <div v-else-if="wm.noVisibleFriends" class="wmst-state wmst-state--no-visible">
       <span class="wmst-state-icon" aria-hidden="true">🔒</span>
       <p class="wmst-state-text wmst-state-text--lead">Collections are private</p>
       <p class="wmst-state-text wmst-state-text--sub">
@@ -126,7 +111,7 @@ function onRowClick(match) {
     </div>
 
     <!-- ── No wanted cards at all ───────────────────────────────────── -->
-    <div v-else-if="wm.matches.value.length === 0" class="wmst-state">
+    <div v-else-if="wm.matches.length === 0" class="wmst-state">
       <span class="wmst-state-icon" aria-hidden="true">🃏</span>
       <p class="wmst-state-text wmst-state-text--lead">No wanted cards</p>
       <p class="wmst-state-text wmst-state-text--sub">
@@ -138,7 +123,7 @@ function onRowClick(match) {
     <!-- ── Has data ─────────────────────────────────────────────────── -->
     <template v-else>
       <!-- C4: Visibility-revoked notice (non-intrusive banner above list) -->
-      <div v-if="wm.visibilityRevoked.value" class="wmst-revoked-notice" role="status">
+      <div v-if="wm.visibilityRevoked" class="wmst-revoked-notice" role="status">
         <span aria-hidden="true">🔕</span>
         A friend updated their collection visibility — this list has been refreshed.
         Some copies may no longer appear.
@@ -149,7 +134,7 @@ function onRowClick(match) {
         <div class="wmst-banner-body">
           <span class="wmst-banner-stat">
             <strong>{{ matchedCards.length }}</strong>
-            / {{ wm.matches.value.length }} wanted cards matched
+            / {{ wm.matches.length }} wanted cards matched
           </span>
           <span class="wmst-banner-sep" aria-hidden="true">·</span>
           <span class="wmst-banner-stat">

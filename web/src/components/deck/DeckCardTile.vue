@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import DfcPopover from '../DfcPopover.vue'
 import EntryActionsMenu from './EntryActionsMenu.vue'
 import { useDeckStore } from '../../stores/deck'
-import WantedMatchAvatarStack from './matcher/WantedMatchAvatarStack.vue'
 
 const deckStore = useDeckStore()
 const menuPos = ref(null)
@@ -29,12 +28,8 @@ const props = defineProps({
   entry: { type: Object, required: true },
   illegal: { type: Boolean, default: false },
   showGameChanger: { type: Boolean, default: false },
-  /** Friends array from the wanted-matches response for this card, or null. */
-  matchFriends: { type: Array, default: null },
-  /** True while the deck-level wanted-matches fetch is in flight. */
-  matchLoading: { type: Boolean, default: false },
 })
-const emit = defineEmits(['click', 'match-open'])
+const emit = defineEmits(['click'])
 
 const rootRef = ref(null)
 const hovered = ref(false)
@@ -48,11 +43,6 @@ const qty = computed(() => props.entry?.quantity || 0)
 const isSplit = computed(() => !!props.entry?._split)
 const ownedQty = computed(() => props.entry?.owned_quantity ?? null)
 const wantedQty = computed(() => props.entry?.wanted_quantity ?? null)
-
-// Show the avatar stack on rows that have a wanted component.
-const isWanted = computed(() =>
-  props.entry?.physical_copy_id == null || !!props.entry?._split,
-)
 
 const imageSrc = computed(
   () => card.value.image_normal || card.value.image_small,
@@ -115,18 +105,6 @@ function onDragEnd() {
       :title="`Owned ${ownedQty}, wanted ${wantedQty}`"
     >{{ ownedQty }}<span class="sep">/</span>{{ wantedQty }}</span>
     <span v-if="showGameChanger && card.commander_game_changer" class="gc-badge">GC</span>
-
-    <!-- Friend avatar stack — only on wanted rows. Anchored bottom-left
-         so it doesn't collide with qty (top-right) or GC (bottom-left of
-         the gc-badge, which is also bottom-left but these rows are
-         commander-only and never wanted). -->
-    <WantedMatchAvatarStack
-      v-if="isWanted"
-      class="tile-avatar-stack"
-      :friends="matchFriends ?? []"
-      :loading="matchLoading && matchFriends === null"
-      @open="emit('match-open', entry)"
-    />
 
     <DfcPopover
       v-if="card.is_dfc && hovered && card.image_normal_back"
@@ -223,15 +201,5 @@ function onDragEnd() {
   left: 6px;
   background: var(--amber, #c9a552);
   color: #1a1408;
-}
-
-/* Avatar stack anchored bottom-left. Commander tiles with a GC badge
-   also use bottom-left, but commander entries are never wanted, so the
-   two never co-exist on the same tile. */
-.tile-avatar-stack {
-  position: absolute;
-  bottom: 6px;
-  left: 6px;
-  z-index: 4;
 }
 </style>

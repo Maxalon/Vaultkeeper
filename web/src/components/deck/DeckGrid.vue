@@ -13,14 +13,6 @@ const props = defineProps({
   // zone-only tab view (undocked sideboard / maybeboard) where there is
   // nothing else competing for vertical space.
   fill: { type: Boolean, default: false },
-  /**
-   * Function (scryfallCardId) → match | null from useWantedMatches.
-   * Passed down so every strip/tile can resolve its own match data from
-   * the deck-level pre-computed map — one lookup per row, no watchers.
-   */
-  matchFor: { type: Function, default: null },
-  /** True while the deck-level wanted-matches fetch is in flight. */
-  matchLoading: { type: Boolean, default: false },
 })
 
 const deck = useDeckStore()
@@ -418,19 +410,6 @@ function isIllegal(entry) {
 }
 
 const gcFormat = computed(() => deck.deck?.format === 'commander')
-
-const emit = defineEmits(['match-open'])
-
-/**
- * Resolve the friends list for a given deck entry from the parent-supplied
- * matchFor function. Returns null when no matchFor is provided (e.g. the
- * backend is unavailable) so the stack renders nothing.
- */
-function friendsForEntry(entry) {
-  if (!props.matchFor) return null
-  const match = props.matchFor(entry.scryfall_id)
-  return match ? match.friends : null
-}
 </script>
 
 <template>
@@ -466,22 +445,16 @@ function friendsForEntry(entry) {
               :entry="entry"
               :illegal="isIllegal(entry)"
               :show-game-changer="gcFormat"
-              :match-friends="friendsForEntry(entry)"
-              :match-loading="matchLoading"
               @click="onEntryClick(entry)"
-              @match-open="(e) => emit('match-open', e)"
             />
             <DeckCardStrip
               v-else
               :entry="entry"
               :illegal="isIllegal(entry)"
               :show-game-changer="gcFormat"
-              :match-friends="friendsForEntry(entry)"
-              :match-loading="matchLoading"
               @click="onEntryClick(entry)"
               @peek-show="onPeekShow"
               @peek-hide="onPeekHide"
-              @match-open="(e) => emit('match-open', e)"
             />
           </template>
         </div>
