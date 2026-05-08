@@ -48,9 +48,7 @@ const groups = computed(() => {
   const out = {}
   for (const z of ZONES) {
     const inZone = sortedEntries.value.filter((e) => e.zone === z.key)
-    const missing = inZone.filter(
-      (e) => e.physical_copy_id == null && !e.is_commander,
-    )
+    const missing = inZone.filter((e) => e.physical_copy_id == null)
     const bound = inZone.filter((e) => e.physical_copy_id != null)
     out[z.key] = { missing, bound, total: missing.length + bound.length }
   }
