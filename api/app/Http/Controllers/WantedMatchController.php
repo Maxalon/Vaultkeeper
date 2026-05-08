@@ -65,9 +65,12 @@ class WantedMatchController extends Controller
         // -----------------------------------------------------------------------
         // Step 1: wanted scryfall_ids from this deck.
         // -----------------------------------------------------------------------
+        // `wanted` was migrated from boolean to a nullable zone enum
+        // ('main'|'side'|'maybe') in 2026_04_19_000007. Any non-null value
+        // means the entry is on the wishlist.
         $wantedEntries = DB::table('deck_entries')
             ->where('deck_id', $deckModel->id)
-            ->where('wanted', true)
+            ->whereNotNull('wanted')
             ->select('scryfall_id', DB::raw('SUM(quantity) as wanted_quantity'))
             ->groupBy('scryfall_id')
             ->get()
