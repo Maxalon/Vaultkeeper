@@ -277,12 +277,33 @@ class DeckEntryController extends Controller
             );
         }
 
-        DB::transaction(function () use ($entry, $data) {
+        DB::transaction(function () use ($entry, $deck, $data) {
             // Strip mode-control keys before persisting — they're not
             // database columns. validate() leaves them in $data even
             // though the action-service branches above already ran.
             unset($data['mode'], $data['discard']);
+            $oldScryfallId = $entry->scryfall_id;
             $entry->update($data);
+
+            // When the user re-prints a commander (printing-picker on the
+            // detail sidebar), the entry's scryfall_id moves to the new
+            // printing's id but decks.commander_*_scryfall_id stays at the
+            // old one — leaving deck.commander1 (the relation) pointing at
+            // the wrong printing. Mirror the swap into whichever slot(s)
+            // referenced the old id. Same-oracle is enforced upstream by
+            // the validator, so color_identity doesn't need recomputing.
+            if (array_key_exists('scryfall_id', $data)
+                && $data['scryfall_id'] !== $oldScryfallId
+                && $entry->is_commander) {
+                $patch = [];
+                if ($deck->commander_1_scryfall_id === $oldScryfallId) {
+                    $patch['commander_1_scryfall_id'] = $data['scryfall_id'];
+                }
+                if ($deck->commander_2_scryfall_id === $oldScryfallId) {
+                    $patch['commander_2_scryfall_id'] = $data['scryfall_id'];
+                }
+                if ($patch) $deck->update($patch);
+            }
         });
 
         return response()->json($this->presentEntryBare($entry->fresh('card')));

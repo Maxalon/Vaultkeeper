@@ -318,6 +318,11 @@ export const useDeckStore = defineStore('deck', {
       this.saving.add(entryId)
       // Quantity / zone edits change the mainboard size shown in the sidebar.
       const countChanged = 'quantity' in patch || 'zone' in patch
+      // Re-printing a commander shifts decks.commander_*_scryfall_id on
+      // the server (so deck.commander1/2 now resolve to a different
+      // ScryfallCard); reload the deck so the info-header tile picks up
+      // the new printing's image.
+      const commanderPrintingChanged = 'scryfall_id' in patch && prev.is_commander
       try {
         const { data } = await api.patch(
           `/decks/${deckId}/entries/${entryId}`,
@@ -328,6 +333,7 @@ export const useDeckStore = defineStore('deck', {
         await Promise.all([
           this.loadIllegalities(deckId),
           countChanged ? useCollectionStore().fetchGroups() : null,
+          commanderPrintingChanged ? this.loadDeck(deckId) : null,
         ])
         usePricesStore().scheduleRefresh({ deckId })
         return data

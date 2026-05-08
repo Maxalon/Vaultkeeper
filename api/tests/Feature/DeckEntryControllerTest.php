@@ -200,6 +200,32 @@ class DeckEntryControllerTest extends TestCase
             ->assertJsonPath('scryfall_id', $b->scryfall_id);
     }
 
+    public function test_patch_scryfall_id_on_commander_syncs_deck_slot(): void
+    {
+        $oracle = '99999999-0000-0000-0000-000000000010';
+        $a = ScryfallCard::factory()->create([
+            'oracle_id' => $oracle, 'name' => 'Cmdr', 'set_code' => 'old',
+            'type_line' => 'Legendary Creature — Human', 'color_identity' => ['R'],
+        ]);
+        $b = ScryfallCard::factory()->create([
+            'oracle_id' => $oracle, 'name' => 'Cmdr', 'set_code' => 'new',
+            'type_line' => 'Legendary Creature — Human', 'color_identity' => ['R'],
+        ]);
+        $this->deck->update(['commander_1_scryfall_id' => $a->scryfall_id]);
+        $entry = DeckEntry::create([
+            'deck_id' => $this->deck->id, 'scryfall_id' => $a->scryfall_id,
+            'quantity' => 1, 'zone' => 'main', 'is_commander' => true,
+        ]);
+
+        $this->withHeaders($this->headers())
+            ->patchJson("/api/decks/{$this->deck->id}/entries/{$entry->id}", [
+                'scryfall_id' => $b->scryfall_id,
+            ])
+            ->assertOk();
+
+        $this->assertSame($b->scryfall_id, $this->deck->fresh()->commander_1_scryfall_id);
+    }
+
     public function test_patch_scryfall_id_rejected_for_different_oracle(): void
     {
         $a = ScryfallCard::factory()->create([
