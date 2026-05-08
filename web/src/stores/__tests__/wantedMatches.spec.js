@@ -76,6 +76,17 @@ describe('wantedMatches store', () => {
     expect(wm.friendCount).toBe(friendsFixture.length)
   })
 
+  it('fetch() unwraps the {data: [...]} response shape for /wanted-matches', async () => {
+    // The real Laravel controller wraps the array; the mock fixture is the
+    // bare array. Both should land in wm.matches.
+    api.get
+      .mockResolvedValueOnce({ data: { data: fixture } })
+      .mockResolvedValueOnce({ data: friendsFixture })
+    const wm = useWantedMatchesStore()
+    await wm.fetch(1)
+    expect(wm.matches).toHaveLength(fixture.length)
+  })
+
   it('fetch() keeps friendCount null when /friends call fails', async () => {
     api.get
       .mockResolvedValueOnce({ data: fixture })

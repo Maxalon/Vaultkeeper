@@ -88,7 +88,8 @@ class WantedMatchEndpointTest extends TestCase
             'deck_id'     => $deck->id,
             'scryfall_id' => $card->scryfall_id,
             'quantity'    => $qty,
-            'wanted'      => true,
+            // wanted was migrated from boolean to a nullable zone enum.
+            'wanted'      => 'main',
         ]);
     }
 

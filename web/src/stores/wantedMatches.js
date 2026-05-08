@@ -64,7 +64,13 @@ export const useWantedMatchesStore = defineStore('wantedMatches', {
         ])
 
         if (matchRes.status === 'fulfilled') {
-          this.matches = Array.isArray(matchRes.value.data) ? matchRes.value.data : []
+          // Controller returns { "data": [...] }. Accept the bare-array
+          // shape too so the mock fixtures (which store the array directly)
+          // keep working.
+          const body = matchRes.value.data
+          this.matches = Array.isArray(body)
+            ? body
+            : Array.isArray(body?.data) ? body.data : []
         } else {
           const e = matchRes.reason
           this.error =
