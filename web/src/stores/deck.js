@@ -462,10 +462,21 @@ export const useDeckStore = defineStore('deck', {
 
     async updateDeck(id, patch) {
       const toast = useToast()
+      // Commander slot changes trigger syncCommanderEntries on the
+      // backend, which flips is_commander on entries (and may insert a
+      // freshly-created commander row). Without reloading entries
+      // locally, DeckGrid's `!is_commander` filter would still hide a
+      // just-demoted card, or still show a just-promoted one in the
+      // mainboard list, until the next page load.
+      const commandersChanged =
+        'commander_1_scryfall_id' in patch || 'commander_2_scryfall_id' in patch
       try {
         const { data } = await api.put(`/decks/${id}`, patch)
         this.deck = data
-        await this.loadIllegalities(id)
+        await Promise.all([
+          this.loadIllegalities(id),
+          commandersChanged ? this.loadEntries(id) : null,
+        ])
         // Commander / companion changes flip auto-managed deck_entries
         // around in the backend, which can shift the deck total. Cheap
         // refresh covers the case without forcing every caller to know.
