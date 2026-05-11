@@ -21,16 +21,16 @@ const buckets = computed(() => cmcBuckets(mainEntries.value))
 const avg = computed(() => avgManaValue(mainEntries.value))
 const total = computed(() => totalManaValue(mainEntries.value))
 
-function pct(val, sum) {
-  if (!sum) return 0
-  return Math.round((val / sum) * 100)
+function pct(val, max) {
+  if (!max) return 0
+  return Math.round((val / max) * 100)
 }
 
-const costTotal = computed(() =>
-  Object.values(costs.value).reduce((a, b) => a + b, 0),
+const costMax = computed(() =>
+  Math.max(0, ...Object.values(costs.value)),
 )
-const producerTotal = computed(() =>
-  Object.values(producers.value).reduce((a, b) => a + b, 0),
+const producerMax = computed(() =>
+  Math.max(0, ...Object.values(producers.value)),
 )
 const maxBucket = computed(() =>
   Math.max(1, ...Object.values(buckets.value)),
@@ -47,7 +47,7 @@ const maxBucket = computed(() =>
         <div v-for="c in COLOR_ORDER" :key="'cost-'+c" class="bar-row">
           <ManaSymbol :symbol="`{${c}}`" />
           <div class="bar">
-            <div class="bar-fill" :style="{ width: pct(costs[c], costTotal) + '%' }" />
+            <div class="bar-fill" :style="{ width: pct(costs[c], costMax) + '%' }" />
           </div>
           <span class="bar-count">{{ costs[c].toFixed(1).replace('.0','') }}</span>
         </div>
@@ -58,7 +58,7 @@ const maxBucket = computed(() =>
         <div v-for="c in COLOR_ORDER" :key="'prod-'+c" class="bar-row">
           <ManaSymbol :symbol="`{${c}}`" />
           <div class="bar">
-            <div class="bar-fill" :style="{ width: pct(producers[c], producerTotal) + '%' }" />
+            <div class="bar-fill" :style="{ width: pct(producers[c], producerMax) + '%' }" />
           </div>
           <span class="bar-count">{{ producers[c] }}</span>
         </div>
