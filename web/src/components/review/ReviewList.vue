@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useCollectionStore } from '../../stores/collection'
 import { useToast } from '../../composables/useToast'
 import Checkbox from '../Checkbox.vue'
@@ -84,6 +84,91 @@ const grouped = computed(() => {
 
 const DISCARD_SENTINEL = '__discard__'
 
+// Multi-select mode: lets the user pick rows and apply a single
+// destination/condition/foil/accept to all of them at once. Selection is
+// constrained to a single review_reason group — the actions exposed
+// differ between groups, so cross-group selection has no coherent
+// bulk-bar UI.
+const selecting = ref(false)
+const selectedIds = ref(new Set())
+const anchorId = ref(null)
+const anchorGroup = ref(null)
+const bulkTarget = ref('')
+const bulkCondition = ref('NM')
+const bulkFoil = ref(false)
+
+const selectedCount = computed(() => selectedIds.value.size)
+
+function clearSelection() {
+  selectedIds.value = new Set()
+  anchorId.value = null
+  anchorGroup.value = null
+  bulkTarget.value = ''
+}
+
+function toggleSelecting() {
+  selecting.value = !selecting.value
+  if (!selecting.value) clearSelection()
+}
+
+function onRowClick(row, evt) {
+  if (!selecting.value) return
+  evt.preventDefault()
+
+  const reason = row.review_reason
+  const ids = selectedIds.value
+
+  // Cross-group click while a selection exists: drop the prior selection
+  // and behave like a fresh plain click in the new group.
+  if (ids.size > 0 && reason !== anchorGroup.value) {
+    selectedIds.value = new Set([row.id])
+    anchorId.value = row.id
+    anchorGroup.value = reason
+    return
+  }
+
+  if (evt.ctrlKey || evt.metaKey) {
+    const next = new Set(ids)
+    if (next.has(row.id)) next.delete(row.id)
+    else next.add(row.id)
+    selectedIds.value = next
+    anchorId.value = row.id
+    anchorGroup.value = reason
+    if (next.size === 0) anchorGroup.value = null
+    return
+  }
+
+  if (evt.shiftKey && anchorId.value !== null && anchorGroup.value === reason) {
+    const group = grouped.value.find((g) => g.reason === reason)
+    if (group) {
+      const list = group.rows
+      const aIdx = list.findIndex((r) => r.id === anchorId.value)
+      const cIdx = list.findIndex((r) => r.id === row.id)
+      if (aIdx !== -1 && cIdx !== -1) {
+        const [lo, hi] = aIdx <= cIdx ? [aIdx, cIdx] : [cIdx, aIdx]
+        const next = new Set()
+        for (let i = lo; i <= hi; i++) next.add(list[i].id)
+        selectedIds.value = next
+        return
+      }
+    }
+  }
+
+  selectedIds.value = new Set([row.id])
+  anchorId.value = row.id
+  anchorGroup.value = reason
+}
+
+function onKeydown(e) {
+  if (!selecting.value) return
+  if (e.key === 'Escape' && selectedIds.value.size > 0) {
+    clearSelection()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
 const anyResolutionPicked = computed(() => {
   for (const r of rows.value) {
     const a = assignments.value[r.id]
@@ -113,6 +198,12 @@ async function load() {
       }
     }
     assignments.value = next
+    // Selection survives only within a load: previously-selected rows
+    // may have been resolved away. `selecting` mode itself is kept.
+    selectedIds.value = new Set()
+    anchorId.value = null
+    anchorGroup.value = null
+    bulkTarget.value = ''
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to load review queue'
   } finally {
@@ -200,6 +291,51 @@ function rowResolutionValue(id) {
   return ''
 }
 
+function onBulkTargetChange(value) {
+  bulkTarget.value = value
+  if (value === '') return
+  for (const id of selectedIds.value) {
+    const r = rows.value.find((x) => x.id === id)
+    if (!r) continue
+    onRowTargetChange(r, value)
+  }
+  bulkTarget.value = ''
+}
+
+function bulkDiscard() {
+  for (const id of selectedIds.value) {
+    const r = rows.value.find((x) => x.id === id)
+    if (!r) continue
+    onRowTargetChange(r, DISCARD_SENTINEL)
+  }
+}
+
+function onBulkConditionChange(value) {
+  bulkCondition.value = value
+  for (const id of selectedIds.value) {
+    const r = rows.value.find((x) => x.id === id)
+    if (!r) continue
+    onRowConditionChange(r, value)
+  }
+}
+
+function onBulkFoilChange(value) {
+  bulkFoil.value = !!value
+  for (const id of selectedIds.value) {
+    const r = rows.value.find((x) => x.id === id)
+    if (!r) continue
+    onRowFoilChange(r, !!value)
+  }
+}
+
+function bulkAccept() {
+  for (const id of selectedIds.value) {
+    const r = rows.value.find((x) => x.id === id)
+    if (!r) continue
+    onRowAcceptToggle(r, true)
+  }
+}
+
 function acceptDefaultsForGroup(reason) {
   const inGroup = rows.value.filter((r) => r.review_reason === reason)
   for (const r of inGroup) {
@@ -271,6 +407,15 @@ function sourceDeckLabel(row) {
       </span>
     </header>
 
+    <div v-if="rows.length" class="review-toolbar">
+      <button
+        type="button"
+        class="vk-btn vk-btn-primary"
+        :class="{ active: selecting }"
+        @click="toggleSelecting"
+      >Select</button>
+    </div>
+
     <div v-if="loading" class="empty">Loading…</div>
     <div v-else-if="!rows.length" class="empty">
       Nothing to review — every card is in good standing.
@@ -294,7 +439,13 @@ function sourceDeckLabel(row) {
         </header>
 
         <ul class="rows">
-          <li v-for="row in group.rows" :key="row.id" class="row">
+          <li
+            v-for="row in group.rows"
+            :key="row.id"
+            class="row"
+            :class="{ selectable: selecting, selected: selectedIds.has(row.id) }"
+            @click="(e) => onRowClick(row, e)"
+          >
             <img
               v-if="rowImage(row)"
               :src="rowImage(row)"
@@ -319,7 +470,7 @@ function sourceDeckLabel(row) {
               </div>
             </div>
 
-            <div v-if="row.review_reason === 'default_values_applied'" class="defaults-editor">
+            <div v-if="!selecting && row.review_reason === 'default_values_applied'" class="defaults-editor">
               <label class="field">
                 <span class="field-label">Condition</span>
                 <select
@@ -353,7 +504,7 @@ function sourceDeckLabel(row) {
             </div>
 
             <select
-              v-else
+              v-else-if="!selecting"
               class="select target-select"
               :value="rowResolutionValue(row.id)"
               @change="(e) => onRowTargetChange(row, e.target.value)"
@@ -367,6 +518,53 @@ function sourceDeckLabel(row) {
           </li>
         </ul>
       </section>
+    </div>
+
+    <div v-if="selecting && selectedCount > 0" class="bulk-bar">
+      <span class="sel-count">{{ selectedCount }} selected</span>
+      <template v-if="anchorGroup === 'default_values_applied'">
+        <label class="field">
+          <span class="field-label">Condition</span>
+          <select
+            class="select"
+            :value="bulkCondition"
+            @change="(e) => onBulkConditionChange(e.target.value)"
+            name="bulk-condition"
+            aria-label="Bulk condition"
+          >
+            <option v-for="c in CONDITIONS" :key="c" :value="c">{{ c }}</option>
+          </select>
+        </label>
+        <label class="field foil-field">
+          <input
+            type="checkbox"
+            :checked="bulkFoil"
+            @change="(e) => onBulkFoilChange(e.target.checked)"
+            name="bulk-foil"
+          />
+          <span class="field-label">Foil</span>
+        </label>
+        <button type="button" class="btn primary" @click="bulkAccept">Accept</button>
+      </template>
+      <template v-else>
+        <select
+          class="select"
+          :value="bulkTarget"
+          @change="(e) => onBulkTargetChange(e.target.value)"
+          name="bulk-target"
+          aria-label="Bulk destination"
+        >
+          <option value="">Pick destination…</option>
+          <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
+        </select>
+        <button type="button" class="btn" @click="bulkDiscard">Discard</button>
+      </template>
+      <button
+        type="button"
+        class="btn close-btn"
+        aria-label="Clear selection"
+        @click="clearSelection"
+      >×</button>
     </div>
 
     <footer v-if="rows.length" class="review-footer">
@@ -590,5 +788,42 @@ function sourceDeckLabel(row) {
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
+}
+.review-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.row.selectable {
+  cursor: pointer;
+  user-select: none;
+  grid-template-columns: 56px 1fr;
+}
+.row.selected {
+  border-color: var(--amber);
+  background: var(--amber-dim);
+}
+.bulk-bar {
+  position: sticky;
+  bottom: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  margin: 0 -22px;
+}
+.bulk-bar .sel-count {
+  font-size: 12px;
+  color: var(--amber);
+  font-weight: 600;
+}
+.bulk-bar .close-btn {
+  margin-left: auto;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 8px;
 }
 </style>
