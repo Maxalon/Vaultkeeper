@@ -7,6 +7,7 @@ import { confirm as confirmDialog } from '../../composables/useConfirm'
 import { useToast } from '../../composables/useToast'
 import { formatEur } from '../../utils/price'
 import ManaSymbol from '../ManaSymbol.vue'
+import PopoverMenu from '../PopoverMenu.vue'
 import ExportMenu from './ExportMenu.vue'
 import AssembleDeckModal from '../AssembleDeckModal.vue'
 
@@ -32,6 +33,7 @@ const isAssembled = computed(() =>
 const canAssemble = computed(() => deck.entries.length > 0)
 const assembleOpen = ref(false)
 const assembleMenuOpen = ref(false)
+const assembleChevronRef = ref(null)
 
 function openAssemble() {
   assembleMenuOpen.value = false
@@ -40,8 +42,8 @@ function openAssemble() {
 function toggleAssembleMenu() {
   assembleMenuOpen.value = !assembleMenuOpen.value
 }
-function onDocClickAssemble(e) {
-  if (!e.target.closest?.('.assemble-split')) assembleMenuOpen.value = false
+function closeAssembleMenu() {
+  assembleMenuOpen.value = false
 }
 
 async function onUnassemble() {
@@ -213,7 +215,6 @@ onMounted(() => {
   } else {
     window.addEventListener('resize', drawBg)
   }
-  document.addEventListener('click', onDocClickAssemble)
 
   // Fire-and-forget pricing fetches. Header re-renders when totals land
   // (the deck-id watch below covers route changes / deck swaps).
@@ -231,7 +232,6 @@ watch(
 onBeforeUnmount(() => {
   if (ro) ro.disconnect()
   else window.removeEventListener('resize', drawBg)
-  document.removeEventListener('click', onDocClickAssemble)
 })
 
 watch(
@@ -317,6 +317,7 @@ watch(
                 @click="openAssemble"
               >Reassemble</button>
               <button
+                ref="assembleChevronRef"
                 type="button"
                 class="btn split-chevron"
                 :class="{ open: assembleMenuOpen }"
@@ -325,14 +326,20 @@ watch(
                 :aria-expanded="assembleMenuOpen"
                 aria-label="More assembly options"
               >▾</button>
-              <div v-if="assembleMenuOpen" class="split-menu" role="menu">
+              <PopoverMenu
+                :open="assembleMenuOpen"
+                :anchor-el="assembleChevronRef"
+                placement="bottom-end"
+                menu-class="assemble-popover"
+                @close="closeAssembleMenu"
+              >
                 <button
                   type="button"
                   class="split-menu-item"
                   role="menuitem"
                   @click="onUnassemble"
                 >Unassemble</button>
-              </div>
+              </PopoverMenu>
             </div>
           </template>
         </div>
@@ -680,19 +687,7 @@ watch(
   color: var(--ink-100);
   border-color: var(--amber);
 }
-.assemble-split .split-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  background: var(--bg-1);
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  z-index: 5;
-  min-width: 140px;
-  padding: 4px 0;
-}
-.assemble-split .split-menu-item {
+.split-menu-item {
   display: block;
   width: 100%;
   text-align: left;
@@ -702,8 +697,9 @@ watch(
   padding: 6px 12px;
   font-size: 12px;
   cursor: pointer;
+  border-radius: 3px;
 }
-.assemble-split .split-menu-item:hover {
+.split-menu-item:hover {
   background: var(--amber-dim);
 }
 
