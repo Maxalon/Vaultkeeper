@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="login_title">Sign in</string>
+    <string name="login_username">Username</string>
+    <string name="login_password">Password</string>
+    <string name="login_submit">Sign in</string>
+    <string name="login_error_generic">Sign-in failed</string>
+    <string name="login_error_invalid">Invalid credentials</string>
+
+    <string name="home_greeting">Signed in as %1$s</string>
+    <string name="home_logout">Sign out</string>
+</resources>
