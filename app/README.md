@@ -43,20 +43,16 @@ app/                       Gradle project root (this directory)
 
 Two product flavors crossed with two build types:
 
-| Variant            | applicationId              | API base URL                                  |
-|--------------------|----------------------------|-----------------------------------------------|
-| `betaDebug`        | `com.vaultkeeper.app.beta` | `http://10.0.2.2:8080/api/` (emulator → host) |
-| `betaRelease`      | `com.vaultkeeper.app.beta` | `https://staging.vaultkeeper.example/api/`    |
-| `prodDebug`        | `com.vaultkeeper.app`      | `http://10.0.2.2:8080/api/`                   |
-| `prodRelease`      | `com.vaultkeeper.app`      | `https://vaultkeeper.example/api/`            |
+| Variant            | applicationId              | API base URL                                              |
+|--------------------|----------------------------|-----------------------------------------------------------|
+| `betaDebug`        | `com.vaultkeeper.app.beta` | `http://10.0.2.2:8080/api/` (emulator → host)             |
+| `betaRelease`      | `com.vaultkeeper.app.beta` | `https://vault-staging.kontrollzentrale.de/api/`          |
+| `prodDebug`        | `com.vaultkeeper.app`      | `http://10.0.2.2:8080/api/`                               |
+| `prodRelease`      | `com.vaultkeeper.app`      | `https://vault.kontrollzentrale.de/api/`                  |
 
 Beta + prod can be installed side-by-side. The `betaDebug` variant is what
-the GH Action publishes as a GitHub Release on every push to the `beta`
-branch (sideload onto the device).
-
-**TODO before first real beta:** replace the placeholder hostnames in
-`app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`) with the actual
-staging/prod URLs.
+the GH Action publishes as a GitHub Release on every push to the
+`staging` branch that touched `app/**` (sideload onto the device).
 
 ## Local development
 
