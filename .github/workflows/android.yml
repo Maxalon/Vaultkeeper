@@ -2,7 +2,10 @@ name: Android Build
 
 on:
   push:
-    branches: [main, beta]
+    branches: [main, staging]
+    paths:
+      - 'app/**'
+      - '.github/workflows/android.yml'
   pull_request:
     paths:
       - 'app/**'
@@ -11,9 +14,10 @@ on:
 
 jobs:
   build:
+    name: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # for the beta-branch release upload
+      contents: write  # for the staging-branch release upload
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,24 +58,23 @@ jobs:
         working-directory: app
         run: ./gradlew assembleBetaDebug --stacktrace
 
-      - name: Assemble prod release APK
-        if: steps.check.outputs.exists == 'true' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta')
-        working-directory: app
-        run: ./gradlew assembleProdRelease --stacktrace
-
-      - name: Upload APKs as workflow artifact
+      - name: Upload APK as workflow artifact
         if: steps.check.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: vaultkeeper-apks-${{ github.run_number }}
-          path: app/app/build/outputs/apk/**/*.apk
+          name: vaultkeeper-beta-debug-${{ github.run_number }}
+          path: app/app/build/outputs/apk/beta/debug/*.apk
           if-no-files-found: warn
 
+      # A push to staging that touched app/ is a beta cut — publish a
+      # GitHub Release so the APK can be sideloaded. Tag scheme keeps the
+      # android channel separate from any release tags the API/web side
+      # might introduce later.
       - name: Publish beta APK as GitHub Release
-        if: steps.check.outputs.exists == 'true' && github.ref == 'refs/heads/beta' && github.event_name == 'push'
+        if: steps.check.outputs.exists == 'true' && github.ref == 'refs/heads/staging' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: beta-${{ github.run_number }}
-          name: Beta build ${{ github.run_number }}
+          tag_name: android-beta-${{ github.run_number }}
+          name: Android beta build ${{ github.run_number }}
           prerelease: true
           files: app/app/build/outputs/apk/beta/debug/*.apk

@@ -31,12 +31,12 @@ android {
             dimension = "env"
             applicationIdSuffix = ".beta"
             versionNameSuffix = "-beta"
-            buildConfigField("String", "API_BASE_URL", "\"https://staging.vaultkeeper.example/api/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://vault-staging.kontrollzentrale.de/api/\"")
             resValue("string", "app_name", "Vaultkeeper Beta")
         }
         create("prod") {
             dimension = "env"
-            buildConfigField("String", "API_BASE_URL", "\"https://vaultkeeper.example/api/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://vault.kontrollzentrale.de/api/\"")
             resValue("string", "app_name", "Vaultkeeper")
         }
     }

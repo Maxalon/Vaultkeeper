@@ -19,8 +19,36 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Detect which top-level area changed. Downstream jobs gate on these
+  # outputs so a PR that only touches app/ or docs/ doesn't waste runner
+  # minutes on the PHP + MySQL + Node build. The jobs still report a
+  # status (skipped), which Branch Protection treats as passing — so the
+  # required-check names stay stable.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - 'api/**'
+              - '.github/workflows/ci.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/ci.yml'
+
   api-test:
     name: api / phpunit
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
 
     services:
@@ -99,6 +127,8 @@ jobs:
 
   web-build:
     name: web / vite build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
 
     defaults:
