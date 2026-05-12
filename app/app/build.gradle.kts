@@ -27,6 +27,16 @@ android {
 
     flavorDimensions += "env"
     productFlavors {
+        // Emulator / local-dev build. 10.0.2.2 is the emulator's alias
+        // for the host machine. The dev nginx listens on :8080
+        // (see /docs/local-dev.md).
+        create("local") {
+            dimension = "env"
+            applicationIdSuffix = ".local"
+            versionNameSuffix = "-local"
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/\"")
+            resValue("string", "app_name", "Vaultkeeper Local")
+        }
         create("beta") {
             dimension = "env"
             applicationIdSuffix = ".beta"
@@ -44,9 +54,6 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            // Local dev: 10.0.2.2 is the emulator's alias for the host. The
-            // dev nginx listens on :8080 (see /docs/local-dev.md).
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/api/\"")
         }
         release {
             isMinifyEnabled = true
