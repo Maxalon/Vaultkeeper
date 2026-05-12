@@ -43,35 +43,33 @@ app/                       Gradle project root (this directory)
 
 Two product flavors crossed with two build types:
 
-| Variant            | applicationId               | API base URL                                              |
-|--------------------|-----------------------------|-----------------------------------------------------------|
-| `localDebug`       | `com.vaultkeeper.app.local` | `http://10.0.2.2:8080/api/` (emulator → host dev nginx)   |
-| `betaDebug`        | `com.vaultkeeper.app.beta`  | `https://vault-staging.kontrollzentrale.de/api/`          |
-| `betaRelease`      | `com.vaultkeeper.app.beta`  | `https://vault-staging.kontrollzentrale.de/api/`          |
-| `prodDebug`        | `com.vaultkeeper.app`       | `https://vault.kontrollzentrale.de/api/`                  |
-| `prodRelease`      | `com.vaultkeeper.app`       | `https://vault.kontrollzentrale.de/api/`                  |
+| Variant            | applicationId              | API base URL                                  |
+|--------------------|----------------------------|-----------------------------------------------|
+| `betaDebug`        | `com.vaultkeeper.app.beta` | `http://10.0.2.2:8080/api/` (emulator → host) |
+| `betaRelease`      | `com.vaultkeeper.app.beta` | `https://staging.vaultkeeper.example/api/`    |
+| `prodDebug`        | `com.vaultkeeper.app`      | `http://10.0.2.2:8080/api/`                   |
+| `prodRelease`      | `com.vaultkeeper.app`      | `https://vaultkeeper.example/api/`            |
 
-`API_BASE_URL` lives on the flavor, not the build type — build-type
-`buildConfigField` overrides win over flavor values, which silently
-clobbers the URL. All three flavors install side-by-side. The
-`betaDebug` variant is what the GH Action publishes as a GitHub Release
-on every push to the `staging` branch that touched `app/**` (sideload
-onto the device).
+Beta + prod can be installed side-by-side. The `betaDebug` variant is what
+the GH Action publishes as a GitHub Release on every push to the `beta`
+branch (sideload onto the device).
+
+**TODO before first real beta:** replace the placeholder hostnames in
+`app/build.gradle.kts` (`buildConfigField "API_BASE_URL"`) with the actual
+staging/prod URLs.
 
 ## Local development
 
 ```bash
-./gradlew assembleLocalDebug        # build for emulator + local API
-./gradlew installLocalDebug         # install on connected device/emulator
-./gradlew assembleBetaDebug         # build the sideload APK that ships to testers
+./gradlew assembleBetaDebug         # build the sideload APK
+./gradlew installBetaDebug          # install on connected device/emulator
 ./gradlew test                      # unit tests
 ./gradlew lint                      # Android lint
 ```
 
-For emulator dev against the local API: build the `local` flavor. The
-dev nginx must be reachable on the host's `:8080` (the standard Compose
-stack — see `docs/local-dev.md`). The Android emulator hits the host
-via `10.0.2.2`.
+For emulator dev against the local API: the dev nginx must be reachable on
+the host's `:8080` (the standard Compose stack — see `docs/local-dev.md`).
+The Android emulator hits the host via `10.0.2.2`.
 
 ## Auth flow
 
