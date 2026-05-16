@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ReviewReason;
 use App\Models\CardOracleTag;
 use App\Models\CollectionEntry;
 use App\Models\DeckEntry;
@@ -9,7 +10,9 @@ use App\Models\MtgSet;
 use App\Models\MtgType;
 use App\Models\ScryfallCard;
 use App\Models\ScryfallCardRaw;
+use App\Models\ScryfallOracle;
 use App\Models\SyncState;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -59,14 +62,14 @@ class BulkSyncService
 
     /** Scryfall /catalog/* endpoints we pull into mtg_type_catalog. */
     private const TYPE_CATALOG_ENDPOINTS = [
-        'supertype'            => 'supertypes',
-        'card_type'            => 'card-types',
-        'creature_subtype'     => 'creature-types',
+        'supertype' => 'supertypes',
+        'card_type' => 'card-types',
+        'creature_subtype' => 'creature-types',
         'planeswalker_subtype' => 'planeswalker-types',
-        'land_subtype'         => 'land-types',
-        'artifact_subtype'     => 'artifact-types',
-        'enchantment_subtype'  => 'enchantment-types',
-        'spell_subtype'        => 'spell-types',
+        'land_subtype' => 'land-types',
+        'artifact_subtype' => 'artifact-types',
+        'enchantment_subtype' => 'enchantment-types',
+        'spell_subtype' => 'spell-types',
     ];
 
     /**
@@ -148,7 +151,7 @@ class BulkSyncService
      * start of bulk sync so parseTypeLine() can recognise multi-word subtypes
      * like "Time Lord" before splitting on whitespace.
      *
-     * @return array<string, int>  per-category count of upserted rows
+     * @return array<string, int> per-category count of upserted rows
      */
     public function syncTypeCatalog(): array
     {
@@ -161,17 +164,18 @@ class BulkSyncService
             } catch (Throwable $e) {
                 Log::warning("syncTypeCatalog {$endpoint} failed: {$e->getMessage()}");
                 $counts[$category] = 0;
+
                 continue;
             }
 
             $rows = [];
             foreach ($names as $name) {
                 $rows[] = [
-                    'category'      => $category,
-                    'name'          => $name,
+                    'category' => $category,
+                    'name' => $name,
                     'is_multi_word' => str_contains($name, ' '),
-                    'created_at'    => $now,
-                    'updated_at'    => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ];
             }
 
@@ -225,7 +229,7 @@ class BulkSyncService
 
         // Handle em-dash (U+2014), en-dash (U+2013), or plain hyphen.
         $parts = preg_split('/\s+[\x{2014}\x{2013}\-]\s+/u', $typeLine, 2);
-        $left  = $parts[0] ?? '';
+        $left = $parts[0] ?? '';
         $right = $parts[1] ?? '';
 
         $supertypes = [];
@@ -246,7 +250,7 @@ class BulkSyncService
         foreach ($multiWord as $mw) {
             // Match word-bounded so "Time" doesn't clobber "Time Lord".
             // preg_quote handles edge characters safely.
-            $pattern = '/(?<!\S)' . preg_quote($mw, '/') . '(?!\S)/u';
+            $pattern = '/(?<!\S)'.preg_quote($mw, '/').'(?!\S)/u';
             if (preg_match($pattern, $remaining)) {
                 $subtypes[] = $mw;
                 $remaining = trim(preg_replace($pattern, ' ', $remaining, 1));
@@ -260,8 +264,8 @@ class BulkSyncService
 
         return [
             'supertypes' => $supertypes,
-            'types'      => $types,
-            'subtypes'   => $subtypes,
+            'types' => $types,
+            'subtypes' => $subtypes,
         ];
     }
 
@@ -286,22 +290,22 @@ class BulkSyncService
                 continue;
             }
             $rows[] = [
-                'scryfall_id'    => $s['id'],
-                'code'           => strtolower($s['code']),
-                'name'           => $s['name'],
-                'set_type'       => $s['set_type'],
+                'scryfall_id' => $s['id'],
+                'code' => strtolower($s['code']),
+                'name' => $s['name'],
+                'set_type' => $s['set_type'],
                 // Scryfall flags Arena-only / MTGO-only sets (Alchemy,
                 // Pioneer Masters, Historic Anthology, etc.) with this
                 // boolean. Used downstream to hide their printings from
                 // the picker and the catalog.
-                'digital'        => (bool) ($s['digital'] ?? false),
-                'released_at'    => $s['released_at'] ?? null,
-                'card_count'     => (int) ($s['card_count'] ?? 0),
-                'icon_svg_uri'   => $s['icon_svg_uri'] ?? null,
-                'search_uri'     => $s['search_uri'] ?? '',
+                'digital' => (bool) ($s['digital'] ?? false),
+                'released_at' => $s['released_at'] ?? null,
+                'card_count' => (int) ($s['card_count'] ?? 0),
+                'icon_svg_uri' => $s['icon_svg_uri'] ?? null,
+                'search_uri' => $s['search_uri'] ?? '',
                 'last_synced_at' => $now,
-                'created_at'     => $now,
-                'updated_at'     => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
             ];
         }
 
@@ -310,8 +314,8 @@ class BulkSyncService
                 $chunk,
                 ['code'],
                 ['scryfall_id', 'name', 'set_type', 'digital', 'released_at',
-                 'card_count', 'icon_svg_uri', 'search_uri',
-                 'last_synced_at', 'updated_at'],
+                    'card_count', 'icon_svg_uri', 'search_uri',
+                    'last_synced_at', 'updated_at'],
             );
         }
 
@@ -326,6 +330,10 @@ class BulkSyncService
     /**
      * Recompute `sets.our_card_count` from a single JOIN against scryfall_cards.
      * Cheap; fine to run after every bulk operation.
+     *
+     * Counts English printings only — non-English rows exist in scryfall_cards
+     * so user imports can FK to them, but they're invisible to the catalog
+     * and shouldn't inflate per-set "we know N cards" counts.
      */
     private function refreshOurCardCounts(): void
     {
@@ -334,6 +342,7 @@ class BulkSyncService
             LEFT JOIN (
                 SELECT set_code, COUNT(*) AS c
                 FROM scryfall_cards
+                WHERE language = 'en'
                 GROUP BY set_code
             ) sc ON sc.set_code = s.code
             SET s.our_card_count = COALESCE(sc.c, 0)
@@ -345,11 +354,26 @@ class BulkSyncService
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Download Scryfall's Default Cards bulk file and upsert every card into
-     * scryfall_cards. Caller is expected to have raised the memory limit
-     * (the JSON file is ~700 MB; full json_decode peaks around 2-3 GB).
+     * Download Scryfall's All Cards bulk file (every printing in every
+     * language) and upsert each card into scryfall_cards. Non-English
+     * printings have distinct scryfall_ids on Scryfall's side; storing
+     * them lets imports from Archidekt/Moxfield that ship a non-English
+     * UUID resolve to a real FK target instead of falling back to
+     * English name matching (which writes the wrong scryfall_id).
      *
-     * @param  callable|null  $onProgress  fn(int $processed, int $total): void
+     * The file is ~3 GB decoded. Parsing it with a single json_decode
+     * peaks above the operator's memory budget, so we stream the
+     * top-level JSON array one object at a time via streamBulkArray().
+     *
+     * scryfall_oracles, scryfall_cards_raw (meld pair tables), and
+     * sets.our_card_count are kept English-only — non-English printings
+     * are addressable by FK but invisible to the catalog UI. Price rows
+     * are tracked for every language (Cardmarket prices differ per
+     * language printing).
+     *
+     * @param  callable|null  $onProgress  fn(int $processed, ?int $total): void
+     *                                     $total is null — streaming parser
+     *                                     doesn't know the array size up front
      * @return array{processed: int, file: string}
      */
     public function syncBulkCards(?callable $onProgress = null): array
@@ -360,9 +384,9 @@ class BulkSyncService
         $this->loadMultiWordSubtypes();
 
         $manifest = $this->scryfall->fetchBulkDataManifest();
-        $entry = collect($manifest)->firstWhere('type', 'default_cards');
+        $entry = collect($manifest)->firstWhere('type', 'all_cards');
         if (! $entry || empty($entry['download_uri'])) {
-            throw new RuntimeException('Scryfall manifest missing default_cards entry');
+            throw new RuntimeException('Scryfall manifest missing all_cards entry');
         }
         $downloadUri = $entry['download_uri'];
 
@@ -370,26 +394,15 @@ class BulkSyncService
         if (! File::isDirectory($dir)) {
             File::makeDirectory($dir, 0755, true);
         }
-        $path = $dir . '/' . now()->format('Y-m-d') . '.json';
+        $path = $dir.'/'.now()->format('Y-m-d').'.json';
 
         // Use Storage-backed download for consistency with existing service.
         // We pass the file's path inside storage/app, so disk='local' resolves
         // to the same root as storage_path('app').
-        $relPath = 'scryfall-bulk/' . basename($path);
+        $relPath = 'scryfall-bulk/'.basename($path);
         $ok = $this->scryfall->downloadToDisk($downloadUri, 'local', $relPath);
         if (! $ok) {
             throw new RuntimeException("Failed to download bulk file from {$downloadUri}");
-        }
-
-        // Decode the entire JSON in one shot. The user opted for raw throughput
-        // over peak-memory frugality (16 GB RAM available); this avoids the
-        // generator overhead of a streaming parser.
-        $raw = File::get($path);
-        $cards = json_decode($raw, true);
-        unset($raw);
-        if (! is_array($cards)) {
-            File::delete($path);
-            throw new RuntimeException('Failed to decode bulk JSON');
         }
 
         $now = now();
@@ -397,41 +410,48 @@ class BulkSyncService
         $rawBatch = [];
         $priceBatch = [];
         // Oracle-invariant fields write to scryfall_oracles directly during
-        // this pass — first card seen per oracle_id wins. Rep fields and
-        // aggregates on the oracle row are placeholders here; syncOracleTable
-        // overwrites them after handleMigrations + pruneStaleCards.
+        // this pass — first ENGLISH card seen per oracle_id wins. Non-English
+        // rows are skipped so the oracle's name/text/images stay English.
+        // Rep + aggregates here are placeholders; syncOracleTable resolves
+        // them after handleMigrations + pruneStaleCards.
         $oracleData = [];
         $processed = 0;
-        $total = count($cards);
 
-        foreach ($cards as $card) {
+        $this->streamBulkArray($path, function (array $card) use (
+            &$batch, &$rawBatch, &$priceBatch, &$oracleData, &$processed, $now, $onProgress,
+        ) {
             $payload = $this->applyBulkCardData($card, $now);
             if ($payload === null) {
-                continue;
+                return;
             }
             $batch[] = $payload['card'];
 
-            $oid = $payload['oracle']['oracle_id'];
-            if (! isset($oracleData[$oid])) {
-                $oracleData[$oid] = $payload['oracle'];
-            }
+            $lang = $payload['card']['language'];
 
-            // Raw companion row — only emit when all_parts is present;
-            // a NULL all_parts is indistinguishable from "no raw row
-            // needed" on the read side.
-            if (isset($card['id'], $card['all_parts']) && is_array($card['all_parts']) && $card['all_parts'] !== []) {
-                $rawBatch[] = [
-                    'scryfall_id' => $card['id'],
-                    'all_parts'   => json_encode($card['all_parts']),
-                    'created_at'  => $now,
-                    'updated_at'  => $now,
-                ];
+            if ($lang === 'en') {
+                $oid = $payload['oracle']['oracle_id'];
+                if (! isset($oracleData[$oid])) {
+                    $oracleData[$oid] = $payload['oracle'];
+                }
+
+                // Raw companion row (meld parts, fuse halves) references
+                // related printings by scryfall_id. Keep these English-only
+                // so the meld-resolution view stays in English even after
+                // non-English rows land in scryfall_cards.
+                if (isset($card['id'], $card['all_parts']) && is_array($card['all_parts']) && $card['all_parts'] !== []) {
+                    $rawBatch[] = [
+                        'scryfall_id' => $card['id'],
+                        'all_parts' => json_encode($card['all_parts']),
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
             }
 
             // Price companion row — null when the printing carries no EUR
-            // price at all. Flushed parallel to the cards batch so prices
-            // stay fresh on day-1 of new releases without waiting for the
-            // next daily price job.
+            // price at all. Tracked across ALL languages: Cardmarket prices
+            // a Japanese Llanowar Elves separately from the English one,
+            // and we want both surfaceable.
             $priceRow = $this->prices->buildRow($card, $now);
             if ($priceRow !== null) {
                 $priceBatch[] = $priceRow;
@@ -449,14 +469,18 @@ class BulkSyncService
                 }
                 $processed += count($batch);
                 $batch = [];
-                if ($onProgress) $onProgress($processed, $total);
+                if ($onProgress) {
+                    $onProgress($processed, null);
+                }
             }
-        }
+        });
 
         if ($batch) {
             $this->flushScryfallCards($batch);
             $processed += count($batch);
-            if ($onProgress) $onProgress($processed, $total);
+            if ($onProgress) {
+                $onProgress($processed, null);
+            }
         }
         if ($rawBatch) {
             $this->flushScryfallCardsRaw($rawBatch);
@@ -472,9 +496,10 @@ class BulkSyncService
             $this->flushScryfallOracles($chunk);
         }
 
-        // Free the in-memory array before the JOIN — pgsql/mysql client
-        // memory + 2 GB array side-by-side is wasteful.
-        unset($cards, $oracleData);
+        // Free the dedupe map before the JOIN — keeping ~30k oracle rows
+        // in memory alongside the upcoming our_card_count recompute is
+        // pointless once we're done iterating.
+        unset($oracleData);
 
         $this->refreshOurCardCounts();
 
@@ -484,6 +509,112 @@ class BulkSyncService
         Log::info("BulkSyncService::syncBulkCards — processed {$processed} cards");
 
         return ['processed' => $processed, 'file' => $path];
+    }
+
+    /**
+     * Stream Scryfall's bulk-data JSON array, decoding one object at a
+     * time and handing it to $onCard. Peak memory stays bounded
+     * regardless of file size — the all_cards bulk is ~3 GB and won't
+     * fit in PHP's memory limit as a single json_decode.
+     *
+     * The bulk file is a well-formed JSON array of objects. We scan
+     * byte-by-byte tracking brace depth and string state, decode each
+     * top-level object the moment its closing brace lands, then reset
+     * the buffer. String contents (including escaped quotes and braces
+     * inside strings) are skipped without affecting depth so we never
+     * cut an object short.
+     */
+    private function streamBulkArray(string $path, callable $onCard): void
+    {
+        $fp = fopen($path, 'rb');
+        if ($fp === false) {
+            throw new RuntimeException("Cannot open bulk file: {$path}");
+        }
+
+        try {
+            // Seek to the opening '['. Anything before it (BOM,
+            // whitespace) is tolerated.
+            $sawOpen = false;
+            while (! feof($fp)) {
+                $ch = fgetc($fp);
+                if ($ch === false) {
+                    break;
+                }
+                if ($ch === '[') {
+                    $sawOpen = true;
+                    break;
+                }
+                if (! ctype_space($ch) && $ch !== "\xef" && $ch !== "\xbb" && $ch !== "\xbf") {
+                    throw new RuntimeException("Bulk JSON does not begin with '[' — got '{$ch}'");
+                }
+            }
+            if (! $sawOpen) {
+                throw new RuntimeException('Bulk JSON: opening bracket not found');
+            }
+
+            $chunkSize = 1 << 16; // 64 KB reads
+            $buf = '';      // current object being assembled
+            $depth = 0;
+            $inStr = false;
+            $escape = false;
+
+            while (! feof($fp)) {
+                $chunk = fread($fp, $chunkSize);
+                if ($chunk === false || $chunk === '') {
+                    break;
+                }
+                $len = strlen($chunk);
+                for ($i = 0; $i < $len; $i++) {
+                    $ch = $chunk[$i];
+
+                    if ($inStr) {
+                        $buf .= $ch;
+                        if ($escape) {
+                            $escape = false;
+                        } elseif ($ch === '\\') {
+                            $escape = true;
+                        } elseif ($ch === '"') {
+                            $inStr = false;
+                        }
+
+                        continue;
+                    }
+
+                    if ($depth === 0) {
+                        if ($ch === '{') {
+                            $depth = 1;
+                            $buf = '{';
+                        } elseif ($ch === ']') {
+                            // End of array — done.
+                            return;
+                        }
+
+                        // Skip commas, whitespace between objects.
+                        continue;
+                    }
+
+                    $buf .= $ch;
+                    if ($ch === '"') {
+                        $inStr = true;
+                    } elseif ($ch === '{') {
+                        $depth++;
+                    } elseif ($ch === '}') {
+                        $depth--;
+                        if ($depth === 0) {
+                            $obj = json_decode($buf, true);
+                            $buf = '';
+                            if (is_array($obj)) {
+                                $onCard($obj);
+                            } else {
+                                Log::warning('streamBulkArray: failed to decode object, skipping');
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            fclose($fp);
+        }
     }
 
     /**
@@ -500,7 +631,7 @@ class BulkSyncService
      * @param  array<string, mixed>  $c
      * @return array{card: array<string, mixed>, oracle: array<string, mixed>}|null
      */
-    public function applyBulkCardData(array $c, \Illuminate\Support\Carbon $now): ?array
+    public function applyBulkCardData(array $c, Carbon $now): ?array
     {
         if (! isset($c['id'], $c['name'], $c['set'])) {
             return null;
@@ -514,8 +645,8 @@ class BulkSyncService
         }
 
         $layout = $c['layout'] ?? null;
-        $faces  = $c['card_faces'] ?? null;
-        $isDfc  = is_array($faces)
+        $faces = $c['card_faces'] ?? null;
+        $isDfc = is_array($faces)
             && isset($faces[0], $faces[1])
             && in_array($layout, self::DFC_LAYOUTS, true);
 
@@ -531,55 +662,55 @@ class BulkSyncService
 
         if ($isDfc) {
             $front = $faces[0];
-            $back  = $faces[1];
+            $back = $faces[1];
             $frontImages = $front['image_uris'] ?? $c['image_uris'] ?? [];
-            $backImages  = $back['image_uris'] ?? [];
+            $backImages = $back['image_uris'] ?? [];
 
             $faceFields = [
-                'image_small'       => $frontImages['small'] ?? null,
-                'image_normal'      => $frontImages['normal'] ?? null,
-                'image_large'       => $frontImages['large'] ?? null,
-                'image_small_back'  => $backImages['small'] ?? null,
+                'image_small' => $frontImages['small'] ?? null,
+                'image_normal' => $frontImages['normal'] ?? null,
+                'image_large' => $frontImages['large'] ?? null,
+                'image_small_back' => $backImages['small'] ?? null,
                 'image_normal_back' => $backImages['normal'] ?? null,
-                'image_large_back'  => $backImages['large'] ?? null,
-                'mana_cost'         => $front['mana_cost'] ?? null,
-                'mana_cost_back'    => $back['mana_cost'] ?? null,
-                'type_line'         => $front['type_line'] ?? null,
-                'type_line_back'    => $back['type_line'] ?? null,
-                'oracle_text'       => $front['oracle_text'] ?? null,
-                'oracle_text_back'  => $back['oracle_text'] ?? null,
-                'printed_text'      => $front['printed_text'] ?? null,
+                'image_large_back' => $backImages['large'] ?? null,
+                'mana_cost' => $front['mana_cost'] ?? null,
+                'mana_cost_back' => $back['mana_cost'] ?? null,
+                'type_line' => $front['type_line'] ?? null,
+                'type_line_back' => $back['type_line'] ?? null,
+                'oracle_text' => $front['oracle_text'] ?? null,
+                'oracle_text_back' => $back['oracle_text'] ?? null,
+                'printed_text' => $front['printed_text'] ?? null,
                 'printed_text_back' => $back['printed_text'] ?? null,
-                'power'             => $front['power'] ?? null,
-                'toughness'         => $front['toughness'] ?? null,
-                'loyalty'           => $front['loyalty'] ?? null,
+                'power' => $front['power'] ?? null,
+                'toughness' => $front['toughness'] ?? null,
+                'loyalty' => $front['loyalty'] ?? null,
             ];
         } else {
             $images = $c['image_uris'] ?? [];
             $faceFields = [
-                'image_small'       => $images['small'] ?? null,
-                'image_normal'      => $images['normal'] ?? null,
-                'image_large'       => $images['large'] ?? null,
-                'image_small_back'  => null,
+                'image_small' => $images['small'] ?? null,
+                'image_normal' => $images['normal'] ?? null,
+                'image_large' => $images['large'] ?? null,
+                'image_small_back' => null,
                 'image_normal_back' => null,
-                'image_large_back'  => null,
-                'mana_cost'         => $c['mana_cost'] ?? null,
-                'mana_cost_back'    => null,
-                'type_line'         => $c['type_line'] ?? null,
-                'type_line_back'    => null,
-                'oracle_text'       => $c['oracle_text'] ?? null,
-                'oracle_text_back'  => null,
-                'printed_text'      => $c['printed_text'] ?? null,
+                'image_large_back' => null,
+                'mana_cost' => $c['mana_cost'] ?? null,
+                'mana_cost_back' => null,
+                'type_line' => $c['type_line'] ?? null,
+                'type_line_back' => null,
+                'oracle_text' => $c['oracle_text'] ?? null,
+                'oracle_text_back' => null,
+                'printed_text' => $c['printed_text'] ?? null,
                 'printed_text_back' => null,
-                'power'             => $c['power'] ?? null,
-                'toughness'         => $c['toughness'] ?? null,
-                'loyalty'           => $c['loyalty'] ?? null,
+                'power' => $c['power'] ?? null,
+                'toughness' => $c['toughness'] ?? null,
+                'loyalty' => $c['loyalty'] ?? null,
             ];
         }
 
         // Top-level fields shared by all layouts.
-        $colors         = $c['colors'] ?? [];
-        $colorIdentity  = $c['color_identity'] ?? [];
+        $colors = $c['colors'] ?? [];
+        $colorIdentity = $c['color_identity'] ?? [];
 
         if ($isDfc && empty($colors)) {
             $faceColors = array_merge(
@@ -597,14 +728,15 @@ class BulkSyncService
             $this->multiWordSubtypes,
         );
 
-        $promo      = (bool) ($c['promo']      ?? false);
-        $variation  = (bool) ($c['variation']  ?? false);
-        $oversized  = (bool) ($c['oversized']  ?? false);
-        $setType    = $c['set_type'] ?? null;
-        $layout     = $layout ?? 'normal';
-        $setCode    = strtolower($c['set']);
-        $collector  = (string) ($c['collector_number'] ?? '');
-        $rarity     = $c['rarity'] ?? 'common';
+        $promo = (bool) ($c['promo'] ?? false);
+        $variation = (bool) ($c['variation'] ?? false);
+        $oversized = (bool) ($c['oversized'] ?? false);
+        $setType = $c['set_type'] ?? null;
+        $layout = $layout ?? 'normal';
+        $setCode = strtolower($c['set']);
+        $collector = (string) ($c['collector_number'] ?? '');
+        $language = (string) ($c['lang'] ?? 'en');
+        $rarity = $c['rarity'] ?? 'common';
         $isPlaytest =
             in_array('playtest', (array) ($c['promo_types'] ?? []), true)
             // Fallback for Mystery Booster Playtest sets, which mark
@@ -622,39 +754,40 @@ class BulkSyncService
         // edhrec_rank / reserved / supertypes / types / subtypes) all live
         // on scryfall_oracles now; see issue #33.
         $card = [
-            'scryfall_id'         => $c['id'],
-            'oracle_id'           => $oracleId,
-            'name'                => $c['name'],
-            'set_code'            => $setCode,
-            'collector_number'    => $collector,
-            'rarity'              => $rarity,
-            'layout'              => $layout,
-            'is_dfc'              => $isDfc,
-            'image_small'         => $faceFields['image_small'],
-            'image_normal'        => $faceFields['image_normal'],
-            'image_large'         => $faceFields['image_large'],
-            'image_small_back'    => $faceFields['image_small_back'],
-            'image_normal_back'   => $faceFields['image_normal_back'],
-            'image_large_back'    => $faceFields['image_large_back'],
-            'mana_cost_back'      => $faceFields['mana_cost_back'],
-            'type_line_back'      => $faceFields['type_line_back'],
-            'oracle_text_back'    => $faceFields['oracle_text_back'],
-            'printed_text'        => $faceFields['printed_text'],
-            'printed_text_back'   => $faceFields['printed_text_back'],
-            'produced_mana'       => isset($c['produced_mana']) ? json_encode(array_values($c['produced_mana'])) : null,
-            'finishes'            => isset($c['finishes']) ? json_encode(array_values($c['finishes'])) : null,
-            'released_at'         => $c['released_at'] ?? null,
-            'promo'               => $promo,
-            'variation'           => $variation,
-            'set_type'            => $setType,
-            'oversized'           => $oversized,
+            'scryfall_id' => $c['id'],
+            'oracle_id' => $oracleId,
+            'name' => $c['name'],
+            'set_code' => $setCode,
+            'collector_number' => $collector,
+            'language' => $language,
+            'rarity' => $rarity,
+            'layout' => $layout,
+            'is_dfc' => $isDfc,
+            'image_small' => $faceFields['image_small'],
+            'image_normal' => $faceFields['image_normal'],
+            'image_large' => $faceFields['image_large'],
+            'image_small_back' => $faceFields['image_small_back'],
+            'image_normal_back' => $faceFields['image_normal_back'],
+            'image_large_back' => $faceFields['image_large_back'],
+            'mana_cost_back' => $faceFields['mana_cost_back'],
+            'type_line_back' => $faceFields['type_line_back'],
+            'oracle_text_back' => $faceFields['oracle_text_back'],
+            'printed_text' => $faceFields['printed_text'],
+            'printed_text_back' => $faceFields['printed_text_back'],
+            'produced_mana' => isset($c['produced_mana']) ? json_encode(array_values($c['produced_mana'])) : null,
+            'finishes' => isset($c['finishes']) ? json_encode(array_values($c['finishes'])) : null,
+            'released_at' => $c['released_at'] ?? null,
+            'promo' => $promo,
+            'variation' => $variation,
+            'set_type' => $setType,
+            'oversized' => $oversized,
             'is_default_eligible' => $this->deriveDefaultEligible($c),
-            'is_playtest'         => $isPlaytest,
+            'is_playtest' => $isPlaytest,
             'commander_game_changer' => $gameChanger,
-            'partner_scope'       => $partnerScope,
-            'last_synced_at'      => $now,
-            'created_at'          => $now,
-            'updated_at'          => $now,
+            'partner_scope' => $partnerScope,
+            'last_synced_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
         ];
 
         // Oracle row — oracle-invariant fields are authoritative; rep /
@@ -663,67 +796,67 @@ class BulkSyncService
         // excluded_from_catalog) carry provisional values that
         // syncOracleTable's UPDATE pass overwrites.
         $oracle = [
-            'oracle_id'                => $oracleId,
+            'oracle_id' => $oracleId,
             // Provisional rep fields — first card seen wins; syncOracleTable
             // resolves to the actual rep printing.
-            'default_scryfall_id'      => $c['id'],
-            'default_set_code'         => $setCode,
+            'default_scryfall_id' => $c['id'],
+            'default_set_code' => $setCode,
             'default_collector_number' => $collector,
-            'default_released_at'      => $c['released_at'] ?? null,
-            'default_rarity'           => $rarity,
-            'default_image_small'      => $faceFields['image_small'],
-            'default_image_normal'     => $faceFields['image_normal'],
-            'default_image_large'      => $faceFields['image_large'],
+            'default_released_at' => $c['released_at'] ?? null,
+            'default_rarity' => $rarity,
+            'default_image_small' => $faceFields['image_small'],
+            'default_image_normal' => $faceFields['image_normal'],
+            'default_image_large' => $faceFields['image_large'],
             // Oracle-invariant fields (authoritative).
-            'name'                     => $c['name'],
-            'layout'                   => $layout,
-            'is_dfc'                   => $isDfc,
-            'mana_cost'                => $faceFields['mana_cost'],
-            'cmc'                      => isset($c['cmc']) ? (float) $c['cmc'] : null,
-            'colors'                   => json_encode(array_values($colors)),
-            'color_identity'           => json_encode($canonColorIdentity),
-            'type_line'                => $faceFields['type_line'],
-            'supertypes'               => json_encode($parsedTypes['supertypes']),
-            'types'                    => json_encode($parsedTypes['types']),
-            'subtypes'                 => json_encode($parsedTypes['subtypes']),
-            'oracle_text'              => $faceFields['oracle_text'],
-            'printed_text'             => $faceFields['printed_text'],
-            'power'                    => $faceFields['power'],
-            'toughness'                => $faceFields['toughness'],
-            'loyalty'                  => $faceFields['loyalty'],
-            'legalities'               => isset($c['legalities']) ? json_encode($c['legalities']) : null,
-            'keywords'                 => isset($c['keywords']) ? json_encode($c['keywords']) : null,
-            'edhrec_rank'              => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
-            'reserved'                 => (bool) ($c['reserved'] ?? false),
-            'commander_game_changer'   => $gameChanger,
-            'partner_scope'            => $partnerScope,
+            'name' => $c['name'],
+            'layout' => $layout,
+            'is_dfc' => $isDfc,
+            'mana_cost' => $faceFields['mana_cost'],
+            'cmc' => isset($c['cmc']) ? (float) $c['cmc'] : null,
+            'colors' => json_encode(array_values($colors)),
+            'color_identity' => json_encode($canonColorIdentity),
+            'type_line' => $faceFields['type_line'],
+            'supertypes' => json_encode($parsedTypes['supertypes']),
+            'types' => json_encode($parsedTypes['types']),
+            'subtypes' => json_encode($parsedTypes['subtypes']),
+            'oracle_text' => $faceFields['oracle_text'],
+            'printed_text' => $faceFields['printed_text'],
+            'power' => $faceFields['power'],
+            'toughness' => $faceFields['toughness'],
+            'loyalty' => $faceFields['loyalty'],
+            'legalities' => isset($c['legalities']) ? json_encode($c['legalities']) : null,
+            'keywords' => isset($c['keywords']) ? json_encode($c['keywords']) : null,
+            'edhrec_rank' => isset($c['edhrec_rank']) ? (int) $c['edhrec_rank'] : null,
+            'reserved' => (bool) ($c['reserved'] ?? false),
+            'commander_game_changer' => $gameChanger,
+            'partner_scope' => $partnerScope,
             // Back-face oracle-invariant fields.
-            'mana_cost_back'           => $faceFields['mana_cost_back'],
-            'type_line_back'           => $faceFields['type_line_back'],
-            'oracle_text_back'         => $faceFields['oracle_text_back'],
-            'printed_text_back'        => $faceFields['printed_text_back'],
+            'mana_cost_back' => $faceFields['mana_cost_back'],
+            'type_line_back' => $faceFields['type_line_back'],
+            'oracle_text_back' => $faceFields['oracle_text_back'],
+            'printed_text_back' => $faceFields['printed_text_back'],
             // Provisional rep-image-back; resolved by syncOracleTable.
-            'image_small_back'         => $faceFields['image_small_back'],
-            'image_normal_back'        => $faceFields['image_normal_back'],
-            'image_large_back'         => $faceFields['image_large_back'],
+            'image_small_back' => $faceFields['image_small_back'],
+            'image_normal_back' => $faceFields['image_normal_back'],
+            'image_large_back' => $faceFields['image_large_back'],
             // Layout flags — derived from layout (oracle-invariant).
-            'is_transform'             => $layout === 'transform',
-            'is_mdfc'                  => $layout === 'modal_dfc',
-            'is_flip'                  => $layout === 'flip',
-            'is_meld'                  => $layout === 'meld',
-            'is_split'                 => $layout === 'split',
-            'is_leveler'               => $layout === 'leveler',
+            'is_transform' => $layout === 'transform',
+            'is_mdfc' => $layout === 'modal_dfc',
+            'is_flip' => $layout === 'flip',
+            'is_meld' => $layout === 'meld',
+            'is_split' => $layout === 'split',
+            'is_leveler' => $layout === 'leveler',
             // Bit-masks — derived from canonicalised colors.
-            'color_identity_bits'      => self::buildColorBits($canonColorIdentity),
-            'colors_bits'              => self::buildColorBits(array_values($colors)),
+            'color_identity_bits' => self::buildColorBits($canonColorIdentity),
+            'colors_bits' => self::buildColorBits(array_values($colors)),
             // Provisional aggregates — overwritten by syncOracleTable.
-            'printing_count'           => 1,
-            'max_released_at'          => $c['released_at'] ?? null,
-            'is_playtest_any'          => $isPlaytest,
-            'excluded_from_catalog'    => false,
-            'last_synced_at'           => $now,
-            'created_at'               => $now,
-            'updated_at'               => $now,
+            'printing_count' => 1,
+            'max_released_at' => $c['released_at'] ?? null,
+            'is_playtest_any' => $isPlaytest,
+            'excluded_from_catalog' => false,
+            'last_synced_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
         ];
 
         return ['card' => $card, 'oracle' => $oracle];
@@ -811,20 +944,42 @@ class BulkSyncService
         // already drops Arena-only / MTGO-only printings, but a digital
         // card sneaking past (e.g. legacy data, or a future Scryfall
         // schema shift) should never be a default representative.
-        if ((bool) ($c['digital'] ?? false)) return false;
+        if ((bool) ($c['digital'] ?? false)) {
+            return false;
+        }
 
-        if (! (bool) ($c['nonfoil'] ?? false)) return false;
+        // Non-English printings live in scryfall_cards (so user imports
+        // can FK to them) but must never represent their oracle in the
+        // catalog — the picker, search results, and rep images all
+        // require English. Scryfall's `lang` field is always present
+        // on a real bulk card; the ?? 'en' guard exists only for unit
+        // tests that pass synthetic card fixtures.
+        if (($c['lang'] ?? 'en') !== 'en') {
+            return false;
+        }
+
+        if (! (bool) ($c['nonfoil'] ?? false)) {
+            return false;
+        }
 
         $frameEffects = (array) ($c['frame_effects'] ?? []);
-        if (count(array_intersect($frameEffects, self::ALT_FRAME_EFFECTS)) > 0) return false;
+        if (count(array_intersect($frameEffects, self::ALT_FRAME_EFFECTS)) > 0) {
+            return false;
+        }
 
         if (! in_array($c['border_color'] ?? null, self::ALLOWED_BORDER_COLORS, true)) {
             return false;
         }
 
-        if ((bool) ($c['promo']     ?? false)) return false;
-        if ((bool) ($c['variation'] ?? false)) return false;
-        if ((bool) ($c['oversized'] ?? false)) return false;
+        if ((bool) ($c['promo'] ?? false)) {
+            return false;
+        }
+        if ((bool) ($c['variation'] ?? false)) {
+            return false;
+        }
+        if ((bool) ($c['oversized'] ?? false)) {
+            return false;
+        }
 
         if (in_array($c['set_type'] ?? null, self::NOT_DEFAULT_SET_TYPES, true)) {
             return false;
@@ -844,6 +999,7 @@ class BulkSyncService
         if (preg_match('/Partner[\x{2014}-]([A-Za-z ]+?)\s*\(/u', $oracleText ?? '', $m)) {
             return Str::snake(trim($m[1]));
         }
+
         return 'plain';
     }
 
@@ -859,6 +1015,7 @@ class BulkSyncService
         $upper = array_map('strtoupper', $colors);
         $order = array_flip(self::ALL_COLORS);
         usort($upper, fn ($a, $b) => ($order[$a] ?? 99) <=> ($order[$b] ?? 99));
+
         return array_values(array_unique($upper));
     }
 
@@ -869,7 +1026,7 @@ class BulkSyncService
             $rows,
             ['scryfall_id'],
             [
-                'oracle_id', 'name', 'set_code', 'collector_number', 'rarity',
+                'oracle_id', 'name', 'set_code', 'collector_number', 'language', 'rarity',
                 'layout', 'is_dfc', 'produced_mana', 'finishes',
                 'image_small', 'image_normal', 'image_large',
                 'image_small_back', 'image_normal_back', 'image_large_back',
@@ -891,7 +1048,7 @@ class BulkSyncService
      */
     public function flushScryfallOracles(array $rows): void
     {
-        \App\Models\ScryfallOracle::upsert(
+        ScryfallOracle::upsert(
             $rows,
             ['oracle_id'],
             [
@@ -932,7 +1089,7 @@ class BulkSyncService
      * @param  callable|null  $onProgress  fn(int $tagsDone, int $totalTags, string $currentTag): void
      *                                     fires once when a tag starts (count not yet incremented)
      *                                     and again when that tag completes
-     * @return array<string, int>  per-tag count of unique oracle_ids written
+     * @return array<string, int> per-tag count of unique oracle_ids written
      */
     public function syncOracleTags(?callable $onProgress = null): array
     {
@@ -943,7 +1100,9 @@ class BulkSyncService
         $done = 0;
 
         foreach ($tags as $tag) {
-            if ($onProgress) $onProgress($done, $totalTags, $tag);
+            if ($onProgress) {
+                $onProgress($done, $totalTags, $tag);
+            }
             $oracleIds = [];
             $page = 1;
             $hasMore = true;
@@ -969,8 +1128,8 @@ class BulkSyncService
             $rows = [];
             foreach (array_keys($oracleIds) as $oid) {
                 $rows[] = [
-                    'oracle_id'  => $oid,
-                    'tag'        => $tag,
+                    'oracle_id' => $oid,
+                    'tag' => $tag,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ];
@@ -986,7 +1145,9 @@ class BulkSyncService
 
             $perTagCounts[$tag] = count($rows);
             $done++;
-            if ($onProgress) $onProgress($done, $totalTags, $tag);
+            if ($onProgress) {
+                $onProgress($done, $totalTags, $tag);
+            }
         }
 
         // Orphan cleanup — tag rows for cards we no longer have.
@@ -1033,15 +1194,15 @@ class BulkSyncService
 
         foreach ($migrations as $m) {
             $strategy = $m['migration_strategy'] ?? null;
-            $oldId    = $m['old_scryfall_id'] ?? null;
-            $newId    = $m['new_scryfall_id'] ?? null;
+            $oldId = $m['old_scryfall_id'] ?? null;
+            $newId = $m['new_scryfall_id'] ?? null;
 
             if (! $oldId) {
                 continue;
             }
 
             try {
-                DB::transaction(function () use ($strategy, $oldId, $newId, $m) {
+                DB::transaction(function () use ($strategy, $oldId, $newId) {
                     if ($strategy === 'merge' && $newId) {
                         $this->consolidateMerge($oldId, $newId);
                     } elseif ($strategy === 'delete') {
@@ -1077,6 +1238,7 @@ class BulkSyncService
             // Simple rename path — children follow via ON UPDATE CASCADE on
             // the scryfall_id FKs.
             ScryfallCard::where('scryfall_id', $oldId)->update(['scryfall_id' => $newId]);
+
             return;
         }
 
@@ -1137,7 +1299,7 @@ class BulkSyncService
     private function markDeleted(string $deletedId): void
     {
         CollectionEntry::where('scryfall_id', $deletedId)
-            ->update(['review_reason' => \App\Enums\ReviewReason::CardDataChanged]);
+            ->update(['review_reason' => ReviewReason::CardDataChanged]);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1239,6 +1401,7 @@ class BulkSyncService
             $m = $bit[strtoupper((string) $l)] ?? 0;
             $mask |= $m;
         }
+
         return $mask;
     }
 
@@ -1314,14 +1477,14 @@ class BulkSyncService
         if ($deleted > 0 || $protected > 0) {
             Log::info(
                 "BulkSyncService::pruneStaleCards — deleted {$deleted} stale rows, "
-                . "protected {$protected} via user-data FKs (cutoff: {$cutoff->toDateTimeString()})"
+                ."protected {$protected} via user-data FKs (cutoff: {$cutoff->toDateTimeString()})"
             );
         }
 
         return [
-            'deleted'   => $deleted,
+            'deleted' => $deleted,
             'protected' => $protected,
-            'cutoff'    => $cutoff->toDateTimeString(),
+            'cutoff' => $cutoff->toDateTimeString(),
         ];
     }
 
@@ -1352,7 +1515,7 @@ class BulkSyncService
      */
     public function syncOracleTable(): array
     {
-        $excludedList = "'" . implode("','", self::INELIGIBLE_SET_TYPES) . "'";
+        $excludedList = "'".implode("','", self::INELIGIBLE_SET_TYPES)."'";
 
         // 1. Orphan cleanup — oracles whose every printing was pruned
         //    by pruneStaleCards (or removed via handleMigrations) no
@@ -1399,6 +1562,12 @@ class BulkSyncService
         //    oracle and copy its identifiers / images / layout onto
         //    scryfall_oracles. Same priority order the controller used
         //    pre-#30 (minus the user-specific "owned wins" tier).
+        //
+        //    English-only — the rep printing drives every catalog image
+        //    and name, and a Japanese rep would surface foreign text/art
+        //    everywhere. deriveDefaultEligible() already returns false
+        //    for non-English rows, but filter explicitly here too in case
+        //    the eligibility flag gets clobbered by a backfill path.
         DB::statement(<<<'SQL'
             UPDATE scryfall_oracles so
             JOIN (
@@ -1424,6 +1593,7 @@ class BulkSyncService
                         ) AS rn
                     FROM scryfall_cards sc
                     LEFT JOIN sets ms ON ms.code = sc.set_code
+                    WHERE sc.language = 'en'
                 ) ranked
                 WHERE rn = 1
             ) rep ON rep.oracle_id = so.oracle_id
@@ -1475,6 +1645,7 @@ class BulkSyncService
                     ) = 0 THEN 1 ELSE 0 END AS excluded_from_catalog
                 FROM scryfall_cards sc
                 LEFT JOIN sets ms ON ms.code = sc.set_code
+                WHERE sc.language = 'en'
                 GROUP BY sc.oracle_id
             ) aggs ON aggs.oracle_id = so.oracle_id
             SET so.printing_count        = aggs.printing_count,
