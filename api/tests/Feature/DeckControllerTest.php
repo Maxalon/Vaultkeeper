@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
 use App\Models\ScryfallCard;
@@ -116,6 +117,29 @@ class DeckControllerTest extends TestCase
 
         $this->assertDatabaseMissing('decks', ['id' => $deck->id]);
         $this->assertDatabaseMissing('deck_entries', ['deck_id' => $deck->id]);
+    }
+
+    public function test_index_includes_is_assembled_flag(): void
+    {
+        $mine = Deck::create(['user_id' => $this->user->id, 'name' => 'Assembled', 'format' => 'commander']);
+        $card = ScryfallCard::factory()->create();
+        $ce = CollectionEntry::factory()->create(['user_id' => $this->user->id, 'scryfall_id' => $card->scryfall_id]);
+        DeckEntry::create([
+            'deck_id' => $mine->id, 'scryfall_id' => $card->scryfall_id,
+            'quantity' => 1, 'zone' => 'main', 'physical_copy_id' => $ce->id,
+        ]);
+
+        $unassembled = Deck::create(['user_id' => $this->user->id, 'name' => 'Unassembled', 'format' => 'commander']);
+        $card2 = ScryfallCard::factory()->create();
+        DeckEntry::create([
+            'deck_id' => $unassembled->id, 'scryfall_id' => $card2->scryfall_id,
+            'quantity' => 1, 'zone' => 'main',
+        ]);
+
+        $response = $this->withHeaders($this->headers())->getJson('/api/decks')->assertOk();
+        $byId = collect($response->json())->keyBy('id');
+        $this->assertTrue($byId[$mine->id]['is_assembled']);
+        $this->assertFalse($byId[$unassembled->id]['is_assembled']);
     }
 
     public function test_show_forbids_other_users_deck(): void
