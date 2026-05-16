@@ -3,12 +3,16 @@ package com.vaultkeeper.app.di
 import com.vaultkeeper.app.BuildConfig
 import com.vaultkeeper.app.data.api.AuthApi
 import com.vaultkeeper.app.data.api.AuthRefreshApi
+import com.vaultkeeper.app.data.api.DeckApi
 import com.vaultkeeper.app.data.auth.AuthInterceptor
 import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.TokenRefreshInterceptor
 import com.vaultkeeper.app.data.auth.TokenStore
 import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
+import com.vaultkeeper.app.data.deck.DeckRepository
 import com.vaultkeeper.app.game.GameViewModel
+import com.vaultkeeper.app.ui.deckentry.DeckEntryViewModel
+import com.vaultkeeper.app.ui.decklist.DeckListViewModel
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
 import kotlinx.serialization.json.Json
@@ -70,10 +74,14 @@ val appModule = module {
     }
 
     single<AuthApi> { get<Retrofit>().create(AuthApi::class.java) }
+    single<DeckApi> { get<Retrofit>().create(DeckApi::class.java) }
 
     single { AuthRepository(get(), get(), get()) }
+    single { DeckRepository(get()) }
 
     viewModel { LoginViewModel(get()) }
     viewModel { HomeViewModel(get()) }
     viewModel { GameViewModel() }
+    viewModel { DeckListViewModel(get(), get()) }
+    viewModel { params -> DeckEntryViewModel(deckId = params.get<Long>(), repo = get()) }
 }

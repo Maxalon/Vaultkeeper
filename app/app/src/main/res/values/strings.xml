@@ -9,4 +9,30 @@
 
     <string name="home_greeting">Signed in as %1$s</string>
     <string name="home_logout">Sign out</string>
+
+    <string name="decklist_title">My Decks</string>
+    <string name="decklist_empty">No decks yet</string>
+
+    <string name="retry">Retry</string>
+    <string name="cancel">Cancel</string>
+    <string name="remove">Remove</string>
+    <string name="navigate_up">Back</string>
+    <string name="add_card">Add card</string>
+    <string name="increment">Increase quantity</string>
+    <string name="decrement">Decrease quantity</string>
+
+    <string name="zone_main">Main Deck</string>
+    <string name="zone_side">Sideboard</string>
+    <string name="zone_maybe">Maybeboard</string>
+    <string name="zone_picker_title">Move to zone</string>
+
+    <string name="remove_entry_title">Remove card?</string>
+    <string name="remove_entry_body">Remove %1$s from this deck?</string>
+
+    <string name="commander_prompt_title">No commander set</string>
+    <string name="set_commander">Set commander</string>
+
+    <string name="search_card_title">Add card</string>
+    <string name="search_commander_title">Choose commander</string>
+    <string name="search_placeholder">Search cards…</string>
 </resources>
