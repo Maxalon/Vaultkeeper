@@ -13,6 +13,7 @@ use App\Models\ScryfallCard;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
@@ -36,12 +37,12 @@ class DeckImportService
 
     /** Moxfield/Archidekt format tokens we can map directly. Anything else falls back to commander. */
     private const SOURCE_FORMAT_MAP = [
-        'commander'        => 'commander',
-        'edh'              => 'commander',
-        'oathbreaker'      => 'oathbreaker',
-        'pauper'           => 'pauper',
-        'standard'         => 'standard',
-        'modern'           => 'modern',
+        'commander' => 'commander',
+        'edh' => 'commander',
+        'oathbreaker' => 'oathbreaker',
+        'pauper' => 'pauper',
+        'standard' => 'standard',
+        'modern' => 'modern',
     ];
 
     /**
@@ -51,10 +52,10 @@ class DeckImportService
      * else falls back to commander, matching SOURCE_FORMAT_MAP's behaviour.
      */
     private const ARCHIDEKT_FORMAT_IDS = [
-        1  => 'standard',
-        2  => 'modern',
-        3  => 'commander',
-        6  => 'pauper',
+        1 => 'standard',
+        2 => 'modern',
+        3 => 'commander',
+        6 => 'pauper',
         14 => 'oathbreaker',
     ];
 
@@ -67,10 +68,10 @@ class DeckImportService
 
     /**
      * @param  'create'|'update'|'auto'  $mode
-     *   - 'create': always make a new deck (allows intentional duplicates)
-     *   - 'update': overwrite an existing same-source deck; error if none found
-     *   - 'auto':   create if no match exists; otherwise return a conflict so
-     *               the caller (controller) can prompt the user
+     *                                          - 'create': always make a new deck (allows intentional duplicates)
+     *                                          - 'update': overwrite an existing same-source deck; error if none found
+     *                                          - 'auto':   create if no match exists; otherwise return a conflict so
+     *                                          the caller (controller) can prompt the user
      * @return array{deck: Deck, imported: int, skipped: int, warnings: string[], action: 'created'|'updated'}
      */
     public function importFromUrl(User $user, string $url, ?int $groupId, string $mode = 'create'): array
@@ -78,7 +79,7 @@ class DeckImportService
         [$source, $sourceId] = $this->parseSource($url);
         $dto = match ($source) {
             'archidekt' => $this->fetchArchidekt($url),
-            'moxfield'  => $this->fetchMoxfield($url),
+            'moxfield' => $this->fetchMoxfield($url),
             default => throw ValidationException::withMessages([
                 'url' => ['URL must be an Archidekt or Moxfield deck link.'],
             ]),
@@ -92,6 +93,7 @@ class DeckImportService
                     'url' => ['No existing import to update — use create instead.'],
                 ]);
             }
+
             return $this->materialize($user, $dto, $groupId, $source, $sourceId, $existing) + ['action' => 'updated'];
         }
 
@@ -110,7 +112,10 @@ class DeckImportService
      */
     public function findExistingBySource(int $userId, ?string $source, ?string $sourceId): ?Deck
     {
-        if ($source === null || $sourceId === null) return null;
+        if ($source === null || $sourceId === null) {
+            return null;
+        }
+
         return Deck::where('user_id', $userId)
             ->where('source', $source)
             ->where('source_id', $sourceId)
@@ -131,6 +136,7 @@ class DeckImportService
         if (preg_match('~moxfield\.com/decks/([\w-]+)~i', $url, $m)) {
             return ['moxfield', (string) $m[1]];
         }
+
         return [null, null];
     }
 
@@ -148,8 +154,9 @@ class DeckImportService
             throw ValidationException::withMessages(['format' => ['Unsupported format.']]);
         }
         $dto = $this->parseText($text);
-        $dto['name']   = $name;
+        $dto['name'] = $name;
         $dto['format'] = $format;
+
         return $this->materialize($user, $dto, $groupId, null, null, null);
     }
 
@@ -172,8 +179,9 @@ class DeckImportService
             throw ValidationException::withMessages(['format' => ['Unsupported format.']]);
         }
         $dto = $this->parseCsv($file);
-        $dto['name']   = $name;
+        $dto['name'] = $name;
         $dto['format'] = $format;
+
         return $this->materialize($user, $dto, $groupId, null, null, null);
     }
 
@@ -189,7 +197,7 @@ class DeckImportService
      *   commanders: array<int, array{scryfall_id?: ?string, name: string, set?: ?string}>,
      *   signature_spells?: array<int, array{scryfall_id?: ?string, name: string, set?: ?string}>,
      *   companion?: ?array{scryfall_id?: ?string, name: string, set?: ?string},
-     *   entries: array<int, array{scryfall_id?: ?string, name: string, set?: ?string, quantity: int, zone: string}>
+     *   entries: array<int, array{scryfall_id?: ?string, name: string, set?: ?string, quantity: int, zone: string, source_category?: ?string}>
      * }  $dto
      * @param  Deck|null  $existing  When non-null, the deck's cards/commanders/format/
      *                               description/name are overwritten in place. The deck's
@@ -218,18 +226,26 @@ class DeckImportService
             } elseif (! empty($row['name'])) {
                 $namesToResolve[] = [
                     'name' => $row['name'],
-                    'set'  => $row['set'] ?? null,
+                    'set' => $row['set'] ?? null,
                     'collector_number' => $row['collector_number'] ?? null,
                 ];
             }
         };
-        foreach ($dto['commanders'] ?? [] as $c) $collect($c);
-        foreach ($dto['signature_spells'] ?? [] as $s) $collect($s);
-        if (! empty($dto['companion'])) $collect($dto['companion']);
-        foreach ($dto['entries'] ?? [] as $e) $collect($e);
+        foreach ($dto['commanders'] ?? [] as $c) {
+            $collect($c);
+        }
+        foreach ($dto['signature_spells'] ?? [] as $s) {
+            $collect($s);
+        }
+        if (! empty($dto['companion'])) {
+            $collect($dto['companion']);
+        }
+        foreach ($dto['entries'] ?? [] as $e) {
+            $collect($e);
+        }
 
         $idPresent = $this->ensureIdsPresent($idsToResolve, $warnings);
-        $resolved  = $this->resolveNames($namesToResolve, $warnings);
+        $resolved = $this->resolveNames($namesToResolve, $warnings);
 
         if ($groupId !== null) {
             $ownsGroup = LocationGroup::where('id', $groupId)
@@ -243,7 +259,7 @@ class DeckImportService
         }
 
         $imported = 0;
-        $skipped  = 0;
+        $skipped = 0;
 
         /** @var Deck $deck */
         $deck = DB::transaction(function () use (
@@ -253,6 +269,7 @@ class DeckImportService
                 if (! empty($row['scryfall_id']) && isset($idPresent[(string) $row['scryfall_id']])) {
                     return (string) $row['scryfall_id'];
                 }
+
                 return $this->pickResolved(
                     $resolved,
                     $row['name'] ?? '',
@@ -263,12 +280,13 @@ class DeckImportService
 
             $format = $dto['format'] ?? 'commander';
 
-            $commanderIds  = [];
-            $signatureIds  = [];
+            $commanderIds = [];
+            $signatureIds = [];
             foreach ($dto['commanders'] ?? [] as $c) {
                 $id = $pick($c);
                 if ($id === null) {
                     $warnings[] = "Commander not found: {$c['name']}".(! empty($c['set']) ? " ({$c['set']})" : '');
+
                     continue;
                 }
                 // Archidekt's "Commander" category is overloaded for Oathbreaker
@@ -277,16 +295,20 @@ class DeckImportService
                 // signature spell so it doesn't end up in commander_*_scryfall_id.
                 if ($format === 'oathbreaker' && $this->isInstantOrSorcery($id)) {
                     $signatureIds[] = $id;
+
                     continue;
                 }
                 $commanderIds[] = $id;
-                if (count($commanderIds) >= 2) break;
+                if (count($commanderIds) >= 2) {
+                    break;
+                }
             }
 
             foreach ($dto['signature_spells'] ?? [] as $s) {
                 $id = $pick($s);
                 if ($id === null) {
                     $warnings[] = "Signature spell not found: {$s['name']}".(! empty($s['set']) ? " ({$s['set']})" : '');
+
                     continue;
                 }
                 if (! in_array($id, $signatureIds, true)) {
@@ -303,12 +325,12 @@ class DeckImportService
             }
 
             $attributes = [
-                'name'                    => substr($dto['name'] ?? 'Imported deck', 0, 100),
-                'format'                  => $format,
-                'description'             => $dto['description'] ?? null,
+                'name' => substr($dto['name'] ?? 'Imported deck', 0, 100),
+                'format' => $format,
+                'description' => $dto['description'] ?? null,
                 'commander_1_scryfall_id' => $commanderIds[0] ?? null,
                 'commander_2_scryfall_id' => $commanderIds[1] ?? null,
-                'companion_scryfall_id'   => $companionId,
+                'companion_scryfall_id' => $companionId,
             ];
 
             if ($existing) {
@@ -321,8 +343,8 @@ class DeckImportService
                 $deck = $existing;
             } else {
                 $deck = Deck::create($attributes + [
-                    'user_id'   => $user->id,
-                    'source'    => $source,
+                    'user_id' => $user->id,
+                    'source' => $source,
                     'source_id' => $sourceId,
                 ]);
 
@@ -333,7 +355,7 @@ class DeckImportService
                         ->where('deck_id', $deck->id)
                         ->where('role', Location::ROLE_DECK)
                         ->update([
-                            'group_id'   => $groupId,
+                            'group_id' => $groupId,
                             'sort_order' => LocationGroup::nextChildSortOrder($user->id, $groupId),
                         ]);
                 }
@@ -354,6 +376,7 @@ class DeckImportService
                 if ($scryfallId === null) {
                     $warnings[] = "Card not found: {$e['name']}".(! empty($e['set']) ? " ({$e['set']})" : '');
                     $skipped += (int) $e['quantity'];
+
                     continue;
                 }
 
@@ -370,7 +393,9 @@ class DeckImportService
                 }
 
                 $card = ScryfallCard::where('scryfall_id', $scryfallId)->first();
-                if ($card === null) continue; // shouldn't happen post-resolve, but be defensive.
+                if ($card === null) {
+                    continue;
+                } // shouldn't happen post-resolve, but be defensive.
 
                 // Coalesce duplicate rows (e.g. multiple "4 Sol Ring" lines)
                 // onto a single entry with summed quantity.
@@ -384,12 +409,19 @@ class DeckImportService
                     $existing->quantity += (int) $e['quantity'];
                     $existing->save();
                 } else {
+                    // Preserve the user-defined category from the source
+                    // (Archidekt categories, Moxfield tags). Only fall back
+                    // to type-line / oracle-tag derivation when the source
+                    // didn't ship one.
+                    $sourceCategory = isset($e['source_category']) && is_string($e['source_category']) && $e['source_category'] !== ''
+                        ? $e['source_category']
+                        : null;
                     DeckEntry::create([
-                        'deck_id'     => $deck->id,
+                        'deck_id' => $deck->id,
                         'scryfall_id' => $scryfallId,
-                        'quantity'    => max(1, (int) $e['quantity']),
-                        'zone'        => $zone,
-                        'category'    => $this->entryCtrl->autoCategory($card),
+                        'quantity' => max(1, (int) $e['quantity']),
+                        'zone' => $zone,
+                        'category' => $sourceCategory ?? $this->entryCtrl->autoCategory($card),
                     ]);
                 }
                 $imported += (int) $e['quantity'];
@@ -399,9 +431,9 @@ class DeckImportService
         });
 
         return [
-            'deck'     => $deck->fresh(['entries.card', 'commander1', 'commander2', 'companion', 'ignoredIllegalities']),
+            'deck' => $deck->fresh(['entries.card', 'commander1', 'commander2', 'companion', 'ignoredIllegalities']),
             'imported' => $imported,
-            'skipped'  => $skipped,
+            'skipped' => $skipped,
             'warnings' => $warnings,
         ];
     }
@@ -419,7 +451,9 @@ class DeckImportService
     private function ensureIdsPresent(array $ids, array &$warnings): array
     {
         $ids = array_values(array_unique(array_filter($ids)));
-        if (empty($ids)) return [];
+        if (empty($ids)) {
+            return [];
+        }
 
         $present = ScryfallCard::whereIn('scryfall_id', $ids)
             ->pluck('scryfall_id')
@@ -427,19 +461,24 @@ class DeckImportService
         $known = array_flip($present);
 
         $missing = array_values(array_diff($ids, $present));
-        if (empty($missing)) return $known;
+        if (empty($missing)) {
+            return $known;
+        }
 
         try {
             $cards = $this->scryfall->fetchCardCollection($missing);
         } catch (RuntimeException $e) {
             $warnings[] = 'Scryfall fallback unavailable: '.$e->getMessage();
+
             return $known;
         }
 
-        if (empty($cards)) return $known;
+        if (empty($cards)) {
+            return $known;
+        }
 
         $this->bulkSync->loadMultiWordSubtypes();
-        $now  = Carbon::now();
+        $now = Carbon::now();
         $rows = [];
         foreach ($cards as $card) {
             $row = $this->bulkSync->applyBulkCardData($card, $now);
@@ -485,9 +524,11 @@ class DeckImportService
         $triples = [];
         foreach ($needs as $n) {
             $name = $this->normalizeName((string) $n['name']);
-            if ($name === '') continue;
-            $set  = $n['set'] !== null ? strtolower(trim((string) $n['set'])) : '';
-            $cn   = isset($n['collector_number']) && $n['collector_number'] !== null
+            if ($name === '') {
+                continue;
+            }
+            $set = $n['set'] !== null ? strtolower(trim((string) $n['set'])) : '';
+            $cn = isset($n['collector_number']) && $n['collector_number'] !== null
                 ? strtolower(trim((string) $n['collector_number']))
                 : '';
             $triples[$name.'|'.$set.'|'.$cn] = ['name' => $name, 'set' => $set, 'cn' => $cn];
@@ -541,7 +582,9 @@ class DeckImportService
             $rows = [];
             foreach ($hits as $card) {
                 $row = $this->bulkSync->applyBulkCardData($card, $now);
-                if ($row !== null) $rows[] = $row;
+                if ($row !== null) {
+                    $rows[] = $row;
+                }
             }
             if (! empty($rows)) {
                 $this->bulkSync->flushScryfallCards($rows);
@@ -549,14 +592,16 @@ class DeckImportService
 
             foreach ($unresolved as $p) {
                 $name = $p['name'];
-                $set  = $p['set'];
+                $set = $p['set'];
                 $key1 = strtolower($name).'|'.$set;
                 $key2 = strtolower($name).'|';
                 $card = $hits[$key1] ?? $hits[$key2] ?? null;
-                if ($card === null || empty($card['id'])) continue;
+                if ($card === null || empty($card['id'])) {
+                    continue;
+                }
 
                 $nameKey = strtolower($name);
-                $id      = (string) $card['id'];
+                $id = (string) $card['id'];
                 if ($set !== '') {
                     $byKey[$nameKey][$set.'|'] = $byKey[$nameKey][$set.'|'] ?? $id;
                 }
@@ -581,15 +626,20 @@ class DeckImportService
             $exact = ScryfallCard::where('set_code', $set)
                 ->where('collector_number', $cn)
                 ->value('scryfall_id');
-            if ($exact !== null) return (string) $exact;
+            if ($exact !== null) {
+                return (string) $exact;
+            }
         }
 
         $query = ScryfallCard::query()->where('name', $name);
         if ($set !== '') {
             $scoped = (clone $query)->where('set_code', $set)->value('scryfall_id');
-            if ($scoped !== null) return (string) $scoped;
+            if ($scoped !== null) {
+                return (string) $scoped;
+            }
         }
         $any = $query->value('scryfall_id');
+
         return $any !== null ? (string) $any : null;
     }
 
@@ -603,17 +653,22 @@ class DeckImportService
     private function pickResolved(array $resolved, string $name, ?string $set, ?string $cn = null): ?string
     {
         $key = strtolower($this->normalizeName($name));
-        if (! isset($resolved[$key])) return null;
-        $bucket  = $resolved[$key];
-        $setKey  = $set !== null ? strtolower(trim($set)) : '';
-        $cnKey   = $cn  !== null ? strtolower(trim($cn)) : '';
+        if (! isset($resolved[$key])) {
+            return null;
+        }
+        $bucket = $resolved[$key];
+        $setKey = $set !== null ? strtolower(trim($set)) : '';
+        $cnKey = $cn !== null ? strtolower(trim($cn)) : '';
         if ($setKey !== '' && $cnKey !== '' && isset($bucket[$setKey.'|'.$cnKey])) {
             return $bucket[$setKey.'|'.$cnKey];
         }
         if ($setKey !== '' && isset($bucket[$setKey.'|'])) {
             return $bucket[$setKey.'|'];
         }
-        if (isset($bucket[''])) return $bucket[''];
+        if (isset($bucket[''])) {
+            return $bucket[''];
+        }
+
         // Last-ditch: any printing we recorded.
         return reset($bucket) ?: null;
     }
@@ -632,8 +687,11 @@ class DeckImportService
     private function firstString(array $values): ?string
     {
         foreach ($values as $v) {
-            if (is_string($v) && $v !== '') return $v;
+            if (is_string($v) && $v !== '') {
+                return $v;
+            }
         }
+
         return null;
     }
 
@@ -650,11 +708,15 @@ class DeckImportService
      */
     private function normalizeImportedDescription(mixed $raw): ?string
     {
-        if ($raw === null) return null;
+        if ($raw === null) {
+            return null;
+        }
 
         if (is_string($raw)) {
             $trim = trim($raw);
-            if ($trim === '') return null;
+            if ($trim === '') {
+                return null;
+            }
             // Detect a stringified Quill Delta and decode before flattening.
             if (str_starts_with($trim, '{') && str_contains($trim, '"ops"')) {
                 $decoded = json_decode($trim, true);
@@ -662,6 +724,7 @@ class DeckImportService
                     return $this->flattenQuillDelta($decoded['ops']);
                 }
             }
+
             return $trim;
         }
 
@@ -675,10 +738,14 @@ class DeckImportService
     /** @param mixed $ops */
     private function flattenQuillDelta($ops): ?string
     {
-        if (! is_array($ops)) return null;
+        if (! is_array($ops)) {
+            return null;
+        }
         $text = '';
         foreach ($ops as $op) {
-            if (! is_array($op)) continue;
+            if (! is_array($op)) {
+                continue;
+            }
             $insert = $op['insert'] ?? null;
             if (is_string($insert)) {
                 $text .= $insert;
@@ -686,6 +753,7 @@ class DeckImportService
             // Embeds (images, mentions, ...) come through as arrays — skip.
         }
         $text = trim($text);
+
         return $text === '' ? null : $text;
     }
 
@@ -702,9 +770,12 @@ class DeckImportService
     private function isInstantOrSorcery(string $scryfallId): bool
     {
         $card = ScryfallCard::where('scryfall_id', $scryfallId)->first();
-        if ($card === null) return false;
+        if ($card === null) {
+            return false;
+        }
         $parts = preg_split('/\x{2014}/u', $card->type_line ?? '', 2);
         $pre = trim($parts[0] ?? '');
+
         return str_contains($pre, 'Instant') || str_contains($pre, 'Sorcery');
     }
 
@@ -730,7 +801,9 @@ class DeckImportService
 
         foreach ($signatureIds as $scryfallId) {
             $spell = ScryfallCard::where('scryfall_id', $scryfallId)->first();
-            if ($spell === null) continue;
+            if ($spell === null) {
+                continue;
+            }
 
             $parent = $this->matchOathbreaker($spell, $oathbreakerEntries);
 
@@ -741,18 +814,18 @@ class DeckImportService
 
             if ($existing) {
                 $existing->update([
-                    'is_signature_spell'     => true,
+                    'is_signature_spell' => true,
                     'signature_for_entry_id' => $parent?->id,
-                    'quantity'               => 1,
+                    'quantity' => 1,
                 ]);
             } else {
                 DeckEntry::create([
-                    'deck_id'                => $deck->id,
-                    'scryfall_id'            => $scryfallId,
-                    'quantity'               => 1,
-                    'zone'                   => 'main',
-                    'category'               => $this->entryCtrl->autoCategory($spell),
-                    'is_signature_spell'     => true,
+                    'deck_id' => $deck->id,
+                    'scryfall_id' => $scryfallId,
+                    'quantity' => 1,
+                    'zone' => 'main',
+                    'category' => $this->entryCtrl->autoCategory($spell),
+                    'is_signature_spell' => true,
                     'signature_for_entry_id' => $parent?->id,
                 ]);
             }
@@ -764,10 +837,14 @@ class DeckImportService
      * in the signature spell's identity. Falls back to the first oathbreaker
      * (or null if none exist) so legality can flag the broken pairing.
      */
-    private function matchOathbreaker(ScryfallCard $spell, \Illuminate\Support\Collection $oathbreakers): ?DeckEntry
+    private function matchOathbreaker(ScryfallCard $spell, Collection $oathbreakers): ?DeckEntry
     {
-        if ($oathbreakers->isEmpty()) return null;
-        if ($oathbreakers->count() === 1) return $oathbreakers->first();
+        if ($oathbreakers->isEmpty()) {
+            return null;
+        }
+        if ($oathbreakers->count() === 1) {
+            return $oathbreakers->first();
+        }
 
         $spellColors = array_map('strtoupper', (array) ($spell->color_identity ?? []));
         foreach ($oathbreakers as $ob) {
@@ -776,6 +853,7 @@ class DeckImportService
                 return $ob;
             }
         }
+
         return $oathbreakers->first();
     }
 
@@ -809,8 +887,8 @@ class DeckImportService
 
     /** Browsery default headers — Moxfield's WAF rejects bare cURL/PHP UAs. */
     private const BROWSER_HEADERS = [
-        'User-Agent'      => 'Mozilla/5.0 (Vaultkeeper/1.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
-        'Accept'          => 'application/json,text/plain,*/*',
+        'User-Agent' => 'Mozilla/5.0 (Vaultkeeper/1.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        'Accept' => 'application/json,text/plain,*/*',
         'Accept-Language' => 'en-US,en;q=0.9',
     ];
 
@@ -865,12 +943,16 @@ class DeckImportService
             $results = is_array($json) ? ($json['results'] ?? []) : [];
             foreach ($results as $row) {
                 $id = (int) ($row['id'] ?? 0);
-                if ($id <= 0) continue;
+                if ($id <= 0) {
+                    continue;
+                }
                 $folderId = isset($row['parentFolderId']) ? (int) $row['parentFolderId'] : null;
-                if ($folderId !== null && $folderId > 0) $folderIds[$folderId] = true;
+                if ($folderId !== null && $folderId > 0) {
+                    $folderIds[$folderId] = true;
+                }
                 $rawDecks[] = [
-                    'id'        => $id,
-                    'name'      => (string) ($row['name'] ?? "Archidekt deck {$id}"),
+                    'id' => $id,
+                    'name' => (string) ($row['name'] ?? "Archidekt deck {$id}"),
                     'folder_id' => $folderId,
                 ];
             }
@@ -883,12 +965,13 @@ class DeckImportService
         $folderPaths = $this->resolveArchidektFolderPaths(array_keys($folderIds));
 
         return array_map(static function (array $d) use ($folderPaths) {
-            $fid  = $d['folder_id'];
+            $fid = $d['folder_id'];
             $path = $fid !== null && isset($folderPaths[$fid]) ? $folderPaths[$fid] : null;
+
             return [
-                'id'          => $d['id'],
-                'name'        => $d['name'],
-                'url'         => "https://archidekt.com/decks/{$d['id']}/",
+                'id' => $d['id'],
+                'name' => $d['name'],
+                'url' => "https://archidekt.com/decks/{$d['id']}/",
                 'folder_path' => $path,
             ];
         }, $rawDecks);
@@ -908,7 +991,7 @@ class DeckImportService
      * user's mental model.
      *
      * @param  int[]  $rootIds
-     * @return array<int, ?string>  null = deck should be ungrouped
+     * @return array<int, ?string> null = deck should be ungrouped
      */
     private function resolveArchidektFolderPaths(array $rootIds): array
     {
@@ -920,18 +1003,21 @@ class DeckImportService
         while (! empty($queue) && $rounds++ < 8) {
             $next = [];
             foreach ($queue as $id) {
-                if (isset($folders[$id]) && $folders[$id]['fetched']) continue;
+                if (isset($folders[$id]) && $folders[$id]['fetched']) {
+                    continue;
+                }
 
                 $row = $this->fetchArchidektFolder($id);
                 if ($row === null) {
                     // Mark as fetched-failed so we don't retry, but keep any
                     // pre-populated name from a child's response.
                     $folders[$id] = ($folders[$id] ?? ['name' => '', 'parent' => null]) + ['fetched' => true];
+
                     continue;
                 }
                 $folders[$id] = [
-                    'name'    => $row['name'],
-                    'parent'  => $row['parent_id'],
+                    'name' => $row['name'],
+                    'parent' => $row['parent_id'],
                     'fetched' => true,
                 ];
 
@@ -940,8 +1026,8 @@ class DeckImportService
                 if ($row['parent_id'] !== null && $row['parent_name'] !== null
                     && empty($folders[$row['parent_id']]['fetched'])) {
                     $folders[$row['parent_id']] = [
-                        'name'    => $folders[$row['parent_id']]['name'] ?? $row['parent_name'],
-                        'parent'  => null,    // unknown until we fetch
+                        'name' => $folders[$row['parent_id']]['name'] ?? $row['parent_name'],
+                        'parent' => null,    // unknown until we fetch
                         'fetched' => false,
                     ];
                 }
@@ -970,12 +1056,14 @@ class DeckImportService
             // Decks directly under the root → no group at all (null path).
             if ($rootFolderId !== null && $id === $rootFolderId) {
                 $paths[$id] = null;
+
                 continue;
             }
 
             $name = $folders[$id]['name'] ?? '';
             if ($name === '') {
                 $paths[$id] = "Folder #{$id}";
+
                 continue;
             }
             $parts = [];
@@ -984,13 +1072,18 @@ class DeckImportService
             while ($cursor !== null && isset($folders[$cursor]) && $depth++ < 12) {
                 // Stop at the root: its name ("Home") is implicit and
                 // shouldn't appear as a prefix on every group.
-                if ($cursor === $rootFolderId) break;
+                if ($cursor === $rootFolderId) {
+                    break;
+                }
                 $part = trim($folders[$cursor]['name']);
-                if ($part !== '') array_unshift($parts, $part);
+                if ($part !== '') {
+                    array_unshift($parts, $part);
+                }
                 $cursor = $folders[$cursor]['parent'];
             }
             $paths[$id] = ! empty($parts) ? implode(' / ', $parts) : "Folder #{$id}";
         }
+
         return $paths;
     }
 
@@ -1012,26 +1105,32 @@ class DeckImportService
         } catch (\Throwable) {
             return null;
         }
-        if (! $resp->successful()) return null;
+        if (! $resp->successful()) {
+            return null;
+        }
         $j = $resp->json();
-        if (! is_array($j)) return null;
+        if (! is_array($j)) {
+            return null;
+        }
 
         $name = (string) ($j['name'] ?? '');
-        if ($name === '') return null;
+        if ($name === '') {
+            return null;
+        }
 
         $parentId = null;
         $parentName = null;
         $parent = $j['parentFolder'] ?? $j['parent'] ?? null;
         if (is_array($parent)) {
-            $parentId   = isset($parent['id']) ? (int) $parent['id'] : null;
+            $parentId = isset($parent['id']) ? (int) $parent['id'] : null;
             $parentName = isset($parent['name']) ? (string) $parent['name'] : null;
         } elseif (is_int($parent) || (is_string($parent) && ctype_digit($parent))) {
             $parentId = (int) $parent;
         }
 
         return [
-            'name'        => $name,
-            'parent_id'   => $parentId,
+            'name' => $name,
+            'parent_id' => $parentId,
             'parent_name' => $parentName,
         ];
     }
@@ -1042,12 +1141,14 @@ class DeckImportService
      * by capping recursion depth.
      *
      * @param  array<int, array{id:int, name:string, parent:?int}>  $folders
-     * @return array<int, string>  folder id → "Parent / Child"
+     * @return array<int, string> folder id → "Parent / Child"
      */
     private function buildArchidektFolderPaths(array $folders): array
     {
         $byId = [];
-        foreach ($folders as $f) $byId[$f['id']] = $f;
+        foreach ($folders as $f) {
+            $byId[$f['id']] = $f;
+        }
 
         $paths = [];
         foreach ($byId as $id => $_) {
@@ -1059,8 +1160,11 @@ class DeckImportService
                 $cursor = $byId[$cursor]['parent'] ?: null;
             }
             $parts = array_values(array_filter(array_map('trim', $parts), fn ($p) => $p !== ''));
-            if (! empty($parts)) $paths[$id] = implode(' / ', $parts);
+            if (! empty($parts)) {
+                $paths[$id] = implode(' / ', $parts);
+            }
         }
+
         return $paths;
     }
 
@@ -1085,14 +1189,14 @@ class DeckImportService
         // chance the WAF lets us through.
         $headers = self::BROWSER_HEADERS + [
             'Referer' => 'https://www.moxfield.com/',
-            'Origin'  => 'https://www.moxfield.com',
+            'Origin' => 'https://www.moxfield.com',
         ];
 
         while ($page <= $totalPages && $safety-- > 0) {
             $response = Http::withHeaders($headers)
                 ->timeout(15)
                 ->get('https://api2.moxfield.com/v2/users/'.urlencode($username).'/decks', [
-                    'pageSize'   => 100,
+                    'pageSize' => 100,
                     'pageNumber' => $page,
                 ]);
 
@@ -1103,16 +1207,20 @@ class DeckImportService
             }
 
             $json = $response->json();
-            if (! is_array($json)) break;
+            if (! is_array($json)) {
+                break;
+            }
             $totalPages = (int) ($json['totalPages'] ?? 1);
             foreach ($json['data'] ?? [] as $row) {
                 $publicId = (string) ($row['publicId'] ?? '');
-                if ($publicId === '') continue;
+                if ($publicId === '') {
+                    continue;
+                }
                 $folder = $row['folderName'] ?? ($row['folder']['name'] ?? null);
                 $decks[] = [
-                    'id'          => $publicId,
-                    'name'        => (string) ($row['name'] ?? "Moxfield deck {$publicId}"),
-                    'url'         => "https://www.moxfield.com/decks/{$publicId}",
+                    'id' => $publicId,
+                    'name' => (string) ($row['name'] ?? "Moxfield deck {$publicId}"),
+                    'url' => "https://www.moxfield.com/decks/{$publicId}",
                     'folder_path' => $folder !== null && $folder !== '' ? (string) $folder : null,
                 ];
             }
@@ -1152,37 +1260,45 @@ class DeckImportService
             throw ValidationException::withMessages(['url' => ['Archidekt response did not contain any cards.']]);
         }
 
-        $commanders      = [];
+        $commanders = [];
         $signatureSpells = [];
-        $companion       = null;
-        $entries         = [];
+        $companion = null;
+        $entries = [];
 
         foreach ($json['cards'] as $c) {
             $qty = (int) ($c['quantity'] ?? 0);
-            if ($qty <= 0) continue;
+            if ($qty <= 0) {
+                continue;
+            }
 
             $cardData = $c['card'] ?? [];
-            $edition  = $cardData['edition'] ?? [];
-            $name     = (string) ($cardData['oracleCard']['name'] ?? ($cardData['name'] ?? ''));
-            if ($name === '') continue;
-            $set      = isset($edition['editioncode']) ? (string) $edition['editioncode'] : null;
+            $edition = $cardData['edition'] ?? [];
+            $name = (string) ($cardData['oracleCard']['name'] ?? ($cardData['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $set = isset($edition['editioncode']) ? (string) $edition['editioncode'] : null;
 
             // Archidekt ships the Scryfall UUID per card under `card.uid`
             // (sometimes `card.scryfallId`). Preferring it skips all the
             // name+set matching fuzz and nails the exact printing the
             // user picked inside Archidekt.
             $scryfallId = $this->firstString([
-                $cardData['uid']         ?? null,
-                $cardData['scryfallId']  ?? null,
+                $cardData['uid'] ?? null,
+                $cardData['scryfallId'] ?? null,
                 $cardData['scryfall_id'] ?? null,
             ]);
 
-            $cats = array_map('strtolower', (array) ($c['categories'] ?? []));
+            $catsRaw = array_values(array_filter(
+                (array) ($c['categories'] ?? []),
+                fn ($v) => is_string($v) && $v !== '',
+            ));
+            $cats = array_map('strtolower', $catsRaw);
 
             $row = [
                 'scryfall_id' => $scryfallId,
                 'name' => $name,
-                'set'  => $set,
+                'set' => $set,
             ];
 
             // "Signature Spell" wins over "Commander" — Archidekt sometimes
@@ -1190,30 +1306,37 @@ class DeckImportService
             // would land them in commander_*_scryfall_id incorrectly.
             if (in_array('signature spell', $cats, true) || in_array('signature spells', $cats, true)) {
                 $signatureSpells[] = $row;
+
                 continue;
             }
             if (in_array('commander', $cats, true)) {
                 $commanders[] = $row;
+
                 continue;
             }
             if (in_array('companion', $cats, true)) {
                 $companion = $row;
+
                 continue;
             }
 
-            $entries[] = $row + ['quantity' => $qty, 'zone' => $this->archidektZone($c)];
+            $entries[] = $row + [
+                'quantity' => $qty,
+                'zone' => $this->archidektZone($c),
+                'source_category' => $this->pickSourceCategory($catsRaw),
+            ];
         }
 
         $format = $this->resolveArchidektFormat($json['deckFormat'] ?? ($json['format'] ?? null));
 
         return [
-            'name'             => (string) ($json['name'] ?? "Archidekt deck {$id}"),
-            'format'           => $format,
-            'description'      => $this->normalizeImportedDescription($json['description'] ?? null),
-            'commanders'       => $commanders,
+            'name' => (string) ($json['name'] ?? "Archidekt deck {$id}"),
+            'format' => $format,
+            'description' => $this->normalizeImportedDescription($json['description'] ?? null),
+            'commanders' => $commanders,
             'signature_spells' => $signatureSpells,
-            'companion'        => $companion,
-            'entries'          => $entries,
+            'companion' => $companion,
+            'entries' => $entries,
         ];
     }
 
@@ -1230,7 +1353,45 @@ class DeckImportService
         if (is_string($raw)) {
             return self::SOURCE_FORMAT_MAP[strtolower(trim($raw))] ?? 'commander';
         }
+
         return 'commander';
+    }
+
+    /**
+     * Pick the first user-meaningful category from a source's per-card list,
+     * skipping the ones we already consumed for slot routing
+     * (commander/companion/signature spell) and the ones that encode the
+     * board/zone (sideboard/maybeboard). Preserves the source's casing so
+     * "Ramp", "Card Draw", etc. survive intact for display.
+     */
+    private function pickSourceCategory(array $categories): ?string
+    {
+        static $skip = [
+            'commander', 'commanders',
+            'companion', 'companions',
+            'signature spell', 'signature spells',
+            'sideboard', 'maybeboard', 'maybe',
+        ];
+        foreach ($categories as $cat) {
+            if (! is_string($cat)) {
+                continue;
+            }
+            $trim = trim($cat);
+            if ($trim === '') {
+                continue;
+            }
+            $lower = strtolower($trim);
+            if (in_array($lower, $skip, true)) {
+                continue;
+            }
+            if (str_contains($lower, 'sideboard') || str_contains($lower, 'maybeboard')) {
+                continue;
+            }
+
+            return $trim;
+        }
+
+        return null;
     }
 
     /** Archidekt encodes zone via card category name or a boolean flag. */
@@ -1238,9 +1399,14 @@ class DeckImportService
     {
         $cats = array_map('strtolower', (array) ($c['categories'] ?? []));
         foreach ($cats as $cat) {
-            if (str_contains($cat, 'sideboard')) return 'side';
-            if (str_contains($cat, 'maybeboard') || $cat === 'maybe') return 'maybe';
+            if (str_contains($cat, 'sideboard')) {
+                return 'side';
+            }
+            if (str_contains($cat, 'maybeboard') || $cat === 'maybe') {
+                return 'maybe';
+            }
         }
+
         return 'main';
     }
 
@@ -1282,17 +1448,19 @@ class DeckImportService
             return [
                 'scryfall_id' => $this->firstString([
                     $card['scryfall_id'] ?? null,
-                    $card['scryfallId']  ?? null,
+                    $card['scryfallId'] ?? null,
                 ]),
                 'name' => (string) ($card['name'] ?? ''),
-                'set'  => $card['set'] ?? null,
+                'set' => $card['set'] ?? null,
             ];
         };
 
         $commanders = [];
         foreach ($boards['commanders']['cards'] ?? [] as $row) {
             $r = $rowFor($row['card'] ?? []);
-            if ($r['name'] === '' && empty($r['scryfall_id'])) continue;
+            if ($r['name'] === '' && empty($r['scryfall_id'])) {
+                continue;
+            }
             $commanders[] = $r;
         }
 
@@ -1310,17 +1478,30 @@ class DeckImportService
 
         $entries = [];
         $zoneMap = [
-            'mainboard'  => 'main',
-            'sideboard'  => 'side',
+            'mainboard' => 'main',
+            'sideboard' => 'side',
             'maybeboard' => 'maybe',
         ];
         foreach ($zoneMap as $key => $zone) {
             foreach ($boards[$key]['cards'] ?? [] as $row) {
                 $qty = (int) ($row['quantity'] ?? 0);
-                if ($qty <= 0) continue;
+                if ($qty <= 0) {
+                    continue;
+                }
                 $r = $rowFor($row['card'] ?? []);
-                if ($r['name'] === '' && empty($r['scryfall_id'])) continue;
-                $entries[] = $r + ['quantity' => $qty, 'zone' => $zone];
+                if ($r['name'] === '' && empty($r['scryfall_id'])) {
+                    continue;
+                }
+                // Moxfield exposes per-card user tags on the board entry.
+                // Take the first non-empty one as the deck-entry category so
+                // user-curated buckets (Ramp, Removal, ...) survive import
+                // instead of being overwritten by autoCategory().
+                $tags = (array) ($row['tags'] ?? []);
+                $entries[] = $r + [
+                    'quantity' => $qty,
+                    'zone' => $zone,
+                    'source_category' => $this->pickSourceCategory($tags),
+                ];
             }
         }
 
@@ -1328,12 +1509,12 @@ class DeckImportService
         $format = self::SOURCE_FORMAT_MAP[$formatRaw] ?? 'commander';
 
         return [
-            'name'        => (string) ($json['name'] ?? "Moxfield deck {$publicId}"),
-            'format'      => $format,
+            'name' => (string) ($json['name'] ?? "Moxfield deck {$publicId}"),
+            'format' => $format,
             'description' => $this->normalizeImportedDescription($json['description'] ?? null),
-            'commanders'  => $commanders,
-            'companion'   => $companion,
-            'entries'     => $entries,
+            'commanders' => $commanders,
+            'companion' => $companion,
+            'entries' => $entries,
         ];
     }
 
@@ -1375,50 +1556,60 @@ class DeckImportService
         foreach ($reader->getRecords() as $row) {
             $isEmpty = true;
             foreach ($row as $v) {
-                if (trim((string) $v) !== '') { $isEmpty = false; break; }
+                if (trim((string) $v) !== '') {
+                    $isEmpty = false;
+                    break;
+                }
             }
-            if ($isEmpty) continue;
+            if ($isEmpty) {
+                continue;
+            }
 
             $scryfallId = trim((string) ($row['Scryfall ID'] ?? ''));
-            $name       = trim((string) ($row['Name'] ?? ''));
+            $name = trim((string) ($row['Name'] ?? ''));
             // A row without either is unidentifiable; the materialize
             // resolver will skip it anyway, but drop it here so we don't
             // count it against the user.
-            if ($scryfallId === '' && $name === '') continue;
+            if ($scryfallId === '' && $name === '') {
+                continue;
+            }
 
             $entries[] = [
-                'scryfall_id'      => $scryfallId !== '' ? $scryfallId : null,
-                'name'             => $name,
-                'set'              => $this->csvNonEmpty($row['Set code'] ?? null),
+                'scryfall_id' => $scryfallId !== '' ? $scryfallId : null,
+                'name' => $name,
+                'set' => $this->csvNonEmpty($row['Set code'] ?? null),
                 'collector_number' => $this->csvNonEmpty($row['Collector number'] ?? null),
-                'quantity'         => max(1, (int) ($row['Quantity'] ?? 1)),
-                'zone'             => $this->csvZone((string) ($row['Zone'] ?? '')),
+                'quantity' => max(1, (int) ($row['Quantity'] ?? 1)),
+                'zone' => $this->csvZone((string) ($row['Zone'] ?? '')),
             ];
         }
 
         return [
-            'name'        => '',    // filled by importFromCsv
-            'format'      => '',    // filled by importFromCsv
+            'name' => '',    // filled by importFromCsv
+            'format' => '',    // filled by importFromCsv
             'description' => null,
-            'commanders'  => [],
-            'companion'   => null,
-            'entries'     => $entries,
+            'commanders' => [],
+            'companion' => null,
+            'entries' => $entries,
         ];
     }
 
     private function csvNonEmpty(mixed $raw): ?string
     {
-        if ($raw === null) return null;
+        if ($raw === null) {
+            return null;
+        }
         $v = trim((string) $raw);
+
         return $v === '' ? null : $v;
     }
 
     private function csvZone(string $raw): string
     {
         return match (strtolower(trim($raw))) {
-            'side', 'sideboard'   => 'side',
+            'side', 'sideboard' => 'side',
             'maybe', 'maybeboard' => 'maybe',
-            default               => 'main',
+            default => 'main',
         };
     }
 
@@ -1433,8 +1624,8 @@ class DeckImportService
     private function parseText(string $text): array
     {
         $commanders = [];
-        $companion  = null;
-        $entries    = [];
+        $companion = null;
+        $entries = [];
 
         // `zone` tracks the main/side/maybe board; `role` tracks whether the
         // current section is actually the commander/companion area (in which
@@ -1456,54 +1647,65 @@ class DeckImportService
                 case 'commander':
                 case 'commanders':
                     $role = 'commander';
+
                     continue 2;
                 case 'companion':
                     $role = 'companion';
+
                     continue 2;
                 case 'deck':
                 case 'main':
                 case 'mainboard':
                     $zone = 'main';
                     $role = 'card';
+
                     continue 2;
                 case 'side':
                 case 'sideboard':
                     $zone = 'side';
                     $role = 'card';
+
                     continue 2;
                 case 'maybe':
                 case 'maybeboard':
                     $zone = 'maybe';
                     $role = 'card';
+
                     continue 2;
             }
 
-            if (! preg_match(self::CARD_LINE, $trim, $m)) continue;
-            $qty  = max(1, (int) $m['qty']);
+            if (! preg_match(self::CARD_LINE, $trim, $m)) {
+                continue;
+            }
+            $qty = max(1, (int) $m['qty']);
             $name = $this->normalizeName((string) $m['name']);
-            $set  = ! empty($m['set']) ? strtolower($m['set']) : null;
-            $cn   = ! empty($m['cn']) ? strtolower((string) $m['cn']) : null;
-            if ($name === '') continue;
+            $set = ! empty($m['set']) ? strtolower($m['set']) : null;
+            $cn = ! empty($m['cn']) ? strtolower((string) $m['cn']) : null;
+            if ($name === '') {
+                continue;
+            }
 
             $row = ['name' => $name, 'set' => $set, 'collector_number' => $cn];
             if ($role === 'commander') {
                 $commanders[] = $row;
+
                 continue;
             }
             if ($role === 'companion') {
                 $companion = $row;
+
                 continue;
             }
             $entries[] = $row + ['quantity' => $qty, 'zone' => $zone];
         }
 
         return [
-            'name'        => '',    // filled by importFromText
-            'format'      => '',    // filled by importFromText
+            'name' => '',    // filled by importFromText
+            'format' => '',    // filled by importFromText
             'description' => null,
-            'commanders'  => $commanders,
-            'companion'   => $companion,
-            'entries'     => $entries,
+            'commanders' => $commanders,
+            'companion' => $companion,
+            'entries' => $entries,
         ];
     }
 }
