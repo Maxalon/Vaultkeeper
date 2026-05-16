@@ -1,6 +1,7 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useCollectionStore } from '../stores/collection'
+import { confirm as confirmDialog } from '../composables/useConfirm'
 import CardDetailBody from './CardDetailBody.vue'
 import PriceLine from './PriceLine.vue'
 
@@ -9,9 +10,20 @@ const collection = useCollectionStore()
 const entry = computed(() => collection.activeEntry)
 const card = computed(() => entry.value?.card || null)
 
+const saveError = ref(null)
+const quickMovePending = ref(false)
+
+// Clear any stale error when the active entry changes.
+watch(() => collection.activeEntryId, () => { saveError.value = null })
+
 async function patch(payload) {
   if (!entry.value) return
-  await collection.updateEntry(entry.value.id, payload)
+  saveError.value = null
+  try {
+    await collection.updateEntry(entry.value.id, payload)
+  } catch (err) {
+    saveError.value = err?.response?.data?.message || 'Save failed. Please try again.'
+  }
 }
 
 function onConditionChange(e) { patch({ condition: e.target.value }) }
@@ -44,8 +56,25 @@ function onFinishChange(e) {
 async function onRemove() {
   if (!entry.value) return
   const name = entry.value.card?.name || 'this card'
-  if (!confirm(`Remove ${name} from your collection?`)) return
+  const ok = await confirmDialog({
+    title: 'Remove from collection',
+    message: `Remove ${name} from your collection? This cannot be undone.`,
+    confirmText: 'Remove',
+    cancelText: 'Cancel',
+    destructive: true,
+  })
+  if (!ok) return
   await collection.deleteEntry(entry.value.id)
+}
+
+async function quickMove(locationId) {
+  if (!entry.value || quickMovePending.value) return
+  quickMovePending.value = true
+  try {
+    await patch({ location_id: locationId })
+  } finally {
+    quickMovePending.value = false
+  }
 }
 
 function close() { collection.closeActiveEntry() }
@@ -70,8 +99,27 @@ const realLocations = computed(() => collection.locations)
         :is-etched="!!entry.is_etched"
       />
 
+      <section v-if="realLocations.length" class="vk-detail-section">
+        <h4>Move to location</h4>
+        <div class="quick-move-grid">
+          <button
+            v-for="loc in realLocations"
+            :key="loc.id"
+            type="button"
+            class="quick-move-btn"
+            :class="{ active: entry.location_id === loc.id }"
+            :disabled="quickMovePending"
+            @click="quickMove(loc.id)"
+          >{{ loc.name }}</button>
+        </div>
+      </section>
+
       <section class="vk-detail-section">
         <h4>Your Copies</h4>
+
+        <div v-if="saveError" class="vk-save-error" role="alert">
+          {{ saveError }}
+        </div>
 
         <div class="vk-field-row">
           <label class="vk-field">
@@ -260,6 +308,44 @@ select.vk-field-input {
   margin: 0;
   accent-color: var(--amber);
 }
+
+.vk-save-error {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: rgba(209, 107, 107, 0.1);
+  border: 1px solid rgba(209, 107, 107, 0.35);
+  border-radius: var(--radius-sm);
+  color: #d97757;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.quick-move-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quick-move-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  color: var(--ink-70);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+  white-space: nowrap;
+}
+.quick-move-btn:hover:not(:disabled) {
+  border-color: var(--amber-lo);
+  color: var(--amber);
+}
+.quick-move-btn.active {
+  background: var(--amber-lo, #3a2f0f);
+  border-color: var(--amber-lo, #8a7436);
+  color: var(--amber, #c9a552);
+}
+.quick-move-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .vk-remove-row {
   margin-top: 14px;
