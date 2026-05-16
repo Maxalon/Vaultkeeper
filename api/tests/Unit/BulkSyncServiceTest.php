@@ -22,7 +22,7 @@ class BulkSyncServiceTest extends TestCase
         // Pure function under test has no dependency on ScryfallService state
         // but the constructor still needs one — instantiate with a fresh Http
         // factory so nothing ever tries to call out.
-        return new BulkSyncService(new ScryfallService(new HttpFactory), new PriceUpsertService());
+        return new BulkSyncService(new ScryfallService(new HttpFactory), new PriceUpsertService);
     }
 
     /**
@@ -155,13 +155,14 @@ class BulkSyncServiceTest extends TestCase
     private static function plainCard(): array
     {
         return [
-            'nonfoil'       => true,
+            'lang' => 'en',
+            'nonfoil' => true,
             'frame_effects' => [],
-            'border_color'  => 'black',
-            'promo'         => false,
-            'variation'     => false,
-            'oversized'     => false,
-            'set_type'      => 'expansion',
+            'border_color' => 'black',
+            'promo' => false,
+            'variation' => false,
+            'oversized' => false,
+            'set_type' => 'expansion',
         ];
     }
 
@@ -171,41 +172,44 @@ class BulkSyncServiceTest extends TestCase
     public static function defaultEligibleProvider(): array
     {
         $base = self::plainCard();
+
         return [
-            'plain regular printing'           => [$base,                                                           true,  'black-border, no frame effects, normal set'],
-            'legendary-frame alone is ok'      => [[...$base, 'frame_effects' => ['legendary']],                    true,  'legendary frame is ordinary for legendary cards'],
-            'enchantment-frame alone is ok'    => [[...$base, 'frame_effects' => ['enchantment']],                  true,  'Theros-style enchantment frame is intrinsic'],
-            'snow frame alone is ok'           => [[...$base, 'frame_effects' => ['snow']],                         true,  'snow frame is intrinsic to snow cards'],
-            'legendary + enchantment ok'       => [[...$base, 'frame_effects' => ['legendary', 'enchantment']],     true,  'legendary enchantments (Theros gods etc.)'],
-            'showcase frame disqualifies'      => [[...$base, 'frame_effects' => ['showcase']],                     false, 'showcase is an alt treatment'],
-            'extendedart disqualifies'         => [[...$base, 'frame_effects' => ['extendedart']],                  false, 'extended art is an alt treatment'],
-            'etched disqualifies'              => [[...$base, 'frame_effects' => ['etched']],                       false, 'etched foil is an alt treatment'],
-            'nyxtouched disqualifies'          => [[...$base, 'frame_effects' => ['nyxtouched']],                   false, 'Theros Beyond Death holofoil variant'],
-            'inverted disqualifies'            => [[...$base, 'frame_effects' => ['enchantment', 'inverted']],      false, 'Aetherdrift inverted variant (Count on Luck #457)'],
-            'enchantment + extendedart fails'  => [[...$base, 'frame_effects' => ['enchantment', 'extendedart']],   false, 'still fails because of extendedart'],
-            'borderless disqualifies'          => [[...$base, 'border_color' => 'borderless'],                      false, 'borderless is an alt treatment'],
-            'gold border disqualifies'         => [[...$base, 'border_color' => 'gold'],                            false, 'World Championship deck reprints'],
-            'silver border disqualifies'       => [[...$base, 'border_color' => 'silver'],                          false, 'Un-set joke cards'],
-            'yellow border disqualifies'       => [[...$base, 'border_color' => 'yellow'],                          false, 'Alchemy rebalanced / digital-only frame'],
-            'white border ok'                  => [[...$base, 'border_color' => 'white'],                           true,  'legitimate on older / retro-frame printings'],
-            'foil-only disqualifies'           => [[...$base, 'nonfoil' => false],                                  false, 'foil-only printings are special'],
-            'promo flag disqualifies'          => [[...$base, 'promo' => true],                                     false, 'promo stamp on any set'],
-            'variation disqualifies'           => [[...$base, 'variation' => true],                                 false, 'variation = alternate printing of same collector #'],
-            'oversized disqualifies'           => [[...$base, 'oversized' => true],                                 false, 'oversized Plane / commander cards'],
-            'memorabilia set_type excluded'    => [[...$base, 'set_type' => 'memorabilia'],                         false, 'art series cards live here'],
-            'token set excluded'               => [[...$base, 'set_type' => 'token'],                               false, 'tokens never default'],
-            'secret lair (box) not default'    => [[...$base, 'set_type' => 'box'],                                 false, 'SLD cards can look normal but are premium products'],
-            'masterpiece not default'          => [[...$base, 'set_type' => 'masterpiece'],                         false, 'Expeditions / Invocations / etc.'],
-            'from_the_vault not default'       => [[...$base, 'set_type' => 'from_the_vault'],                      false, 'premium compilation'],
-            'eternal (all-foil) not default'   => [[...$base, 'set_type' => 'eternal'],                             false, 'foil-only premium supplement like Avatar Eternal'],
-            'promo set_type not default'       => [[...$base, 'set_type' => 'promo'],                               false, 'caught by promo flag too, belt-and-suspenders'],
-            'regular expansion qualifies'      => [[...$base, 'set_type' => 'expansion'],                           true,  'baseline'],
-            'core set qualifies'               => [[...$base, 'set_type' => 'core'],                                true,  'core set is a legitimate default'],
-            'draft_innovation qualifies'       => [[...$base, 'set_type' => 'draft_innovation'],                    true,  'Conspiracy, Battlebond, Clue Edition, …'],
-            'commander set qualifies'          => [[...$base, 'set_type' => 'commander'],                           true,  'commander precons'],
-            'masters qualifies'                => [[...$base, 'set_type' => 'masters'],                             true,  'reprint sets'],
-            'digital flag disqualifies'        => [[...$base, 'digital' => true],                                   false, 'Arena/MTGO-only printings (Pioneer Masters, Alchemy)'],
-            'expansion with missing fields'    => [['set_type' => 'expansion'],                                     false, 'missing nonfoil defaults to false → disqualifies'],
+            'plain regular printing' => [$base,                                                           true,  'black-border, no frame effects, normal set'],
+            'legendary-frame alone is ok' => [[...$base, 'frame_effects' => ['legendary']],                    true,  'legendary frame is ordinary for legendary cards'],
+            'enchantment-frame alone is ok' => [[...$base, 'frame_effects' => ['enchantment']],                  true,  'Theros-style enchantment frame is intrinsic'],
+            'snow frame alone is ok' => [[...$base, 'frame_effects' => ['snow']],                         true,  'snow frame is intrinsic to snow cards'],
+            'legendary + enchantment ok' => [[...$base, 'frame_effects' => ['legendary', 'enchantment']],     true,  'legendary enchantments (Theros gods etc.)'],
+            'showcase frame disqualifies' => [[...$base, 'frame_effects' => ['showcase']],                     false, 'showcase is an alt treatment'],
+            'extendedart disqualifies' => [[...$base, 'frame_effects' => ['extendedart']],                  false, 'extended art is an alt treatment'],
+            'etched disqualifies' => [[...$base, 'frame_effects' => ['etched']],                       false, 'etched foil is an alt treatment'],
+            'nyxtouched disqualifies' => [[...$base, 'frame_effects' => ['nyxtouched']],                   false, 'Theros Beyond Death holofoil variant'],
+            'inverted disqualifies' => [[...$base, 'frame_effects' => ['enchantment', 'inverted']],      false, 'Aetherdrift inverted variant (Count on Luck #457)'],
+            'enchantment + extendedart fails' => [[...$base, 'frame_effects' => ['enchantment', 'extendedart']],   false, 'still fails because of extendedart'],
+            'borderless disqualifies' => [[...$base, 'border_color' => 'borderless'],                      false, 'borderless is an alt treatment'],
+            'gold border disqualifies' => [[...$base, 'border_color' => 'gold'],                            false, 'World Championship deck reprints'],
+            'silver border disqualifies' => [[...$base, 'border_color' => 'silver'],                          false, 'Un-set joke cards'],
+            'yellow border disqualifies' => [[...$base, 'border_color' => 'yellow'],                          false, 'Alchemy rebalanced / digital-only frame'],
+            'white border ok' => [[...$base, 'border_color' => 'white'],                           true,  'legitimate on older / retro-frame printings'],
+            'foil-only disqualifies' => [[...$base, 'nonfoil' => false],                                  false, 'foil-only printings are special'],
+            'promo flag disqualifies' => [[...$base, 'promo' => true],                                     false, 'promo stamp on any set'],
+            'variation disqualifies' => [[...$base, 'variation' => true],                                 false, 'variation = alternate printing of same collector #'],
+            'oversized disqualifies' => [[...$base, 'oversized' => true],                                 false, 'oversized Plane / commander cards'],
+            'memorabilia set_type excluded' => [[...$base, 'set_type' => 'memorabilia'],                         false, 'art series cards live here'],
+            'token set excluded' => [[...$base, 'set_type' => 'token'],                               false, 'tokens never default'],
+            'secret lair (box) not default' => [[...$base, 'set_type' => 'box'],                                 false, 'SLD cards can look normal but are premium products'],
+            'masterpiece not default' => [[...$base, 'set_type' => 'masterpiece'],                         false, 'Expeditions / Invocations / etc.'],
+            'from_the_vault not default' => [[...$base, 'set_type' => 'from_the_vault'],                      false, 'premium compilation'],
+            'eternal (all-foil) not default' => [[...$base, 'set_type' => 'eternal'],                             false, 'foil-only premium supplement like Avatar Eternal'],
+            'promo set_type not default' => [[...$base, 'set_type' => 'promo'],                               false, 'caught by promo flag too, belt-and-suspenders'],
+            'regular expansion qualifies' => [[...$base, 'set_type' => 'expansion'],                           true,  'baseline'],
+            'core set qualifies' => [[...$base, 'set_type' => 'core'],                                true,  'core set is a legitimate default'],
+            'draft_innovation qualifies' => [[...$base, 'set_type' => 'draft_innovation'],                    true,  'Conspiracy, Battlebond, Clue Edition, …'],
+            'commander set qualifies' => [[...$base, 'set_type' => 'commander'],                           true,  'commander precons'],
+            'masters qualifies' => [[...$base, 'set_type' => 'masters'],                             true,  'reprint sets'],
+            'digital flag disqualifies' => [[...$base, 'digital' => true],                                   false, 'Arena/MTGO-only printings (Pioneer Masters, Alchemy)'],
+            'japanese printing disqualifies' => [[...$base, 'lang' => 'ja'],                                      false, 'non-English rows are FK-addressable but never default'],
+            'german printing disqualifies' => [[...$base, 'lang' => 'de'],                                      false, 'non-English rows are FK-addressable but never default'],
+            'expansion with missing fields' => [['set_type' => 'expansion'],                                     false, 'missing nonfoil defaults to false → disqualifies'],
         ];
     }
 
