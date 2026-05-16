@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCatalogStore } from '../stores/catalog'
 import { useCollectionStore } from '../stores/collection'
@@ -15,8 +15,10 @@ import DeckDetailSidebar from '../components/deck/DeckDetailSidebar.vue'
 import DeckRemoveDropZone from '../components/deck/DeckRemoveDropZone.vue'
 import DeckCreateCategoryDropZone from '../components/deck/DeckCreateCategoryDropZone.vue'
 import WantedMatchPanel from '../components/deck/matcher/WantedMatchPanel.vue'
+import CatalogSearchModal from '../components/CatalogSearchModal.vue'
 
 const catalog = useCatalogStore()
+const catalogSearchOpen = ref(false)
 const collection = useCollectionStore()
 const deck = useDeckStore()
 const settings = useSettingsStore()
@@ -129,6 +131,7 @@ onBeforeUnmount(() => {
       mode="deck"
       :sidebar-collapsed="settings.sidebarCollapsed"
       @toggle-sidebar="settings.toggleSidebarCollapsed()"
+      @catalog-search="catalogSearchOpen = true"
     />
     <LocationSidebar :collapsed="settings.sidebarCollapsed" />
     <main class="deck-main">
@@ -145,6 +148,10 @@ onBeforeUnmount(() => {
          (PhysicalCopiesTab, DeckDetailSidebar, WantedMatchSummaryTab) can
          open it without competing for layout space. -->
     <WantedMatchPanel v-if="wm.activeMatch" @close="wm.closePanel" />
+    <CatalogSearchModal
+      v-model:open="catalogSearchOpen"
+      :deck-id="deck.deck?.id ?? null"
+    />
   </div>
 </template>
 
