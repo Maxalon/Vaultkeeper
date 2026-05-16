@@ -9,4 +9,9 @@
 
     <string name="home_greeting">Signed in as %1$s</string>
     <string name="home_logout">Sign out</string>
+
+    <string name="onboarding_title">Welcome to Vaultkeeper</string>
+    <string name="onboarding_body">Track your collection, build decks, and keep tabs on what\'s where — all from one place.</string>
+    <string name="onboarding_body_secondary">You can always come back to settings to import an existing collection or tweak how things look.</string>
+    <string name="onboarding_cta">Get started</string>
 </resources>

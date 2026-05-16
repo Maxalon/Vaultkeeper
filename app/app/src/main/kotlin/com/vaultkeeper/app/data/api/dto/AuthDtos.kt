@@ -30,4 +30,7 @@ data class UserDto(
     val id: Long,
     val username: String,
     val email: String? = null,
-)
+    val onboarding_completed_at: String? = null,
+) {
+    val needsOnboarding: Boolean get() = onboarding_completed_at == null
+}

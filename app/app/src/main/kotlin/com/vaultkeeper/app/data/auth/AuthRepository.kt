@@ -39,6 +39,11 @@ class AuthRepository(
         _session.value = Session.Unauthenticated
     }
 
+    suspend fun completeOnboarding(): Result<Unit> = runCatching {
+        val user = api.completeOnboarding()
+        _session.value = Session.Authenticated(user)
+    }
+
     suspend fun logout() {
         runCatching { api.logout() }
         tokens.clear()
