@@ -2,9 +2,12 @@ package com.vaultkeeper.app.di
 
 import com.vaultkeeper.app.BuildConfig
 import com.vaultkeeper.app.data.api.AuthApi
+import com.vaultkeeper.app.data.api.AuthRefreshApi
 import com.vaultkeeper.app.data.auth.AuthInterceptor
 import com.vaultkeeper.app.data.auth.AuthRepository
+import com.vaultkeeper.app.data.auth.TokenRefreshInterceptor
 import com.vaultkeeper.app.data.auth.TokenStore
+import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
 import kotlinx.serialization.json.Json
@@ -21,6 +24,8 @@ val appModule = module {
 
     single { TokenStore(androidContext()) }
 
+    single { UnauthenticatedEvent() }
+
     single {
         Json {
             ignoreUnknownKeys = true
@@ -28,9 +33,22 @@ val appModule = module {
         }
     }
 
+    // Bare Retrofit used only by TokenRefreshInterceptor to call /auth/refresh
+    // without going through the auth interceptor stack (avoids a circular dep).
+    single<AuthRefreshApi> {
+        val json: Json = get()
+        Retrofit.Builder()
+            .baseUrl(BuildConfig.API_BASE_URL)
+            .client(OkHttpClient())
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(AuthRefreshApi::class.java)
+    }
+
     single<OkHttpClient> {
         OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(get()))
+            .addInterceptor(TokenRefreshInterceptor(get(), get(), get()))
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply {
@@ -52,7 +70,7 @@ val appModule = module {
 
     single<AuthApi> { get<Retrofit>().create(AuthApi::class.java) }
 
-    single { AuthRepository(get(), get()) }
+    single { AuthRepository(get(), get(), get()) }
 
     viewModel { LoginViewModel(get()) }
     viewModel { HomeViewModel(get()) }
