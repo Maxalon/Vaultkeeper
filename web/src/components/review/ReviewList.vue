@@ -59,6 +59,12 @@ const assignments = ref({})  // { [id]: { target, discard, accept_defaults, sele
 
 const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG']
 
+const REASON_BADGES = {
+  no_location:            'No location',
+  default_values_applied: 'Default values',
+  card_data_changed:      'Data changed',
+}
+
 const realLocations = computed(() => collection.locations)
 
 const REASON_LABELS = {
@@ -96,6 +102,9 @@ const anchorGroup = ref(null)
 const bulkTarget = ref('')
 const bulkCondition = ref('NM')
 const bulkFoil = ref(false)
+
+// Per-group batch resolve target (for no_location / card_data_changed groups).
+const groupBatchTarget = ref({})
 
 const selectedCount = computed(() => selectedIds.value.size)
 
@@ -346,6 +355,30 @@ function acceptDefaultsForGroup(reason) {
   }
 }
 
+async function resolveAllInGroup(reason, locationId) {
+  if (!locationId) return
+  submitting.value = true
+  try {
+    const payload = rows.value
+      .filter((r) => r.review_reason === reason)
+      .map((r) => ({ collection_entry_id: r.id, target_location_id: Number(locationId) }))
+    if (!payload.length) return
+    const result = await collection.resolveReview(payload)
+    const moved = (result.resolved || 0) + (result.merged || 0)
+    const discarded = result.discarded || 0
+    const parts = []
+    if (moved > 0) parts.push(`Moved ${moved} cop${moved === 1 ? 'y' : 'ies'}`)
+    if (discarded > 0) parts.push(`discarded ${discarded}`)
+    toast.success(parts.length ? parts.join(', ') + '.' : 'Nothing to apply.')
+    groupBatchTarget.value[reason] = ''
+    await load()
+  } catch (e) {
+    toast.error(e.response?.data?.message || 'Resolve failed')
+  } finally {
+    submitting.value = false
+  }
+}
+
 async function applyResolutions() {
   if (!anyResolutionPicked.value) return
   submitting.value = true
@@ -418,7 +451,7 @@ function sourceDeckLabel(row) {
 
     <div v-if="loading" class="empty">Loading…</div>
     <div v-else-if="!rows.length" class="empty">
-      Nothing to review — every card is in good standing.
+      Nothing to review — you're all caught up
     </div>
     <div v-else-if="error" class="empty error">{{ error }}</div>
 
@@ -436,6 +469,24 @@ function sourceDeckLabel(row) {
             class="btn"
             @click="acceptDefaultsForGroup(group.reason)"
           >Accept defaults for all</button>
+          <div v-else class="group-batch">
+            <select
+              class="select"
+              :value="groupBatchTarget[group.reason] || ''"
+              :name="`batch-target-${group.reason}`"
+              :disabled="submitting"
+              @change="(e) => (groupBatchTarget[group.reason] = e.target.value)"
+            >
+              <option value="">Resolve all to…</option>
+              <option v-for="loc in realLocations" :key="loc.id" :value="loc.id">{{ loc.name }}</option>
+            </select>
+            <button
+              type="button"
+              class="btn"
+              :disabled="!groupBatchTarget[group.reason] || submitting"
+              @click="resolveAllInGroup(group.reason, groupBatchTarget[group.reason])"
+            >Resolve all</button>
+          </div>
         </header>
 
         <ul class="rows">
@@ -467,6 +518,10 @@ function sourceDeckLabel(row) {
                   v-if="assignments[row.id]?.accept_defaults"
                   class="accept-marker"
                 >will accept{{ isEdited(row) ? ' (edited)' : ' defaults' }}</span>
+                <span
+                  class="reason-badge"
+                  :data-reason="row.review_reason"
+                >{{ REASON_BADGES[row.review_reason] }}</span>
               </div>
             </div>
 
@@ -825,5 +880,35 @@ function sourceDeckLabel(row) {
   font-size: 14px;
   line-height: 1;
   padding: 2px 8px;
+}
+.reason-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-50);
+  text-transform: uppercase;
+}
+.reason-badge[data-reason="no_location"] {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.reason-badge[data-reason="card_data_changed"] {
+  border-color: #7ab;
+  color: #7ab;
+}
+.group-batch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.group-batch .select {
+  min-width: 160px;
 }
 </style>
