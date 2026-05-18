@@ -9,7 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.Session
-import com.vaultkeeper.app.ui.home.HomeScreen
+import com.vaultkeeper.app.ui.collection.CollectionScreen
 import com.vaultkeeper.app.ui.login.LoginScreen
 import org.koin.compose.koinInject
 
@@ -38,6 +38,6 @@ fun VaultkeeperNavGraph() {
 
     NavHost(navController = nav, startDestination = ROUTE_LOGIN) {
         composable(ROUTE_LOGIN) { LoginScreen() }
-        composable(ROUTE_HOME) { HomeScreen() }
+        composable(ROUTE_HOME) { CollectionScreen() }
     }
 }
