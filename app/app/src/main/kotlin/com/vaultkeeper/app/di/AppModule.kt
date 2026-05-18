@@ -3,13 +3,16 @@ package com.vaultkeeper.app.di
 import com.vaultkeeper.app.BuildConfig
 import com.vaultkeeper.app.data.api.AuthApi
 import com.vaultkeeper.app.data.api.AuthRefreshApi
+import com.vaultkeeper.app.data.api.PrivacyApi
 import com.vaultkeeper.app.data.auth.AuthInterceptor
 import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.TokenRefreshInterceptor
 import com.vaultkeeper.app.data.auth.TokenStore
 import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
+import com.vaultkeeper.app.data.privacy.PrivacyRepository
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
+import com.vaultkeeper.app.ui.settings.SettingsViewModel
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -69,9 +72,12 @@ val appModule = module {
     }
 
     single<AuthApi> { get<Retrofit>().create(AuthApi::class.java) }
+    single<PrivacyApi> { get<Retrofit>().create(PrivacyApi::class.java) }
 
     single { AuthRepository(get(), get(), get()) }
+    single { PrivacyRepository(get()) }
 
     viewModel { LoginViewModel(get()) }
     viewModel { HomeViewModel(get()) }
+    viewModel { SettingsViewModel(get(), get()) }
 }
