@@ -14,8 +14,16 @@ import { avatarColor, avatarInitials } from '../../../utils/avatarColor'
 import HelpHint from '../../HelpHint.vue'
 import NoReservationNotice from './NoReservationNotice.vue'
 import { useWantedMatchesStore } from '../../../stores/wantedMatches'
+import { useDeckStore } from '../../../stores/deck'
 
 const wm = useWantedMatchesStore()
+const deck = useDeckStore()
+
+function refresh() {
+  const id = deck.deck?.id
+  wm.reset()
+  if (id) wm.fetch(id)
+}
 
 // ── Sort ─────────────────────────────────────────────────────────────
 const SORT_OPTIONS = [
@@ -125,8 +133,8 @@ function onRowClick(match) {
       <!-- C4: Visibility-revoked notice (non-intrusive banner above list) -->
       <div v-if="wm.visibilityRevoked" class="wmst-revoked-notice" role="status">
         <span aria-hidden="true">🔕</span>
-        A friend updated their collection visibility — this list has been refreshed.
-        Some copies may no longer appear.
+        <span class="wmst-revoked-text">A friend changed their collection visibility — matches may be stale.</span>
+        <button type="button" class="wmst-revoked-refresh" @click="refresh">Refresh</button>
       </div>
 
       <!-- Summary banner -->
@@ -261,6 +269,26 @@ function onRowClick(match) {
   font-size: 12px;
   color: var(--ink-70);
   line-height: 1.4;
+}
+.wmst-revoked-text {
+  flex: 1;
+}
+.wmst-revoked-refresh {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--amber, #c9a552) 50%, transparent);
+  color: var(--amber, #c9a552);
+  font-size: 11px;
+  font-family: var(--font-sans), sans-serif;
+  padding: 3px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+.wmst-revoked-refresh:hover {
+  background: color-mix(in srgb, var(--amber, #c9a552) 12%, transparent);
+  border-color: var(--amber, #c9a552);
 }
 
 /* ── State views (loading / error / empty) ──────────────────────────── */

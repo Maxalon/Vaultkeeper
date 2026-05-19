@@ -157,8 +157,8 @@ const isNoCardMatchState = computed(() =>
       <span class="wmp-state-icon wmp-state-icon--revoked" aria-hidden="true">🔕</span>
       <p class="wmp-state-text wmp-state-text--lead">Visibility changed</p>
       <p class="wmp-state-text wmp-state-text--sub">
-        A friend updated their collection visibility. The list has been refreshed.
-        Some previously visible copies may no longer appear.
+        A friend changed their collection visibility — matches may be stale.
+        Use the Refresh button in the tab header to reload.
       </p>
     </div>
 
