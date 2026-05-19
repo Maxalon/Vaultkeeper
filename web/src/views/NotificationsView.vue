@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useNotificationsStore } from '../stores/notifications'
 import { useToast } from '../composables/useToast'
@@ -28,10 +28,64 @@ async function markAllRead() {
     toast.error('Failed to mark all as read.')
   }
 }
+
+// ── Pull-to-refresh ───────────────────────────────────────────────────────
+const PULL_THRESHOLD = 72
+
+const pullY = ref(0)
+const refreshing = ref(false)
+
+let touchStartY = 0
+let trackingPull = false
+
+function onTouchStart(e) {
+  if (window.scrollY === 0) {
+    touchStartY = e.touches[0].clientY
+    trackingPull = true
+  }
+}
+
+function onTouchMove(e) {
+  if (!trackingPull) return
+  const delta = e.touches[0].clientY - touchStartY
+  if (delta > 0) {
+    // Dampen so the indicator trails the finger rather than matching it 1:1
+    pullY.value = Math.min(delta * 0.45, PULL_THRESHOLD + 24)
+  } else {
+    pullY.value = 0
+  }
+}
+
+async function onTouchEnd() {
+  if (pullY.value >= PULL_THRESHOLD && !refreshing.value) {
+    refreshing.value = true
+    pullY.value = PULL_THRESHOLD
+    await notificationsStore.fetchNotifications()
+    refreshing.value = false
+  }
+  pullY.value = 0
+  trackingPull = false
+}
 </script>
 
 <template>
-  <main class="notifications-page">
+  <main
+    class="notifications-page"
+    @touchstart.passive="onTouchStart"
+    @touchmove.passive="onTouchMove"
+    @touchend.passive="onTouchEnd"
+  >
+    <!-- Pull-to-refresh indicator -->
+    <div
+      v-if="pullY > 0 || refreshing"
+      class="pull-indicator"
+      :class="{ releasing: pullY >= PULL_THRESHOLD, refreshing }"
+      :style="{ transform: `translateX(-50%) translateY(${Math.min(pullY, PULL_THRESHOLD)}px)` }"
+      aria-live="polite"
+    >
+      {{ refreshing ? 'Refreshing…' : pullY >= PULL_THRESHOLD ? 'Release to refresh' : 'Pull to refresh' }}
+    </div>
+
     <header class="notifications-header">
       <VaultMark />
       <button class="back" @click="goBack">← Back</button>
@@ -162,4 +216,25 @@ async function markAllRead() {
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
+
+.pull-indicator {
+  position: fixed;
+  top: -40px;
+  left: 50%;
+  height: 32px;
+  padding: 0 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-50);
+  white-space: nowrap;
+  pointer-events: none;
+  transition: color 0.1s ease;
+  z-index: 100;
+}
+.pull-indicator.releasing { color: var(--amber); }
+.pull-indicator.refreshing { color: var(--ink-70); }
 </style>
