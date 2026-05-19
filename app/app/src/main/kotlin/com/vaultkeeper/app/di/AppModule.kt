@@ -9,8 +9,11 @@ import com.vaultkeeper.app.data.auth.TokenRefreshInterceptor
 import com.vaultkeeper.app.data.auth.TokenStore
 import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
 import com.vaultkeeper.app.game.GameViewModel
+import com.vaultkeeper.app.ui.forgotpassword.ForgotPasswordViewModel
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
+import com.vaultkeeper.app.ui.register.RegisterViewModel
+import com.vaultkeeper.app.ui.resetpassword.ResetPasswordViewModel
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -74,6 +77,9 @@ val appModule = module {
     single { AuthRepository(get(), get(), get()) }
 
     viewModel { LoginViewModel(get()) }
+    viewModel { RegisterViewModel(get()) }
+    viewModel { ForgotPasswordViewModel(get()) }
+    viewModel { ResetPasswordViewModel(get()) }
     viewModel { HomeViewModel(get()) }
     viewModel { GameViewModel() }
 }

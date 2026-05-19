@@ -31,3 +31,24 @@ data class UserDto(
     val username: String,
     val email: String? = null,
 )
+
+@Serializable
+data class RegisterRequest(
+    val username: String,
+    val email: String,
+    val password: String,
+    val password_confirmation: String,
+)
+
+@Serializable
+data class ForgotPasswordRequest(
+    val email: String,
+)
+
+@Serializable
+data class ResetPasswordRequest(
+    val token: String,
+    val email: String,
+    val password: String,
+    val password_confirmation: String,
+)

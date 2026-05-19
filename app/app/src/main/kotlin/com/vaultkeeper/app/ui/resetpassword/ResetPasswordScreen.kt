@@ -1,20 +1,20 @@
-package com.vaultkeeper.app.ui.login
+package com.vaultkeeper.app.ui.resetpassword
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -27,10 +27,10 @@ import com.vaultkeeper.app.R
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-fun LoginScreen(
-    onNavigateToRegister: () -> Unit,
-    onNavigateToForgotPassword: () -> Unit,
-    vm: LoginViewModel = koinViewModel(),
+fun ResetPasswordScreen(
+    token: String,
+    onNavigateToLogin: () -> Unit,
+    vm: ResetPasswordViewModel = koinViewModel(),
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
 
@@ -39,17 +39,18 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(stringResource(R.string.login_title), style = MaterialTheme.typography.headlineMedium)
+            Text(stringResource(R.string.reset_password_title), style = MaterialTheme.typography.headlineMedium)
             Spacer(Modifier.height(24.dp))
 
             OutlinedTextField(
                 value = s.email,
                 onValueChange = vm::onEmailChange,
-                label = { Text(stringResource(R.string.login_email)) },
+                label = { Text(stringResource(R.string.reset_password_email)) },
                 singleLine = true,
                 enabled = !s.submitting,
                 modifier = Modifier.fillMaxWidth(),
@@ -59,7 +60,18 @@ fun LoginScreen(
             OutlinedTextField(
                 value = s.password,
                 onValueChange = vm::onPasswordChange,
-                label = { Text(stringResource(R.string.login_password)) },
+                label = { Text(stringResource(R.string.reset_password_new_password)) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                enabled = !s.submitting,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = s.confirmPassword,
+                onValueChange = vm::onConfirmPasswordChange,
+                label = { Text(stringResource(R.string.reset_password_confirm_password)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 enabled = !s.submitting,
@@ -71,35 +83,18 @@ fun LoginScreen(
                 Text(s.error!!, color = MaterialTheme.colorScheme.error)
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onNavigateToForgotPassword, enabled = !s.submitting) {
-                    Text(stringResource(R.string.login_forgot_password))
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
 
             Button(
-                onClick = vm::submit,
-                enabled = !s.submitting && s.email.isNotBlank() && s.password.isNotBlank(),
+                onClick = { vm.submit(token, onNavigateToLogin) },
+                enabled = !s.submitting,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (s.submitting) {
                     CircularProgressIndicator(modifier = Modifier.height(20.dp))
                 } else {
-                    Text(stringResource(R.string.login_submit))
+                    Text(stringResource(R.string.reset_password_submit))
                 }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            TextButton(onClick = onNavigateToRegister, enabled = !s.submitting) {
-                Text(stringResource(R.string.login_create_account))
             }
         }
     }

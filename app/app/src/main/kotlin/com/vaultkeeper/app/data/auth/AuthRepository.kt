@@ -1,7 +1,10 @@
 package com.vaultkeeper.app.data.auth
 
 import com.vaultkeeper.app.data.api.AuthApi
+import com.vaultkeeper.app.data.api.dto.ForgotPasswordRequest
 import com.vaultkeeper.app.data.api.dto.LoginRequest
+import com.vaultkeeper.app.data.api.dto.RegisterRequest
+import com.vaultkeeper.app.data.api.dto.ResetPasswordRequest
 import com.vaultkeeper.app.data.api.dto.UserDto
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +41,32 @@ class AuthRepository(
         tokens.clear()
         _session.value = Session.Unauthenticated
     }
+
+    suspend fun register(
+        username: String,
+        email: String,
+        password: String,
+        passwordConfirmation: String,
+    ): Result<UserDto> = runCatching {
+        val response = api.register(RegisterRequest(username, email, password, passwordConfirmation))
+        tokens.token = response.access_token
+        _session.value = Session.Authenticated(response.user)
+        response.user
+    }.onFailure {
+        tokens.clear()
+        _session.value = Session.Unauthenticated
+    }
+
+    suspend fun forgotPassword(email: String): Result<Unit> =
+        runCatching { api.forgotPassword(ForgotPasswordRequest(email)) }
+
+    suspend fun resetPassword(
+        token: String,
+        email: String,
+        password: String,
+        passwordConfirmation: String,
+    ): Result<Unit> =
+        runCatching { api.resetPassword(ResetPasswordRequest(token, email, password, passwordConfirmation)) }
 
     suspend fun logout() {
         runCatching { api.logout() }

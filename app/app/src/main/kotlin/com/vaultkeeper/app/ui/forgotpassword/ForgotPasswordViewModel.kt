@@ -1,4 +1,4 @@
-package com.vaultkeeper.app.ui.login
+package com.vaultkeeper.app.ui.forgotpassword
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,43 +9,44 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class LoginViewModel(private val auth: AuthRepository) : ViewModel() {
+class ForgotPasswordViewModel(private val auth: AuthRepository) : ViewModel() {
 
-    private val _state = MutableStateFlow(LoginState())
-    val state: StateFlow<LoginState> = _state.asStateFlow()
+    private val _state = MutableStateFlow(ForgotPasswordState())
+    val state: StateFlow<ForgotPasswordState> = _state.asStateFlow()
 
     fun onEmailChange(value: String) = _state.update { it.copy(email = value, error = null) }
-    fun onPasswordChange(value: String) = _state.update { it.copy(password = value, error = null) }
 
     fun submit() {
         val s = _state.value
-        if (s.email.isBlank() || s.password.isBlank() || s.submitting) return
+        if (s.submitting || s.sent) return
 
-        if (!isValidEmail(s.email.trim())) {
+        if (s.email.isBlank()) {
+            _state.update { it.copy(error = "Email is required") }
+            return
+        }
+        if (!EMAIL_REGEX.matches(s.email.trim())) {
             _state.update { it.copy(error = "Enter a valid email address") }
             return
         }
 
         _state.update { it.copy(submitting = true, error = null) }
         viewModelScope.launch {
-            auth.login(s.email.trim(), s.password)
+            auth.forgotPassword(s.email.trim())
                 .onFailure { e ->
-                    _state.update { it.copy(submitting = false, error = e.message ?: "Sign-in failed") }
+                    _state.update { it.copy(submitting = false, error = e.message ?: "Request failed") }
                 }
                 .onSuccess {
-                    _state.update { it.copy(submitting = false) }
+                    _state.update { it.copy(submitting = false, sent = true) }
                 }
         }
     }
 }
 
-data class LoginState(
-    val email: String = "",
-    val password: String = "",
-    val submitting: Boolean = false,
-    val error: String? = null,
-)
-
 private val EMAIL_REGEX = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 
-private fun isValidEmail(email: String): Boolean = EMAIL_REGEX.matches(email)
+data class ForgotPasswordState(
+    val email: String = "",
+    val submitting: Boolean = false,
+    val sent: Boolean = false,
+    val error: String? = null,
+)
