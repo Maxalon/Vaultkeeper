@@ -3,16 +3,31 @@ package com.vaultkeeper.app.data.auth
 import com.vaultkeeper.app.data.api.AuthApi
 import com.vaultkeeper.app.data.api.dto.LoginRequest
 import com.vaultkeeper.app.data.api.dto.UserDto
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class AuthRepository(
     private val api: AuthApi,
     private val tokens: TokenStore,
+    unauthEvent: UnauthenticatedEvent,
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val _session = MutableStateFlow(initialSession())
     val session: StateFlow<Session> = _session.asStateFlow()
+
+    init {
+        scope.launch {
+            unauthEvent.flow.collect {
+                _session.value = Session.Unauthenticated
+            }
+        }
+    }
 
     suspend fun login(username: String, password: String): Result<UserDto> = runCatching {
         val response = api.login(LoginRequest(username, password))

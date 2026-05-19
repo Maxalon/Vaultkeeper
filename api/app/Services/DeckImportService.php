@@ -616,22 +616,31 @@ class DeckImportService
      * Look up a card in our local scryfall_cards mirror. Matches the most
      * specific tuple the caller provided: (set, collector_number) > (set) >
      * (name). Returns the matched scryfall_id or null.
+     *
+     * Filters to language='en' so a name-only import doesn't accidentally
+     * pick a Japanese / German row when the user pasted "Llanowar Elves"
+     * expecting an English print. Explicit non-English UUIDs from
+     * Archidekt/Moxfield go through ensureIdsPresent() which looks up by
+     * scryfall_id and bypasses this filter entirely.
      */
     private function localLookup(string $name, string $set, string $cn = ''): ?string
     {
-        // Exact printing: (set, collector_number) is unique — skip the name
+        // Exact printing: (set, collector_number, language) — skip the name
         // match so we survive minor name differences (alt art / flavor
         // variants where the printed name differs subtly from Scryfall's).
         if ($set !== '' && $cn !== '') {
             $exact = ScryfallCard::where('set_code', $set)
                 ->where('collector_number', $cn)
+                ->where('language', 'en')
                 ->value('scryfall_id');
             if ($exact !== null) {
                 return (string) $exact;
             }
         }
 
-        $query = ScryfallCard::query()->where('name', $name);
+        $query = ScryfallCard::query()
+            ->where('name', $name)
+            ->where('language', 'en');
         if ($set !== '') {
             $scoped = (clone $query)->where('set_code', $set)->value('scryfall_id');
             if ($scoped !== null) {

@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CardPrice;
 use App\Models\CollectionEntry;
 use App\Models\Deck;
 use App\Models\DeckEntry;
 use App\Models\Location;
 use App\Models\ScryfallCard;
-use App\Models\ScryfallOracle;
 use App\Services\BulkSyncService;
 use App\Services\CardSearchService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -37,12 +38,12 @@ class ScryfallCardController extends Controller
     public function search(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'q'              => 'sometimes|nullable|string|max:500',
-            'per_page'       => 'sometimes|integer|min:1|max:100',
-            'page'           => 'sometimes|integer|min:1',
-            'deck_id'        => 'sometimes|integer|min:1',
-            'owned_only'     => 'sometimes|boolean',
-            'apply_format'   => 'sometimes|boolean',
+            'q' => 'sometimes|nullable|string|max:500',
+            'per_page' => 'sometimes|integer|min:1|max:100',
+            'page' => 'sometimes|integer|min:1',
+            'deck_id' => 'sometimes|integer|min:1',
+            'owned_only' => 'sometimes|boolean',
+            'apply_format' => 'sometimes|boolean',
             'apply_identity' => 'sometimes|boolean',
         ]);
 
@@ -84,13 +85,13 @@ class ScryfallCardController extends Controller
          */
         $buildForOpts = function (array $opts) use ($q, $deck, $applyFormat, $applyIdentity): array {
             $parsed = $this->search->search($q, $opts);
-            /** @var \Illuminate\Database\Eloquent\Builder $builder */
+            /** @var Builder $builder */
             $builder = $parsed['builder'];
 
             if ($deck !== null) {
                 if ($applyFormat && in_array($deck->format, CardSearchService::FORMAT_WHITELIST, true)) {
                     $builder->whereRaw(
-                        "JSON_EXTRACT(legalities, '$.\"" . $deck->format . "\"') = 'legal'"
+                        "JSON_EXTRACT(legalities, '$.\"".$deck->format."\"') = 'legal'"
                     );
                 }
                 if ($applyIdentity) {
@@ -102,18 +103,18 @@ class ScryfallCardController extends Controller
             }
 
             return [
-                'parsed'        => $parsed,
-                'innerSql'      => $this->extractWhereSql($builder),
+                'parsed' => $parsed,
+                'innerSql' => $this->extractWhereSql($builder),
                 'innerBindings' => $builder->getBindings(),
             ];
         };
 
         $built = $buildForOpts([]);
-        $parsed        = $built['parsed'];
-        $innerSql      = $built['innerSql'];
+        $parsed = $built['parsed'];
+        $innerSql = $built['innerSql'];
         $innerBindings = $built['innerBindings'];
-        $warnings      = $parsed['warnings'];
-        $sort          = $parsed['sort'];
+        $warnings = $parsed['warnings'];
+        $sort = $parsed['sort'];
 
         // Guardrail: even on the much smaller scryfall_oracles (~37k
         // rows) a naked query can't feed the deckbuilder — require at
@@ -125,11 +126,11 @@ class ScryfallCardController extends Controller
         if (! $hasConstraint) {
             return response()->json([
                 'current_page' => 1,
-                'data'         => [],
-                'last_page'    => 1,
-                'per_page'     => $perPage,
-                'total'        => 0,
-                'warnings'     => array_merge($warnings, [
+                'data' => [],
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+                'warnings' => array_merge($warnings, [
                     'Provide at least one filter (name, type, color, format, …) before searching.',
                 ]),
             ]);
@@ -140,13 +141,13 @@ class ScryfallCardController extends Controller
         // is a pre-baked column rather than a sets LEFT JOIN. See #30.
         $uid = (int) $userId;
 
-        $ownershipJoin = "LEFT JOIN ("
-            . "SELECT sc.oracle_id, SUM(ce.quantity) AS qty_owned "
-            . "FROM collection_entries ce "
-            . "JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id "
-            . "WHERE ce.user_id = {$uid} "
-            . "GROUP BY sc.oracle_id"
-            . ") ow ON ow.oracle_id = scryfall_oracles.oracle_id";
+        $ownershipJoin = 'LEFT JOIN ('
+            .'SELECT sc.oracle_id, SUM(ce.quantity) AS qty_owned '
+            .'FROM collection_entries ce '
+            .'JOIN scryfall_cards sc ON sc.scryfall_id = ce.scryfall_id '
+            ."WHERE ce.user_id = {$uid} "
+            .'GROUP BY sc.oracle_id'
+            .') ow ON ow.oracle_id = scryfall_oracles.oracle_id';
 
         $ownedOnlyFilter = $ownedOnly ? 'AND ow.qty_owned > 0' : '';
         $orderBy = $this->search->buildOrderBy($sort);
@@ -189,6 +190,7 @@ class ScryfallCardController extends Controller
             $rows = $total > 0
                 ? DB::select($dataSql, array_merge($bindings, [$perPage, $offset]))
                 : [];
+
             return ['rows' => $rows, 'total' => $total];
         };
 
@@ -239,6 +241,7 @@ class ScryfallCardController extends Controller
         //    ownership fields plus grouping metadata.
         $data = array_map(function ($r) use ($ownership, $priceMap) {
             $own = $ownership[$r->oracle_id] ?? ['owned' => 0, 'available' => 0, 'wanted_by_others' => 0];
+
             return $this->presentRow($r, $own, $priceMap[$r->default_scryfall_id] ?? null);
         }, $rows);
 
@@ -248,7 +251,7 @@ class ScryfallCardController extends Controller
             $perPage,
             $page,
             [
-                'path'  => $request->url(),
+                'path' => $request->url(),
                 'query' => $request->query(),
             ],
         );
@@ -276,8 +279,12 @@ class ScryfallCardController extends Controller
         // Arena-only / MTGO-only printings (Pioneer Masters, Alchemy,
         // Historic Anthology, …) don't surface in the picker even when
         // their oracle has paper printings too.
-        $excluded = "'" . implode("','", BulkSyncService::INELIGIBLE_SET_TYPES) . "'";
+        $excluded = "'".implode("','", BulkSyncService::INELIGIBLE_SET_TYPES)."'";
 
+        // English-only — non-English printings live in scryfall_cards so
+        // user imports can FK to them, but the printing picker shows one
+        // entry per (set, collector_number) and would otherwise duplicate
+        // every row 10x once the all_cards bulk lands.
         $rows = DB::select("
             SELECT sc.*,
                    ms.name         AS set_name,
@@ -286,6 +293,7 @@ class ScryfallCardController extends Controller
             FROM scryfall_cards sc
             LEFT JOIN sets ms ON ms.code = sc.set_code
             WHERE sc.oracle_id = ?
+              AND sc.language = 'en'
               AND (ms.set_type IS NULL OR ms.set_type NOT IN ({$excluded}) OR sc.is_playtest = 1)
               AND COALESCE(ms.digital, 0) = 0
             ORDER BY COALESCE(sc.released_at, ms.released_at) DESC, sc.set_code ASC
@@ -354,42 +362,42 @@ class ScryfallCardController extends Controller
             $o = $owned[$r->scryfall_id] ?? [];
             $c = $committed[$r->scryfall_id] ?? [];
             $nonfoil = (int) ($o['nonfoil'] ?? 0);
-            $foil    = (int) ($o['foil']    ?? 0);
+            $foil = (int) ($o['foil'] ?? 0);
             $usedNonfoil = (int) ($c['nonfoil'] ?? 0);
-            $usedFoil    = (int) ($c['foil']    ?? 0);
+            $usedFoil = (int) ($c['foil'] ?? 0);
 
             return [
-                'scryfall_id'         => $r->scryfall_id,
-                'set_code'            => $r->set_code,
-                'set_name'            => $r->set_name,
-                'icon_svg_uri'        => $r->icon_svg_uri,
-                'collector_number'    => $r->collector_number,
+                'scryfall_id' => $r->scryfall_id,
+                'set_code' => $r->set_code,
+                'set_name' => $r->set_name,
+                'icon_svg_uri' => $r->icon_svg_uri,
+                'collector_number' => $r->collector_number,
                 // Fall back to the set's released_at until the next bulk
                 // sync populates scryfall_cards.released_at directly.
-                'released_at'         => $r->released_at ?? $r->set_released_at,
-                'rarity'              => $r->rarity,
-                'image_small'         => $r->image_small,
-                'image_normal'        => $r->image_normal,
-                'image_large'         => $r->image_large,
-                'image_small_back'    => $r->image_small_back,
-                'image_normal_back'   => $r->image_normal_back,
-                'image_large_back'    => $r->image_large_back,
+                'released_at' => $r->released_at ?? $r->set_released_at,
+                'rarity' => $r->rarity,
+                'image_small' => $r->image_small,
+                'image_normal' => $r->image_normal,
+                'image_large' => $r->image_large,
+                'image_small_back' => $r->image_small_back,
+                'image_normal_back' => $r->image_normal_back,
+                'image_large_back' => $r->image_large_back,
                 'is_default_eligible' => (bool) $r->is_default_eligible,
-                'promo'               => (bool) $r->promo,
-                'variation'           => (bool) $r->variation,
+                'promo' => (bool) $r->promo,
+                'variation' => (bool) $r->variation,
                 // Drives the deck sidebar's per-printing finish toggle —
                 // disable Foil when the array doesn't contain 'foil', etc.
                 // Comes back as a raw JSON string from DB::select; decode
                 // here so the API contract stays a real array.
-                'finishes'            => isset($r->finishes)
+                'finishes' => isset($r->finishes)
                     ? (json_decode($r->finishes, true) ?: null)
                     : null,
                 'ownership' => [
-                    'nonfoil'           => $nonfoil,
-                    'foil'              => $foil,
+                    'nonfoil' => $nonfoil,
+                    'foil' => $foil,
                     'available_nonfoil' => max(0, $nonfoil - $usedNonfoil),
-                    'available_foil'    => max(0, $foil    - $usedFoil),
-                    'in_collection'     => isset($inCollection[$r->scryfall_id]),
+                    'available_foil' => max(0, $foil - $usedFoil),
+                    'in_collection' => isset($inCollection[$r->scryfall_id]),
                 ],
                 'prices' => $this->presentPriceRow($priceMap[$r->scryfall_id] ?? null),
             ];
@@ -468,11 +476,12 @@ class ScryfallCardController extends Controller
             $o = (int) ($owned[$oid] ?? 0);
             $c = (int) ($committed[$oid] ?? 0);
             $out[$oid] = [
-                'owned'            => $o,
-                'available'        => max(0, $o - $c),
+                'owned' => $o,
+                'available' => max(0, $o - $c),
                 'wanted_by_others' => (int) ($wanted[$oid] ?? 0),
             ];
         }
+
         return $out;
     }
 
@@ -494,6 +503,7 @@ class ScryfallCardController extends Controller
         $printings = DB::table('scryfall_cards')
             ->whereIn('oracle_id', $oracleIds)
             ->where('set_code', $setCode)
+            ->where('language', 'en')
             ->orderByRaw("CAST(REGEXP_REPLACE(collector_number, '[^0-9]', '') AS UNSIGNED) ASC")
             ->orderBy('collector_number')
             ->get([
@@ -513,20 +523,22 @@ class ScryfallCardController extends Controller
 
         foreach ($rows as $r) {
             $p = $byOracle[$r->oracle_id] ?? null;
-            if ($p === null) continue;
-            $r->default_scryfall_id      = $p->scryfall_id;
-            $r->default_set_code         = $p->set_code;
+            if ($p === null) {
+                continue;
+            }
+            $r->default_scryfall_id = $p->scryfall_id;
+            $r->default_set_code = $p->set_code;
             $r->default_collector_number = $p->collector_number;
-            $r->default_released_at      = $p->released_at;
-            $r->default_rarity           = $p->rarity;
-            $r->default_image_small      = $p->image_small;
-            $r->default_image_normal     = $p->image_normal;
-            $r->default_image_large      = $p->image_large;
+            $r->default_released_at = $p->released_at;
+            $r->default_rarity = $p->rarity;
+            $r->default_image_small = $p->image_small;
+            $r->default_image_normal = $p->image_normal;
+            $r->default_image_large = $p->image_large;
             // DFC back-face images are per-printing; keep them in sync.
             if (! empty($r->is_dfc)) {
-                $r->image_small_back  = $p->image_small_back;
+                $r->image_small_back = $p->image_small_back;
                 $r->image_normal_back = $p->image_normal_back;
-                $r->image_large_back  = $p->image_large_back;
+                $r->image_large_back = $p->image_large_back;
             }
         }
     }
@@ -550,52 +562,52 @@ class ScryfallCardController extends Controller
     private function presentRow(object $r, array $own, ?object $priceRow = null): array
     {
         $out = [
-            'scryfall_id'      => $r->default_scryfall_id,
-            'oracle_id'        => $r->oracle_id,
-            'name'             => $r->name,
-            'set_code'         => $r->default_set_code,
+            'scryfall_id' => $r->default_scryfall_id,
+            'oracle_id' => $r->oracle_id,
+            'name' => $r->name,
+            'set_code' => $r->default_set_code,
             'collector_number' => $r->default_collector_number,
-            'released_at'      => $r->default_released_at,
-            'rarity'           => $r->default_rarity,
-            'layout'           => $r->layout,
-            'is_dfc'           => (bool) $r->is_dfc,
-            'mana_cost'        => $r->mana_cost,
-            'cmc'              => $r->cmc !== null ? (float) $r->cmc : null,
-            'colors'           => $this->decodeJson($r->colors),
-            'color_identity'   => $this->decodeJson($r->color_identity),
-            'type_line'        => $r->type_line,
-            'supertypes'       => $this->decodeJson($r->supertypes),
-            'types'            => $this->decodeJson($r->types),
-            'subtypes'         => $this->decodeJson($r->subtypes),
-            'oracle_text'      => $r->oracle_text,
-            'printed_text'     => $r->printed_text,
-            'power'            => $r->power,
-            'toughness'        => $r->toughness,
-            'loyalty'          => $r->loyalty,
-            'legalities'       => $this->decodeJson($r->legalities),
-            'keywords'         => $this->decodeJson($r->keywords),
-            'edhrec_rank'      => $r->edhrec_rank !== null ? (int) $r->edhrec_rank : null,
-            'reserved'         => (bool) $r->reserved,
+            'released_at' => $r->default_released_at,
+            'rarity' => $r->default_rarity,
+            'layout' => $r->layout,
+            'is_dfc' => (bool) $r->is_dfc,
+            'mana_cost' => $r->mana_cost,
+            'cmc' => $r->cmc !== null ? (float) $r->cmc : null,
+            'colors' => $this->decodeJson($r->colors),
+            'color_identity' => $this->decodeJson($r->color_identity),
+            'type_line' => $r->type_line,
+            'supertypes' => $this->decodeJson($r->supertypes),
+            'types' => $this->decodeJson($r->types),
+            'subtypes' => $this->decodeJson($r->subtypes),
+            'oracle_text' => $r->oracle_text,
+            'printed_text' => $r->printed_text,
+            'power' => $r->power,
+            'toughness' => $r->toughness,
+            'loyalty' => $r->loyalty,
+            'legalities' => $this->decodeJson($r->legalities),
+            'keywords' => $this->decodeJson($r->keywords),
+            'edhrec_rank' => $r->edhrec_rank !== null ? (int) $r->edhrec_rank : null,
+            'reserved' => (bool) $r->reserved,
             'commander_game_changer' => (bool) $r->commander_game_changer,
-            'partner_scope'    => $r->partner_scope,
-            'image_small'      => $r->default_image_small,
-            'image_normal'     => $r->default_image_normal,
-            'image_large'      => $r->default_image_large,
-            'printing_count'   => (int) $r->printing_count,
-            'owned_count'      => $own['owned'],
-            'available_count'  => $own['available'],
+            'partner_scope' => $r->partner_scope,
+            'image_small' => $r->default_image_small,
+            'image_normal' => $r->default_image_normal,
+            'image_large' => $r->default_image_large,
+            'printing_count' => (int) $r->printing_count,
+            'owned_count' => $own['owned'],
+            'available_count' => $own['available'],
             'wanted_by_others' => $own['wanted_by_others'],
-            'prices'           => $this->presentPriceRow($priceRow),
+            'prices' => $this->presentPriceRow($priceRow),
         ];
 
         if ($r->is_dfc) {
-            $out['mana_cost_back']    = $r->mana_cost_back;
-            $out['type_line_back']    = $r->type_line_back;
-            $out['oracle_text_back']  = $r->oracle_text_back;
+            $out['mana_cost_back'] = $r->mana_cost_back;
+            $out['type_line_back'] = $r->type_line_back;
+            $out['oracle_text_back'] = $r->oracle_text_back;
             $out['printed_text_back'] = $r->printed_text_back;
-            $out['image_small_back']  = $r->image_small_back;
+            $out['image_small_back'] = $r->image_small_back;
             $out['image_normal_back'] = $r->image_normal_back;
-            $out['image_large_back']  = $r->image_large_back;
+            $out['image_large_back'] = $r->image_large_back;
         }
 
         // oracle_tags via one extra query — minor cost vs. the N+1 alternative.
@@ -619,51 +631,51 @@ class ScryfallCardController extends Controller
         $own = $ownership[$card->oracle_id] ?? ['owned' => 0, 'available' => 0, 'wanted_by_others' => 0];
 
         $out = [
-            'scryfall_id'      => $card->scryfall_id,
-            'oracle_id'        => $card->oracle_id,
-            'name'             => $card->name,
-            'set_code'         => $card->set_code,
+            'scryfall_id' => $card->scryfall_id,
+            'oracle_id' => $card->oracle_id,
+            'name' => $card->name,
+            'set_code' => $card->set_code,
             'collector_number' => $card->collector_number,
-            'rarity'           => $card->rarity,
-            'layout'           => $card->layout,
-            'is_dfc'           => $card->is_dfc,
-            'mana_cost'        => $card->mana_cost,
-            'cmc'              => $card->cmc !== null ? (float) $card->cmc : null,
-            'colors'           => $card->colors,
-            'color_identity'   => $card->color_identity,
-            'type_line'        => $card->type_line,
-            'supertypes'       => $card->supertypes,
-            'types'            => $card->types,
-            'subtypes'         => $card->subtypes,
-            'oracle_text'      => $card->oracle_text,
-            'printed_text'     => $card->printed_text,
-            'power'            => $card->power,
-            'toughness'        => $card->toughness,
-            'loyalty'          => $card->loyalty,
-            'legalities'       => $card->legalities,
-            'keywords'         => $card->keywords,
-            'edhrec_rank'      => $card->edhrec_rank,
-            'reserved'         => $card->reserved,
-            'image_small'      => $card->image_small,
-            'image_normal'     => $card->image_normal,
-            'image_large'      => $card->image_large,
-            'oracle_tags'      => $card->relationLoaded('tags')
+            'rarity' => $card->rarity,
+            'layout' => $card->layout,
+            'is_dfc' => $card->is_dfc,
+            'mana_cost' => $card->mana_cost,
+            'cmc' => $card->cmc !== null ? (float) $card->cmc : null,
+            'colors' => $card->colors,
+            'color_identity' => $card->color_identity,
+            'type_line' => $card->type_line,
+            'supertypes' => $card->supertypes,
+            'types' => $card->types,
+            'subtypes' => $card->subtypes,
+            'oracle_text' => $card->oracle_text,
+            'printed_text' => $card->printed_text,
+            'power' => $card->power,
+            'toughness' => $card->toughness,
+            'loyalty' => $card->loyalty,
+            'legalities' => $card->legalities,
+            'keywords' => $card->keywords,
+            'edhrec_rank' => $card->edhrec_rank,
+            'reserved' => $card->reserved,
+            'image_small' => $card->image_small,
+            'image_normal' => $card->image_normal,
+            'image_large' => $card->image_large,
+            'oracle_tags' => $card->relationLoaded('tags')
                 ? $card->tags->pluck('tag')->values()->all()
                 : [],
-            'owned_count'      => $own['owned'],
-            'available_count'  => $own['available'],
+            'owned_count' => $own['owned'],
+            'available_count' => $own['available'],
             'wanted_by_others' => $own['wanted_by_others'],
-            'prices'           => $this->presentPriceFromModel($card->priceRow ?? null),
+            'prices' => $this->presentPriceFromModel($card->priceRow ?? null),
         ];
 
         if ($card->is_dfc) {
-            $out['mana_cost_back']    = $card->mana_cost_back;
-            $out['type_line_back']    = $card->type_line_back;
-            $out['oracle_text_back']  = $card->oracle_text_back;
+            $out['mana_cost_back'] = $card->mana_cost_back;
+            $out['type_line_back'] = $card->type_line_back;
+            $out['oracle_text_back'] = $card->oracle_text_back;
             $out['printed_text_back'] = $card->printed_text_back;
-            $out['image_small_back']  = $card->image_small_back;
+            $out['image_small_back'] = $card->image_small_back;
             $out['image_normal_back'] = $card->image_normal_back;
-            $out['image_large_back']  = $card->image_large_back;
+            $out['image_large_back'] = $card->image_large_back;
         }
 
         return $out;
@@ -685,10 +697,11 @@ class ScryfallCardController extends Controller
         if ($row === null) {
             return null;
         }
+
         return [
-            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
-            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
-            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'eur' => $row->eur !== null ? (string) $row->eur : null,
+            'eur_foil' => $row->eur_foil !== null ? (string) $row->eur_foil : null,
+            'eur_etched' => $row->eur_etched !== null ? (string) $row->eur_etched : null,
             'captured_on' => $row->captured_on ?? null,
         ];
     }
@@ -700,15 +713,16 @@ class ScryfallCardController extends Controller
      *
      * @return array<string, string|null>|null
      */
-    private function presentPriceFromModel(?\App\Models\CardPrice $row): ?array
+    private function presentPriceFromModel(?CardPrice $row): ?array
     {
         if ($row === null) {
             return null;
         }
+
         return [
-            'eur'         => $row->eur !== null         ? (string) $row->eur         : null,
-            'eur_foil'    => $row->eur_foil !== null    ? (string) $row->eur_foil    : null,
-            'eur_etched'  => $row->eur_etched !== null  ? (string) $row->eur_etched  : null,
+            'eur' => $row->eur !== null ? (string) $row->eur : null,
+            'eur_foil' => $row->eur_foil !== null ? (string) $row->eur_foil : null,
+            'eur_etched' => $row->eur_etched !== null ? (string) $row->eur_etched : null,
             'captured_on' => $row->captured_on?->toDateString(),
         ];
     }
@@ -723,7 +737,9 @@ class ScryfallCardController extends Controller
      */
     private function priceMapForScryfallIds(array $scryfallIds): array
     {
-        if (empty($scryfallIds)) return [];
+        if (empty($scryfallIds)) {
+            return [];
+        }
         $rows = DB::table('card_prices')
             ->whereIn('scryfall_id', $scryfallIds)
             ->get();
@@ -731,6 +747,7 @@ class ScryfallCardController extends Controller
         foreach ($rows as $row) {
             $map[$row->scryfall_id] = $row;
         }
+
         return $map;
     }
 
@@ -743,6 +760,7 @@ class ScryfallCardController extends Controller
             return $v;
         }
         $decoded = json_decode((string) $v, true);
+
         return $decoded === null ? [] : $decoded;
     }
 
@@ -752,7 +770,7 @@ class ScryfallCardController extends Controller
      * empty string when the builder has no WHERE clauses. Bindings are
      * still accessible via getBindings() on the original builder.
      */
-    private function extractWhereSql(\Illuminate\Database\Eloquent\Builder $builder): string
+    private function extractWhereSql(Builder $builder): string
     {
         $sql = $builder->toSql(); // "select * from `scryfall_oracles` where …"
         if (stripos($sql, 'where') === false) {
@@ -761,11 +779,12 @@ class ScryfallCardController extends Controller
         $wherePart = substr($sql, stripos($sql, 'where') + 5);
         // Strip any trailing ORDER/LIMIT/OFFSET just in case.
         foreach (['order by', 'limit', 'offset'] as $clause) {
-            $i = stripos($wherePart, ' ' . $clause);
+            $i = stripos($wherePart, ' '.$clause);
             if ($i !== false) {
                 $wherePart = substr($wherePart, 0, $i);
             }
         }
+
         // Outer FROM is scryfall_oracles. Qualified `scryfall_oracles.*`
         // refs (from whereExists correlations) resolve directly; unqualified
         // refs pick scryfall_oracles since the ownership LEFT JOIN only
@@ -792,6 +811,7 @@ class ScryfallCardController extends Controller
         ));
         $order = array_flip(self::COLORS);
         usort($letters, fn ($a, $b) => $order[$a] <=> $order[$b]);
+
         return $letters;
     }
 }

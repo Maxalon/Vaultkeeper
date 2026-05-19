@@ -16,6 +16,15 @@ data class LoginResponse(
     val user: UserDto,
 )
 
+// Returned by POST /auth/refresh — same shape as login since both go through
+// respondWithToken() on the backend. Kept as a distinct type for clarity.
+@Serializable
+data class RefreshResponse(
+    val access_token: String,
+    val token_type: String,
+    val expires_in: Long,
+)
+
 @Serializable
 data class UserDto(
     val id: Long,

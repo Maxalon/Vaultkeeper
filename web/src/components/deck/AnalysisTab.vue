@@ -15,6 +15,23 @@ const deck = useDeckStore()
 
 const mainEntries = computed(() => deck.entriesByZone('main'))
 
+const totalCount = computed(() =>
+  mainEntries.value.reduce((sum, e) => sum + (e.quantity || 0), 0),
+)
+
+const targetCount = computed(() => {
+  const fmt = deck.deck?.format || ''
+  return fmt === 'commander' || fmt === 'oathbreaker' ? 100 : 60
+})
+
+const formatLabel = computed(() => {
+  const fmt = deck.deck?.format || ''
+  if (fmt === 'commander') return 'Commander'
+  if (fmt === 'oathbreaker') return 'Oathbreaker'
+  if (fmt) return fmt.charAt(0).toUpperCase() + fmt.slice(1)
+  return 'Constructed'
+})
+
 const costs = computed(() => costPipsByColor(mainEntries.value))
 const producers = computed(() => producerCardsByColor(mainEntries.value))
 const buckets = computed(() => cmcBuckets(mainEntries.value))
@@ -83,6 +100,21 @@ const maxBucket = computed(() =>
     <div class="avg-caption">
       Avg mana value: {{ avg.toFixed(2) }}
       · Total mana value: {{ total }}
+    </div>
+
+    <h3>Card count</h3>
+    <div class="count-row">
+      <div class="count-bar">
+        <div
+          class="count-fill"
+          :class="{ over: totalCount > targetCount }"
+          :style="{ width: Math.min((totalCount / targetCount) * 100, 100) + '%' }"
+        />
+      </div>
+      <span class="count-label">
+        {{ totalCount }} / {{ targetCount }}
+        <span class="count-fmt">({{ formatLabel }})</span>
+      </span>
     </div>
   </div>
 </template>
@@ -156,5 +188,34 @@ h4 { margin: 0 0 0.4rem 0; font-size: 0.8rem; color: var(--ink-70, #a8a396); tex
 .avg-caption {
   font-size: 0.85rem;
   color: var(--ink-70, #a8a396);
+}
+.count-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.count-bar {
+  flex: 1;
+  background: var(--bg-2, #26241f);
+  border-radius: 3px;
+  height: 14px;
+  overflow: hidden;
+}
+.count-fill {
+  background: var(--amber, #c99d3d);
+  height: 100%;
+  transition: width 150ms ease;
+}
+.count-fill.over {
+  background: #c94040;
+}
+.count-label {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  min-width: 8ch;
+}
+.count-fmt {
+  color: var(--ink-70, #a8a396);
+  font-size: 0.78rem;
 }
 </style>
