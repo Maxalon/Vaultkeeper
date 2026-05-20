@@ -63,7 +63,7 @@ jobs:
           SHA="${GITHUB_SHA::7}"
 
           if [ "$BRANCH" = "main" ]; then
-            VITE_ASSETS_URL="https://assets.vault.kontrollzentrale.de"
+            VITE_ASSETS_URL="https://assets.vaultkeeper.cards"
           else
             VITE_ASSETS_URL="https://assets.vault-staging.kontrollzentrale.de"
           fi
