@@ -185,7 +185,15 @@ services:
       MAIL_MAILER: ${MAIL_MAILER:-log}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME}
-      RESEND_KEY: ${RESEND_KEY}
+      # SMTP transport (prod: Google Workspace relay). Empty defaults so
+      # the resend-based staging env doesn't trip "variable not set".
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SCHEME: ${MAIL_SCHEME:-}
+      # Resend transport (staging). Unused when MAIL_MAILER=smtp.
+      RESEND_KEY: ${RESEND_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -257,7 +265,15 @@ services:
       MAIL_MAILER: ${MAIL_MAILER:-log}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME}
-      RESEND_KEY: ${RESEND_KEY}
+      # SMTP transport (prod: Google Workspace relay). Empty defaults so
+      # the resend-based staging env doesn't trip "variable not set".
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SCHEME: ${MAIL_SCHEME:-}
+      # Resend transport (staging). Unused when MAIL_MAILER=smtp.
+      RESEND_KEY: ${RESEND_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -319,7 +335,15 @@ services:
       MAIL_MAILER: ${MAIL_MAILER:-log}
       MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME}
-      RESEND_KEY: ${RESEND_KEY}
+      # SMTP transport (prod: Google Workspace relay). Empty defaults so
+      # the resend-based staging env doesn't trip "variable not set".
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SCHEME: ${MAIL_SCHEME:-}
+      # Resend transport (staging). Unused when MAIL_MAILER=smtp.
+      RESEND_KEY: ${RESEND_KEY:-}
     depends_on:
       db:
         condition: service_healthy
