@@ -2,12 +2,22 @@ name: Android Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
+    paths:
+      - 'app/**'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
 
 jobs:
   build:
+    name: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # for the staging-branch release upload
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,18 +39,42 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Cache Gradle
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/**/*.gradle*', 'app/gradle/wrapper/gradle-wrapper.properties', 'app/gradle/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
       - name: Make gradlew executable
         if: steps.check.outputs.exists == 'true'
         run: chmod +x app/gradlew
 
-      - name: Build release APK
+      - name: Assemble beta debug APK
         if: steps.check.outputs.exists == 'true'
         working-directory: app
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleBetaDebug --stacktrace
 
-      - name: Upload APK artifact
+      - name: Upload APK as workflow artifact
         if: steps.check.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: vaultkeeper-apk
-          path: app/build/outputs/apk/release/*.apk
+          name: vaultkeeper-beta-debug-${{ github.run_number }}
+          path: app/app/build/outputs/apk/beta/debug/*.apk
+          if-no-files-found: warn
+
+      # A push to staging that touched app/ is a beta cut — publish a
+      # GitHub Release so the APK can be sideloaded. Tag scheme keeps the
+      # android channel separate from any release tags the API/web side
+      # might introduce later.
+      - name: Publish beta APK as GitHub Release
+        if: steps.check.outputs.exists == 'true' && github.ref == 'refs/heads/staging' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-beta-${{ github.run_number }}
+          name: Android beta build ${{ github.run_number }}
+          prerelease: true
+          files: app/app/build/outputs/apk/beta/debug/*.apk

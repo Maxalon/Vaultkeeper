@@ -98,8 +98,8 @@ class User extends Authenticatable implements JWTSubject
             ['user_id' => $this->id],
             [
                 'collection_visibility' => 'friends',
-                'decks_visibility'      => 'friends',
-                'discoverable'          => true,
+                'decks_visibility' => 'friends',
+                'discoverable' => true,
             ],
         );
     }
@@ -112,5 +112,10 @@ class User extends Authenticatable implements JWTSubject
     public function appNotifications(): HasMany
     {
         return $this->hasMany(AppNotification::class)->latest();
+    }
+
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
     }
 }

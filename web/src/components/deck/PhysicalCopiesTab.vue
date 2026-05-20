@@ -3,8 +3,11 @@ import { computed, ref } from 'vue'
 import { useDeckStore } from '../../stores/deck'
 import { useWantedMatchesStore } from '../../stores/wantedMatches'
 import { avatarColor, avatarInitials } from '../../utils/avatarColor'
+import { confirm as confirmDialog } from '../../composables/useConfirm'
+import { useToast } from '../../composables/useToast'
 import CardPeek from '../CardPeek.vue'
 import ConditionBadge from '../ConditionBadge.vue'
+import AssembleDeckModal from '../AssembleDeckModal.vue'
 import AddCopiesModal from './AddCopiesModal.vue'
 import EditPhysicalCopyModal from './EditPhysicalCopyModal.vue'
 
@@ -16,6 +19,35 @@ import EditPhysicalCopyModal from './EditPhysicalCopyModal.vue'
  */
 const deck = useDeckStore()
 const wm = useWantedMatchesStore()
+const toast = useToast()
+
+const isAssembled = computed(() =>
+  deck.entries.some((e) => e.physical_copy_id != null),
+)
+const canAssemble = computed(() => deck.entries.length > 0)
+const assembleOpen = ref(false)
+
+function openAssemble() {
+  assembleOpen.value = true
+}
+
+async function onUnassemble() {
+  if (!deck.deck) return
+  const ok = await confirmDialog({
+    title: 'Unassemble this deck?',
+    message: 'Every physical copy in this deck will move to Review so you can decide where each one goes.',
+    confirmText: 'Unassemble',
+    destructive: true,
+  })
+  if (!ok) return
+  try {
+    const result = await deck.unassembleDeck(deck.deck.id)
+    const flagged = result?.marked_for_review ?? 0
+    let msg = 'Deck unassembled.'
+    if (flagged > 0) msg += ` ${flagged} cop${flagged === 1 ? 'y' : 'ies'} marked for review.`
+    toast.success(msg)
+  } catch { /* deck.unassembleDeck already toasts on failure */ }
+}
 
 // Friend-availability lookup for missing rows. Returns the array of
 // friends who own a copy of `scryfall_id`, or [] when there is no entry
@@ -171,6 +203,27 @@ function onRowLeave() {
         </span>
       </template>
     </header>
+
+    <div v-if="canAssemble" class="assemble-row">
+      <button
+        v-if="!isAssembled"
+        type="button"
+        class="btn assemble-btn"
+        @click="openAssemble"
+      >Assemble deck</button>
+      <template v-else>
+        <button
+          type="button"
+          class="btn assemble-btn"
+          @click="openAssemble"
+        >Reassemble</button>
+        <button
+          type="button"
+          class="btn unassemble-btn"
+          @click="onUnassemble"
+        >Unassemble deck</button>
+      </template>
+    </div>
 
     <!-- Wanted-matches loading: indeterminate barber-pole stripe + caption.
          Disappears once wm.loading flips false. -->
@@ -334,6 +387,13 @@ function onRowLeave() {
       :entry="editTarget.entry"
       @close="editTarget = null"
     />
+    <AssembleDeckModal
+      v-if="assembleOpen && deck.deck"
+      :deck="deck.deck"
+      :entries="deck.entries"
+      @close="assembleOpen = false"
+      @assembled="assembleOpen = false"
+    />
   </div>
 </template>
 
@@ -356,6 +416,32 @@ function onRowLeave() {
 }
 .banner.ok { color: #7cb98e; }
 .check { font-weight: 700; font-size: 1.1rem; }
+
+.assemble-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.btn {
+  padding: 6px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--hairline, #33312c);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.assemble-btn {
+  background: var(--amber, #c99d3d);
+  border-color: var(--amber, #c99d3d);
+  color: #1a1814;
+  font-weight: 600;
+}
+.assemble-btn:hover { background: #d4a93f; }
+.unassemble-btn {
+  background: transparent;
+  color: var(--ink-70, #a8a396);
+}
+.unassemble-btn:hover { background: var(--bg-1, #1d1c1a); color: #c94040; border-color: #c94040; }
 
 /* ── Wanted-matches indeterminate loading ─────────────────────────── */
 /* Barber-pole stripe: amber/transparent diagonal bands scrolling

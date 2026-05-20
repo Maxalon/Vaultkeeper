@@ -68,7 +68,9 @@ watch(
   { immediate: true },
 )
 
-// Refetch and flag when a friend revokes collection visibility mid-session.
+// Flag stale matches when a friend revokes collection visibility mid-session.
+// The user dismisses the banner by clicking the refresh button in
+// WantedMatchSummaryTab, which calls reset() + fetch() explicitly.
 // stream-b B1 stub returns an empty items array, so this watcher is a
 // no-op until that lands.
 watch(
@@ -79,11 +81,6 @@ watch(
     )
     if (hasRevoke && !wm.visibilityRevoked) {
       wm.markVisibilityRevoked()
-      const id = deck.deck?.id
-      if (id) {
-        wm.reset()
-        wm.fetch(id)
-      }
     }
   },
   { deep: true },

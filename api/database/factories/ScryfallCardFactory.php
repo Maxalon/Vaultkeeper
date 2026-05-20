@@ -51,16 +51,17 @@ class ScryfallCardFactory extends Factory
     public function definition(): array
     {
         return [
-            'scryfall_id'            => (string) Str::uuid(),
-            'oracle_id'              => (string) Str::uuid(),
-            'name'                   => $this->faker->words(3, true),
-            'set_code'               => strtolower($this->faker->lexify('???')),
-            'collector_number'       => (string) $this->faker->numberBetween(1, 400),
-            'rarity'                 => $this->faker->randomElement(['common', 'uncommon', 'rare', 'mythic']),
-            'layout'                 => 'normal',
-            'is_dfc'                 => false,
+            'scryfall_id' => (string) Str::uuid(),
+            'oracle_id' => (string) Str::uuid(),
+            'name' => $this->faker->words(3, true),
+            'set_code' => strtolower($this->faker->lexify('???')),
+            'collector_number' => (string) $this->faker->numberBetween(1, 400),
+            'language' => 'en',
+            'rarity' => $this->faker->randomElement(['common', 'uncommon', 'rare', 'mythic']),
+            'layout' => 'normal',
+            'is_dfc' => false,
             'commander_game_changer' => false,
-            'partner_scope'          => null,
+            'partner_scope' => null,
         ];
     }
 
@@ -78,6 +79,7 @@ class ScryfallCardFactory extends Factory
 
         $card = parent::newModel($cardAttrs);
         self::$oracleStash[spl_object_id($card)] = $oracleAttrs;
+
         return $card;
     }
 
@@ -96,18 +98,18 @@ class ScryfallCardFactory extends Factory
             $defaults = array_merge(
                 ScryfallOracle::factory()->definition(),
                 [
-                    'oracle_id'                => $card->oracle_id,
-                    'default_scryfall_id'      => $card->scryfall_id,
-                    'default_set_code'         => $card->set_code,
+                    'oracle_id' => $card->oracle_id,
+                    'default_scryfall_id' => $card->scryfall_id,
+                    'default_set_code' => $card->set_code,
                     'default_collector_number' => $card->collector_number,
-                    'default_rarity'           => $card->rarity,
-                    'default_released_at'      => $card->released_at,
-                    'name'                     => $card->name,
-                    'layout'                   => $card->layout ?? 'normal',
-                    'is_dfc'                   => $card->is_dfc ?? false,
-                    'commander_game_changer'   => $card->commander_game_changer ?? false,
-                    'partner_scope'            => $card->partner_scope,
-                    'printing_count'           => 1,
+                    'default_rarity' => $card->rarity,
+                    'default_released_at' => $card->released_at,
+                    'name' => $card->name,
+                    'layout' => $card->layout ?? 'normal',
+                    'is_dfc' => $card->is_dfc ?? false,
+                    'commander_game_changer' => $card->commander_game_changer ?? false,
+                    'partner_scope' => $card->partner_scope,
+                    'printing_count' => 1,
                 ],
             );
 

@@ -9,8 +9,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
- * Canonical Scryfall card reference. One row per English printing,
- * synced from the Default Cards bulk file by BulkSyncService.
+ * Canonical Scryfall card reference. One row per printing per language,
+ * synced from the All Cards bulk file by BulkSyncService. Each language
+ * of a printing has its own scryfall_id; the `language` column carries
+ * Scryfall's `lang` field verbatim ('en', 'ja', 'de', …) so import
+ * flows can prefer English while still resolving a non-English UUID
+ * supplied by Archidekt/Moxfield.
  *
  * collection_entries.scryfall_id and deck_entries.scryfall_id FK here.
  *
@@ -32,6 +36,7 @@ class ScryfallCard extends Model
         'name',
         'set_code',
         'collector_number',
+        'language',
         'rarity',
         'layout',
         'is_dfc',
@@ -61,17 +66,17 @@ class ScryfallCard extends Model
     ];
 
     protected $casts = [
-        'is_dfc'                 => 'boolean',
+        'is_dfc' => 'boolean',
         'commander_game_changer' => 'boolean',
-        'promo'                  => 'boolean',
-        'variation'              => 'boolean',
-        'oversized'              => 'boolean',
-        'is_default_eligible'    => 'boolean',
-        'is_playtest'            => 'boolean',
-        'produced_mana'          => 'array',
-        'finishes'               => 'array',
-        'released_at'            => 'date',
-        'last_synced_at'         => 'datetime',
+        'promo' => 'boolean',
+        'variation' => 'boolean',
+        'oversized' => 'boolean',
+        'is_default_eligible' => 'boolean',
+        'is_playtest' => 'boolean',
+        'produced_mana' => 'array',
+        'finishes' => 'array',
+        'released_at' => 'date',
+        'last_synced_at' => 'datetime',
     ];
 
     /**
@@ -129,20 +134,87 @@ class ScryfallCard extends Model
     // Oracle-invariant accessors (proxy to scryfall_oracles).
     // ─────────────────────────────────────────────────────────────────────
 
-    public function getManaCostAttribute(): ?string         { return $this->oracle?->mana_cost; }
-    public function getCmcAttribute(): ?float               { $v = $this->oracle?->cmc; return $v === null ? null : (float) $v; }
-    public function getColorsAttribute(): ?array            { return $this->oracle?->colors; }
-    public function getColorIdentityAttribute(): ?array     { return $this->oracle?->color_identity; }
-    public function getTypeLineAttribute(): ?string         { return $this->oracle?->type_line; }
-    public function getSupertypesAttribute(): ?array        { return $this->oracle?->supertypes; }
-    public function getTypesAttribute(): ?array             { return $this->oracle?->types; }
-    public function getSubtypesAttribute(): ?array          { return $this->oracle?->subtypes; }
-    public function getOracleTextAttribute(): ?string       { return $this->oracle?->oracle_text; }
-    public function getPowerAttribute(): ?string            { return $this->oracle?->power; }
-    public function getToughnessAttribute(): ?string        { return $this->oracle?->toughness; }
-    public function getLoyaltyAttribute(): ?string          { return $this->oracle?->loyalty; }
-    public function getLegalitiesAttribute(): ?array        { return $this->oracle?->legalities; }
-    public function getKeywordsAttribute(): ?array          { return $this->oracle?->keywords; }
-    public function getEdhrecRankAttribute(): ?int          { $v = $this->oracle?->edhrec_rank; return $v === null ? null : (int) $v; }
-    public function getReservedAttribute(): bool            { return (bool) ($this->oracle?->reserved ?? false); }
+    public function getManaCostAttribute(): ?string
+    {
+        return $this->oracle?->mana_cost;
+    }
+
+    public function getCmcAttribute(): ?float
+    {
+        $v = $this->oracle?->cmc;
+
+        return $v === null ? null : (float) $v;
+    }
+
+    public function getColorsAttribute(): ?array
+    {
+        return $this->oracle?->colors;
+    }
+
+    public function getColorIdentityAttribute(): ?array
+    {
+        return $this->oracle?->color_identity;
+    }
+
+    public function getTypeLineAttribute(): ?string
+    {
+        return $this->oracle?->type_line;
+    }
+
+    public function getSupertypesAttribute(): ?array
+    {
+        return $this->oracle?->supertypes;
+    }
+
+    public function getTypesAttribute(): ?array
+    {
+        return $this->oracle?->types;
+    }
+
+    public function getSubtypesAttribute(): ?array
+    {
+        return $this->oracle?->subtypes;
+    }
+
+    public function getOracleTextAttribute(): ?string
+    {
+        return $this->oracle?->oracle_text;
+    }
+
+    public function getPowerAttribute(): ?string
+    {
+        return $this->oracle?->power;
+    }
+
+    public function getToughnessAttribute(): ?string
+    {
+        return $this->oracle?->toughness;
+    }
+
+    public function getLoyaltyAttribute(): ?string
+    {
+        return $this->oracle?->loyalty;
+    }
+
+    public function getLegalitiesAttribute(): ?array
+    {
+        return $this->oracle?->legalities;
+    }
+
+    public function getKeywordsAttribute(): ?array
+    {
+        return $this->oracle?->keywords;
+    }
+
+    public function getEdhrecRankAttribute(): ?int
+    {
+        $v = $this->oracle?->edhrec_rank;
+
+        return $v === null ? null : (int) $v;
+    }
+
+    public function getReservedAttribute(): bool
+    {
+        return (bool) ($this->oracle?->reserved ?? false);
+    }
 }
