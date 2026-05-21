@@ -9,4 +9,33 @@
 
     <string name="home_greeting">Signed in as %1$s</string>
     <string name="home_logout">Sign out</string>
+
+    <string name="nav_back">Back</string>
+    <string name="retry">Retry</string>
+    <string name="expand">Expand</string>
+    <string name="collapse">Collapse</string>
+
+    <string name="deck_detail_loading">Loading…</string>
+    <string name="deck_info">Deck info</string>
+    <string name="deck_add_card">Add card</string>
+    <string name="deck_assembled">Assembled</string>
+    <string name="deck_unassembled">Unassembled</string>
+    <string name="deck_archived">Archived</string>
+    <string name="deck_game_changer">Game Changer</string>
+    <string name="deck_companion">Companion</string>
+
+    <string name="zone_commander">Commander</string>
+    <string name="zone_mainboard">Mainboard</string>
+    <string name="zone_sideboard">Sideboard</string>
+    <string name="zone_maybeboard">Maybeboard</string>
+
+    <string name="tab_mainboard">Mainboard</string>
+    <string name="tab_analysis">Analysis</string>
+    <string name="tab_illegalities">Illegalities</string>
+    <string name="tab_physical">Physical</string>
+    <string name="tab_wanted">Wanted</string>
+    <string name="tab_coming_soon">%1$s — coming soon</string>
+
+    <string name="entry_illegal">Illegal card</string>
+    <string name="entry_bound">Bound to physical copy</string>
 </resources>
