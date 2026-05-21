@@ -32,6 +32,7 @@ function onPeekShow({ rect }) {
     :quantity="entry.quantity"
     :mode-b="settings.displayMode === 'B'"
     :hover-mode="hoverMode"
+    :loading-lazy="true"
     :last="last"
     :class="{ active, selected }"
     @click="emit('select', entry.id)"
