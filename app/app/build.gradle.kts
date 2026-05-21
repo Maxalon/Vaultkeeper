@@ -93,6 +93,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Bundle native debug symbols (from dependencies like Tink/Conscrypt)
+            // into the AAB so Play can symbolicate crashes/ANRs.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
         }
     }
 
