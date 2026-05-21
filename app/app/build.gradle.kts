@@ -46,7 +46,7 @@ android {
         }
         create("prod") {
             dimension = "env"
-            buildConfigField("String", "API_BASE_URL", "\"https://vault.kontrollzentrale.de/api/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://vaultkeeper.cards/api/\"")
             resValue("string", "app_name", "Vaultkeeper")
         }
     }
