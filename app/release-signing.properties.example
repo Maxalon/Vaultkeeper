@@ -1,0 +1,19 @@
+# Copy this file to release-signing.properties (gitignored) and fill in your
+# upload-key details. Used to sign release builds / bundles locally:
+#
+#   ./gradlew bundleProdRelease
+#
+# Create the upload keystore once, off-repo, with:
+#
+#   keytool -genkeypair -v \
+#     -keystore vaultkeeper-upload.jks \
+#     -alias vaultkeeper-upload \
+#     -keyalg RSA -keysize 2048 -validity 9125
+#
+# storeFile is resolved relative to the Gradle root (the app/ directory).
+# Keep the keystore and these passwords out of git and backed up safely.
+
+storeFile=vaultkeeper-upload.jks
+storePassword=changeme
+keyAlias=vaultkeeper-upload
+keyPassword=changeme

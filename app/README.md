@@ -48,8 +48,8 @@ Two product flavors crossed with two build types:
 | `localDebug`       | `com.vaultkeeper.app.local` | `http://10.0.2.2:8080/api/` (emulator → host dev nginx)   |
 | `betaDebug`        | `com.vaultkeeper.app.beta`  | `https://vault-staging.kontrollzentrale.de/api/`          |
 | `betaRelease`      | `com.vaultkeeper.app.beta`  | `https://vault-staging.kontrollzentrale.de/api/`          |
-| `prodDebug`        | `com.vaultkeeper.app`       | `https://vault.kontrollzentrale.de/api/`                  |
-| `prodRelease`      | `com.vaultkeeper.app`       | `https://vault.kontrollzentrale.de/api/`                  |
+| `prodDebug`        | `com.vaultkeeper.app`       | `https://vaultkeeper.cards/api/`                          |
+| `prodRelease`      | `com.vaultkeeper.app`       | `https://vaultkeeper.cards/api/`                          |
 
 `API_BASE_URL` lives on the flavor, not the build type — build-type
 `buildConfigField` overrides win over flavor values, which silently

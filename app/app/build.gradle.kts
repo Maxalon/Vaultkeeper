@@ -1,9 +1,26 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+// Release signing credentials. Read from a gitignored
+// release-signing.properties next to settings.gradle.kts for local builds,
+// falling back to env vars for CI. Never commit the keystore or its
+// passwords. When neither source is present (e.g. a debug-only checkout)
+// the release build type is left unsigned so configuration still succeeds.
+val releaseSigningProps = Properties().apply {
+    val f = rootProject.file("release-signing.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
+fun signingValue(key: String, env: String): String? =
+    releaseSigningProps.getProperty(key) ?: System.getenv(env)
+
+val hasReleaseSigning = signingValue("storeFile", "ANDROID_KEYSTORE_FILE") != null
 
 android {
     namespace = "com.vaultkeeper.app"
@@ -46,8 +63,19 @@ android {
         }
         create("prod") {
             dimension = "env"
-            buildConfigField("String", "API_BASE_URL", "\"https://vault.kontrollzentrale.de/api/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://vaultkeeper.cards/api/\"")
             resValue("string", "app_name", "Vaultkeeper")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = rootProject.file(signingValue("storeFile", "ANDROID_KEYSTORE_FILE")!!)
+                storePassword = signingValue("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "ANDROID_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "ANDROID_KEY_PASSWORD")
+            }
         }
     }
 
@@ -56,6 +84,9 @@ android {
             isMinifyEnabled = false
         }
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
