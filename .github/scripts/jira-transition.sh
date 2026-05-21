@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 #
-# Move every VAULT-* ticket referenced in $SOURCE_TEXT to a target status.
+# Walk every VAULT-* ticket referenced in $SOURCE_TEXT *forward* to a target
+# status, one workflow transition at a time.
 #
-# Scans $SOURCE_TEXT for issue keys (VAULT-123), then for each one asks Jira
-# which transition lands on the requested status *from the issue's current
-# state* and fires it. The per-issue lookup means we never hard-code a
-# transition id, and the workflow itself guards against backward moves: if no
-# transition from the current status reaches the target (e.g. an already
-# "Released" ticket would never have a path back to "Beta Testing"), the issue
-# is skipped instead of failing the run.
+# The VAULT workflow has no direct edge from e.g. "Beta Testing" to "Released"
+# (it goes Beta Testing → Ready for Release → Released), so a single transition
+# won't do. For each ticket this asks Jira for its current status + available
+# transitions, takes the one step that moves it closest to — but not past —
+# the target, and repeats until it arrives. Movement is forward-only along the
+# pipeline below:
+#
+#   Concept → To Do → In Progress → In Code Review → Beta Testing
+#           → Ready for Release → Released
+#
+# A ticket already at or beyond the target is left untouched (so re-running the
+# backfill, or a later staging merge, never drags a Released ticket back). A
+# ticket sitting on an off-pipeline status (Feedback, Done) is skipped rather
+# than guessed at — move those by hand.
 #
 # Required environment:
 #   JIRA_BASE_URL    e.g. https://vaultkeeper.atlassian.net (no trailing slash)
@@ -30,6 +38,84 @@ TARGET_STATUS="${1:?usage: jira-transition.sh <target-status>}"
 BASE_URL="${JIRA_BASE_URL%/}"
 AUTH="${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}"
 
+# Forward pipeline order (lower-cased for case-insensitive matching).
+PIPELINE=( "concept" "to do" "in progress" "in code review" "beta testing" "ready for release" "released" )
+
+idx_of() {
+  local needle i
+  needle="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  for i in "${!PIPELINE[@]}"; do
+    [ "${PIPELINE[$i]}" = "$needle" ] && { echo "$i"; return; }
+  done
+  echo -1
+}
+
+target_idx="$(idx_of "$TARGET_STATUS")"
+if [ "$target_idx" -lt 0 ]; then
+  echo "Target status '${TARGET_STATUS}' is not on the known pipeline; aborting." >&2
+  exit 1
+fi
+
+# Step one ticket forward until it reaches the target (or can't progress).
+walk_one() {
+  local key="$1" hop resp cur cur_idx tid tname di best_id best_idx best_name code
+  for hop in $(seq 1 "${#PIPELINE[@]}"); do
+    resp="$(curl -fsS -u "$AUTH" -H 'Accept: application/json' \
+      "${BASE_URL}/rest/api/3/issue/${key}?fields=status&expand=transitions" 2>/dev/null || true)"
+
+    cur="$(printf '%s' "$resp" | jq -r '.fields.status.name // empty' 2>/dev/null || true)"
+    if [ -z "$cur" ]; then
+      echo "  ${key}: cannot read status (missing issue or auth?); skipping."
+      return 0
+    fi
+
+    cur_idx="$(idx_of "$cur")"
+    if [ "$cur_idx" -lt 0 ]; then
+      echo "  ${key}: current status '${cur}' is off-pipeline; skipping (move manually)."
+      return 0
+    fi
+    if [ "$cur_idx" -eq "$target_idx" ]; then
+      if [ "$hop" -eq 1 ]; then echo "  ${key}: already at '${cur}'."; else echo "  ${key}: reached '${cur}'."; fi
+      return 0
+    fi
+    if [ "$cur_idx" -gt "$target_idx" ]; then
+      echo "  ${key}: already past target at '${cur}'; leaving as-is."
+      return 0
+    fi
+
+    # Pick the available transition whose destination is the next step toward
+    # the target: smallest pipeline index strictly above current and at/below
+    # the target.
+    best_id=""; best_idx=99; best_name=""
+    while IFS=$'\t' read -r tid tname; do
+      [ -z "$tid" ] && continue
+      di="$(idx_of "$tname")"
+      if [ "$di" -gt "$cur_idx" ] && [ "$di" -le "$target_idx" ] && [ "$di" -lt "$best_idx" ]; then
+        best_idx="$di"; best_id="$tid"; best_name="$tname"
+      fi
+    done < <(printf '%s' "$resp" | jq -r '.transitions[]? | "\(.id)\t\(.to.name)"' 2>/dev/null || true)
+
+    if [ -z "$best_id" ]; then
+      echo "  ${key}: no forward transition from '${cur}' toward '${TARGET_STATUS}'; stopping."
+      return 0
+    fi
+
+    code="$(curl -sS -u "$AUTH" -o /tmp/jira-resp.json -w '%{http_code}' \
+      -X POST -H 'Content-Type: application/json' \
+      "${BASE_URL}/rest/api/3/issue/${key}/transitions" \
+      -d "{\"transition\":{\"id\":\"${best_id}\"}}")"
+
+    if [ "$code" = "204" ]; then
+      echo "  ${key}: ${cur} → ${best_name}."
+    else
+      echo "  ${key}: transition failed (HTTP ${code}): $(cat /tmp/jira-resp.json)" >&2
+      return 1
+    fi
+  done
+  echo "  ${key}: hop limit reached without arriving at '${TARGET_STATUS}'."
+  return 0
+}
+
 mapfile -t KEYS < <(printf '%s' "$SOURCE_TEXT" | grep -oE 'VAULT-[0-9]+' | sort -u)
 
 if [ "${#KEYS[@]}" -eq 0 ]; then
@@ -43,39 +129,7 @@ echo "Target status: ${TARGET_STATUS}"
 fail=0
 for key in "${KEYS[@]}"; do
   echo "::group::${key}"
-
-  transitions_json="$(curl -fsS -u "$AUTH" -H 'Accept: application/json' \
-    "${BASE_URL}/rest/api/3/issue/${key}/transitions" 2>/dev/null || true)"
-
-  if [ -z "$transitions_json" ]; then
-    echo "Could not read transitions for ${key} (missing issue or auth?); skipping."
-    echo "::endgroup::"
-    continue
-  fi
-
-  tid="$(printf '%s' "$transitions_json" \
-    | jq -r --arg s "$TARGET_STATUS" 'first(.transitions[]? | select(.to.name==$s) | .id) // empty')"
-
-  if [ -z "$tid" ]; then
-    cur="$(curl -fsS -u "$AUTH" -H 'Accept: application/json' \
-      "${BASE_URL}/rest/api/3/issue/${key}?fields=status" 2>/dev/null \
-      | jq -r '.fields.status.name // "unknown"')"
-    echo "No transition to '${TARGET_STATUS}' available for ${key} (current: ${cur}); skipping."
-    echo "::endgroup::"
-    continue
-  fi
-
-  code="$(curl -sS -u "$AUTH" -o /tmp/jira-resp.json -w '%{http_code}' \
-    -X POST -H 'Content-Type: application/json' \
-    "${BASE_URL}/rest/api/3/issue/${key}/transitions" \
-    -d "{\"transition\":{\"id\":\"${tid}\"}}")"
-
-  if [ "$code" = "204" ]; then
-    echo "Moved ${key} → ${TARGET_STATUS}."
-  else
-    echo "Failed to transition ${key} (HTTP ${code}): $(cat /tmp/jira-resp.json)" >&2
-    fail=1
-  fi
+  walk_one "$key" || fail=1
   echo "::endgroup::"
 done
 
