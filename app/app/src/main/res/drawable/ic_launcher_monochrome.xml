@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Single-colour silhouette of the vault mark for themed icons (API 33+).
+     The system retints this layer, so the colour here is just a placeholder. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:name="mark"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="45">
+        <path
+            android:fillColor="#00000000"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="5.28"
+            android:pathData="M31.2,31.2 h45.6 v45.6 h-45.6 z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M44.4,44.4 h19.2 v19.2 h-19.2 z" />
+    </group>
+</vector>
