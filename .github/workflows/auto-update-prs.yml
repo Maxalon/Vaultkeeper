@@ -1,21 +1,35 @@
-name: Auto-update PRs on staging push
+name: Auto-update PRs when their base branch advances
 
-# When staging moves, the open PRs targeting it may need a rebase
-# before they can merge. GitHub doesn't fire a webhook when a PR's
-# mergeability flips due to base movement, so the auto-merge
-# pipeline would otherwise silently stall.
+# When a PR merges into a branch, the *other* open PRs that target that
+# same branch are now behind it and may need a branch update before they
+# can merge. GitHub doesn't fire a webhook when a PR's mergeability flips
+# due to base movement, so without this the auto-merge pipeline can
+# silently stall.
 #
-# This workflow calls "Update branch" on every open PR targeting
-# staging. On success, GitHub creates a merge commit on the PR
-# branch which fires `pull_request.synchronize` — that re-runs CI
-# and (if peer-approval is still on the latest commit) lets auto-
-# merge proceed. On conflict, the workflow tags the PR with the
-# `needs-rebase` label; the bots router fires the PR author on
-# that label so the dev rebases manually.
+# Trigger: a PR is merged (pull_request: closed with merged == true). We
+# then call "Update branch" on every *other* open PR whose base is the
+# same branch that just received the merge.
+#
+# Two deliberate exclusions:
+#   - We skip when the merge landed on `main`. The staging -> main release
+#     (and any hotfix into main) must NOT churn every open PR. Combined
+#     with the deploy pipeline force-pushing main back onto staging as a
+#     raw git push (which fires no pull_request event), a release no
+#     longer triggers a mass branch-update.
+#   - The PR that just merged is already closed, so it's naturally
+#     excluded from the open-PR list (with a defensive guard besides).
+#
+# Auth: the "Update branch" step uses STAGING_SYNC_PAT, NOT the default
+# GITHUB_TOKEN. A merge commit created with GITHUB_TOKEN does not trigger
+# new workflow runs (GitHub's recursion guard), so CI would never run on
+# the updated branch and required checks would sit at "Expected" forever,
+# blocking auto-merge. A PAT authenticates as a real user, so the update
+# commit fires CI normally. (Same reason deploy.yml's sync-staging uses
+# a PAT.)
 
 on:
-  push:
-    branches: [staging]
+  pull_request:
+    types: [closed]
 
 permissions:
   contents: write
@@ -23,42 +37,50 @@ permissions:
 
 jobs:
   update-prs:
+    name: update open PRs targeting ${{ github.event.pull_request.base.ref }}
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref != 'main'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.STAGING_SYNC_PAT }}
+      TARGET: ${{ github.event.pull_request.base.ref }}
+      MERGED_PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Ensure needs-rebase label exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh label create needs-rebase \
             --repo "$GITHUB_REPOSITORY" \
-            --description "Conflicts against staging; PR author must rebase" \
+            --description "Conflicts against the base branch; PR author must rebase" \
             --color D73A4A \
             --force
 
-      - name: Update each open PR targeting staging
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update each open PR targeting the merged PR's base
         run: |
           set -euo pipefail
           mapfile -t PRS < <(gh pr list \
             --repo "$GITHUB_REPOSITORY" \
-            --base staging \
+            --base "$TARGET" \
             --state open \
             --json number \
             --jq '.[].number')
 
           if [ ${#PRS[@]} -eq 0 ]; then
-            echo "No open PRs targeting staging."
+            echo "No open PRs targeting ${TARGET}."
             exit 0
           fi
 
           for num in "${PRS[@]}"; do
+            # Defensive: never act on the PR that just merged.
+            if [ "$num" = "$MERGED_PR" ]; then
+              continue
+            fi
             echo "::group::PR #${num}"
             # `gh pr update-branch` POSTs to /pulls/:n/update-branch;
-            # it returns 422 when the base can't be merged cleanly.
+            # it returns non-zero when the base can't be merged cleanly.
             if gh pr update-branch "$num" --repo "$GITHUB_REPOSITORY"; then
               # If the PR had the label from a previous run, drop it —
-              # the rebase resolved cleanly this time round.
+              # the update merged cleanly this time round.
               gh pr edit "$num" --repo "$GITHUB_REPOSITORY" \
                 --remove-label needs-rebase 2>/dev/null || true
               echo "Updated PR #${num} (label cleared if present)."
