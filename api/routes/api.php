@@ -76,13 +76,15 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     // (BulkImportUserDecksJob can run for 30 minutes and fans 50
     // paginated HTTP fetches at Archidekt; CSV/text imports parse
     // user-supplied bodies). Hold each to 5/minute so a single user
-    // can't fill the queue.
+    // can't fill the queue. Use the named `imports` limiter — a bare
+    // `throttle:5,1` here would share its cache key with the group's
+    // `throttle:120,1` and 429 immediately after normal SPA chatter.
     Route::post('decks/import', [DeckImportController::class, 'store'])
-        ->middleware('throttle:5,1');
+        ->middleware('throttle:imports');
     Route::post('decks/import/csv', [DeckImportController::class, 'csv'])
-        ->middleware('throttle:5,1');
+        ->middleware('throttle:imports');
     Route::post('decks/import/bulk', [DeckImportController::class, 'bulk'])
-        ->middleware('throttle:5,1');
+        ->middleware('throttle:imports');
     Route::get('decks/import/bulk/{key}', [DeckImportController::class, 'bulkStatus']);
     Route::get('decks/{deck}', [DeckController::class, 'show']);
     Route::put('decks/{deck}', [DeckController::class, 'update']);
