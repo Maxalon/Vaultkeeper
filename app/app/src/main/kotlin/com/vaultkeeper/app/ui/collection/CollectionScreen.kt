@@ -162,7 +162,7 @@ fun CollectionScreen(vm: CollectionViewModel = koinViewModel()) {
                     LaunchedEffect(listState) {
                         snapshotFlow {
                             val info = listState.layoutInfo
-                            val last = info.visibleItemsInfo.lastOrNull()?.index ?: return@snapshotFlow -1
+                            val last = info.visibleItemsInfo.lastOrNull()?.index ?: return@snapshotFlow (-1 to 0)
                             last to info.totalItemsCount
                         }.collect { (last, total) ->
                             if (total > 0 && last >= total - 5) vm.loadMore()
