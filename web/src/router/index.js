@@ -81,6 +81,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/life-counter',
+    name: 'life-counter',
+    component: () => import('../views/LifeCounterView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/friends/:userId(\\d+)/collection',
     name: 'friend-collection',
     component: () => import('../views/FriendCollectionView.vue'),
