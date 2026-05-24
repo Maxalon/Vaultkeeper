@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -40,7 +41,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -154,7 +157,20 @@ fun CollectionScreen(vm: CollectionViewModel = koinViewModel()) {
                 }
 
                 else -> {
+                    val listState = rememberLazyListState()
+
+                    LaunchedEffect(listState) {
+                        snapshotFlow {
+                            val info = listState.layoutInfo
+                            val last = info.visibleItemsInfo.lastOrNull()?.index ?: return@snapshotFlow -1
+                            last to info.totalItemsCount
+                        }.collect { (last, total) ->
+                            if (total > 0 && last >= total - 5) vm.loadMore()
+                        }
+                    }
+
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(bottom = 16.dp),
                     ) {
                         items(state.filteredEntries, key = { it.id }) { entry ->
@@ -163,6 +179,18 @@ fun CollectionScreen(vm: CollectionViewModel = koinViewModel()) {
                                 onClick = { vm.selectEntry(entry.id) },
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
+                        if (state.isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                }
+                            }
                         }
                     }
                 }

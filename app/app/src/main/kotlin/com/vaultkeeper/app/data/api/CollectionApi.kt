@@ -12,6 +12,7 @@ interface CollectionApi {
     suspend fun getEntries(
         @Query("location_id") locationId: Int? = null,
         @Query("q") query: String? = null,
+        @Query("page") page: Int = 1,
     ): CollectionResponseDto
 
     @GET("locations")

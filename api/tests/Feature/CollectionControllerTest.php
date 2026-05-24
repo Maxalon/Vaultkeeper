@@ -104,6 +104,33 @@ class CollectionControllerTest extends TestCase
             ->assertJsonPath('data.0.id', $hit->id);
     }
 
+    public function test_index_paginates_results(): void
+    {
+        // Create 55 entries — more than one page of 50.
+        CollectionEntry::factory()->count(55)->create(['user_id' => $this->user->id]);
+
+        $page1 = $this->withHeaders($this->authHeaders())
+            ->getJson('/api/collection?page=1')
+            ->assertOk()
+            ->assertJsonCount(50, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.per_page', 50)
+            ->assertJsonPath('meta.total', 55)
+            ->assertJsonPath('meta.has_more', true);
+
+        $page2 = $this->withHeaders($this->authHeaders())
+            ->getJson('/api/collection?page=2')
+            ->assertOk()
+            ->assertJsonCount(5, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.has_more', false);
+
+        // No overlap between pages.
+        $ids1 = collect($page1->json('data'))->pluck('id');
+        $ids2 = collect($page2->json('data'))->pluck('id');
+        $this->assertEmpty($ids1->intersect($ids2));
+    }
+
     public function test_show_returns_entry_for_owner(): void
     {
         $entry = CollectionEntry::factory()->create(['user_id' => $this->user->id]);

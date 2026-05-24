@@ -7,8 +7,8 @@ import com.vaultkeeper.app.data.api.dto.LocationsResponseDto
 
 class CollectionRepository(private val api: CollectionApi) {
 
-    suspend fun getEntries(locationId: Int? = null): CollectionResponseDto =
-        api.getEntries(locationId = locationId)
+    suspend fun getEntries(locationId: Int? = null, page: Int = 1): CollectionResponseDto =
+        api.getEntries(locationId = locationId, page = page)
 
     suspend fun getLocations(): LocationsResponseDto =
         api.getLocations()

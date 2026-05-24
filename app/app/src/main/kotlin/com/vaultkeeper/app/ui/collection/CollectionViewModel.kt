@@ -10,7 +10,6 @@ import com.vaultkeeper.app.data.repository.CollectionRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -24,6 +23,9 @@ data class CollectionUiState(
     val searchQuery: String = "",
     val error: String? = null,
     val selectedEntryId: Int? = null,
+    val currentPage: Int = 1,
+    val hasMore: Boolean = false,
+    val isLoadingMore: Boolean = false,
 ) {
     val filteredEntries: List<CollectionEntryDto>
         get() = if (searchQuery.isBlank()) entries
@@ -51,24 +53,49 @@ class CollectionViewModel(
 
     private fun load() {
         viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            _state.update { it.copy(loading = true, error = null, entries = emptyList(), currentPage = 1, hasMore = false) }
             runCatching {
                 val locationId = _state.value.selectedLocationId
                 val locationsDeferred = async { repo.getLocations() }
-                val entriesDeferred  = async { repo.getEntries(locationId) }
+                val entriesDeferred  = async { repo.getEntries(locationId, page = 1) }
                 val totalsDeferred   = async { repo.getTotals(locationId) }
                 Triple(locationsDeferred.await(), entriesDeferred.await(), totalsDeferred.await())
-            }.onSuccess { (locs, entries, totals) ->
+            }.onSuccess { (locs, entriesResponse, totals) ->
                 _state.update {
                     it.copy(
                         loading = false,
                         locations = locs.locations,
-                        entries = entries.data,
+                        entries = entriesResponse.data,
                         totals = totals,
+                        currentPage = 1,
+                        hasMore = entriesResponse.meta?.hasMore ?: false,
                     )
                 }
             }.onFailure { err ->
                 _state.update { it.copy(loading = false, error = err.message) }
+            }
+        }
+    }
+
+    fun loadMore() {
+        val current = _state.value
+        if (current.isLoadingMore || !current.hasMore || current.loading) return
+        val nextPage = current.currentPage + 1
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingMore = true) }
+            runCatching {
+                repo.getEntries(current.selectedLocationId, page = nextPage)
+            }.onSuccess { response ->
+                _state.update {
+                    it.copy(
+                        isLoadingMore = false,
+                        entries = it.entries + response.data,
+                        currentPage = nextPage,
+                        hasMore = response.meta?.hasMore ?: false,
+                    )
+                }
+            }.onFailure {
+                _state.update { it.copy(isLoadingMore = false) }
             }
         }
     }

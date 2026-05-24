@@ -7,6 +7,15 @@ import kotlinx.serialization.Serializable
 data class CollectionResponseDto(
     val data: List<CollectionEntryDto>,
     val warnings: List<String> = emptyList(),
+    val meta: PaginationMetaDto? = null,
+)
+
+@Serializable
+data class PaginationMetaDto(
+    @SerialName("current_page") val currentPage: Int,
+    @SerialName("per_page") val perPage: Int,
+    val total: Int,
+    @SerialName("has_more") val hasMore: Boolean,
 )
 
 @Serializable
