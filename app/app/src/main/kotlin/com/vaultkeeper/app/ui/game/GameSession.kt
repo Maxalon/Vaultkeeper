@@ -1,18 +1,14 @@
 package com.vaultkeeper.app.ui.game
 
-data class Player(
-    val id: Int,
-    val name: String,
-    val lifeTotal: Int,
-)
+import com.vaultkeeper.app.game.GamePlayer
 
 data class LifeAdjustment(
-    val playerId: Int,
+    val playerId: String,
     val delta: Int,
     val previousLife: Int,
 )
 
 data class GameSession(
-    val players: List<Player>,
+    val players: List<GamePlayer>,
     val history: List<LifeAdjustment> = emptyList(),
 )
