@@ -407,6 +407,14 @@ class DeckImportService
 
                 if ($existing) {
                     $existing->quantity += (int) $e['quantity'];
+                    // Update-when-null: fill a missing category from source; never overwrite an existing one.
+                    if ($existing->category === null
+                        && isset($e['source_category'])
+                        && is_string($e['source_category'])
+                        && $e['source_category'] !== ''
+                    ) {
+                        $existing->category = $e['source_category'];
+                    }
                     $existing->save();
                 } else {
                     // Preserve the user-defined category from the source
