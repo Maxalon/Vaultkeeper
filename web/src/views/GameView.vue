@@ -24,6 +24,7 @@ function endGame() {
         :name="seat.name"
         :life="seat.life"
         :auto-rotate="seats.length === 2 && i === 1"
+        @adjust="(delta) => game.adjustLife(i, delta)"
       />
     </div>
     <button class="end-game-fab" aria-label="End game" @click="endGame">End</button>
