@@ -8,6 +8,7 @@ const router = useRouter()
 const game = useGameStore()
 
 const seats = computed(() => game.seats)
+const canUndo = computed(() => game.undoStack.length > 0)
 
 function endGame() {
   game.reset()
@@ -27,7 +28,15 @@ function endGame() {
         @adjust="(delta) => game.adjustLife(i, delta)"
       />
     </div>
-    <button class="end-game-fab" aria-label="End game" @click="endGame">End</button>
+    <div class="game-bar">
+      <button
+        class="bar-btn undo-btn"
+        :disabled="!canUndo"
+        aria-label="Undo last change"
+        @click="game.undo()"
+      >Undo</button>
+      <button class="bar-btn end-btn" aria-label="End game" @click="endGame">End</button>
+    </div>
   </div>
 </template>
 
@@ -93,13 +102,19 @@ function endGame() {
   grid-template-rows: 1fr 1fr;
 }
 
-/* ── End-game button ──────────────────────────────────────────── */
-.end-game-fab {
+/* ── Game bar (Undo + End) ────────────────────────────────────── */
+.game-bar {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 12px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bar-btn {
   height: 26px;
   padding: 0 14px;
   background: rgba(13, 13, 13, 0.75);
@@ -116,9 +131,14 @@ function endGame() {
   transition: all 0.15s ease;
 }
 
-.end-game-fab:hover {
+.bar-btn:hover:not(:disabled) {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.35);
   background: rgba(13, 13, 13, 0.9);
+}
+
+.bar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 </style>

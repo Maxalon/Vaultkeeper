@@ -42,8 +42,8 @@ export const useGameStore = defineStore('game', () => {
   function undo() {
     if (!undoStack.value.length) return
     const snapshot = undoStack.value.pop()
-    // Remove the history entry that corresponds to the undone action.
-    history.value.pop()
+    const idx = history.value.findLastIndex((e) => !e.undone)
+    if (idx >= 0) history.value[idx] = { ...history.value[idx], undone: true }
     seats.value = snapshot
   }
 
