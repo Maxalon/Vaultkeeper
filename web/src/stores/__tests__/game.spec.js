@@ -102,12 +102,24 @@ describe('game store', () => {
     expect(game.seats[0].life).toBe(40)
   })
 
-  it('undo removes the last history entry', () => {
+  it('undo marks the reverted entry as undone in history', () => {
     const game = twoPlayerGame(40)
     game.adjustLife(0, +1)
     game.adjustLife(0, +1)
     game.undo()
-    expect(game.history).toHaveLength(1)
+    expect(game.history).toHaveLength(2)
+    expect(game.history[0].undone).toBeFalsy()
+    expect(game.history[1].undone).toBe(true)
+  })
+
+  it('undo marks all entries as undone when full stack is exhausted', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +1)
+    game.adjustLife(1, -2)
+    game.undo()
+    game.undo()
+    expect(game.history.every((e) => e.undone)).toBe(true)
+    expect(game.undoStack).toHaveLength(0)
   })
 
   it('undo is a no-op when stack is empty', () => {
