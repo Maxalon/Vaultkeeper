@@ -21,6 +21,7 @@ use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScryfallCardController;
 use App\Http\Controllers\UserCollectionController;
 use App\Http\Controllers\UserSearchController;
+use App\Http\Controllers\GameResultController;
 use App\Http\Controllers\WantedMatchController;
 use Illuminate\Support\Facades\Route;
 
@@ -227,4 +228,13 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead']);
     Route::post('notifications/{id}/actions/{key}', [NotificationController::class, 'executeAction']);
+
+    // -------------------------------------------------------------------------
+    // Game results (VAULT-67)
+    //
+    // Writes +1 win to the winning deck and +1 loss to each non-winning deck
+    // that had a deck selected at game start. No-winner/draw games still write
+    // losses to all participating decks.
+    // -------------------------------------------------------------------------
+    Route::post('game-results', [GameResultController::class, 'store']);
 });
