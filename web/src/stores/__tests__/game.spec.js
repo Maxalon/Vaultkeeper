@@ -163,4 +163,80 @@ describe('game store', () => {
     game.undo()
     expect(game.seats[0].life).toBe(20)
   })
+
+  // ── rollDice ─────────────────────────────────────────────────────
+  it('rollDice returns a number within [1, faces]', () => {
+    const game = twoPlayerGame()
+    for (let i = 0; i < 50; i++) {
+      const r = game.rollDice(20)
+      expect(r).toBeGreaterThanOrEqual(1)
+      expect(r).toBeLessThanOrEqual(20)
+    }
+  })
+
+  it('rollDice appends a roll history entry', () => {
+    const game = twoPlayerGame()
+    const result = game.rollDice(6)
+    expect(game.history).toHaveLength(1)
+    const entry = game.history[0]
+    expect(entry.type).toBe('roll')
+    expect(entry.label).toBe('d6')
+    expect(entry.result).toBe(result)
+    expect(typeof entry.timestamp).toBe('number')
+  })
+
+  it('rollDice uses "Table" when no seat has been focused', () => {
+    const game = twoPlayerGame()
+    game.rollDice(4)
+    expect(game.history[0].playerName).toBe('Table')
+  })
+
+  it('rollDice uses the name of the last-adjusted seat', () => {
+    const game = twoPlayerGame()
+    game.adjustLife(1, -1)
+    game.rollDice(20)
+    expect(game.history[1].playerName).toBe('P2')
+  })
+
+  // ── flipCoin ─────────────────────────────────────────────────────
+  it('flipCoin returns "Heads" or "Tails"', () => {
+    const game = twoPlayerGame()
+    const outcomes = new Set()
+    for (let i = 0; i < 100; i++) outcomes.add(game.flipCoin())
+    expect(outcomes).toContain('Heads')
+    expect(outcomes).toContain('Tails')
+    expect(outcomes.size).toBe(2)
+  })
+
+  it('flipCoin appends a roll history entry with label "coin"', () => {
+    const game = twoPlayerGame()
+    const result = game.flipCoin()
+    expect(game.history).toHaveLength(1)
+    const entry = game.history[0]
+    expect(entry.type).toBe('roll')
+    expect(entry.label).toBe('coin')
+    expect(entry.result).toBe(result)
+  })
+
+  it('focusedSeat resets on configure', () => {
+    const game = twoPlayerGame()
+    game.adjustLife(0, +1)
+    expect(game.focusedSeat).toBe(0)
+    game.configure({
+      count: 2,
+      life: 20,
+      seatConfig: [
+        { name: 'A', deckId: null, life: 20 },
+        { name: 'B', deckId: null, life: 20 },
+      ],
+    })
+    expect(game.focusedSeat).toBeNull()
+  })
+
+  it('focusedSeat resets on reset', () => {
+    const game = twoPlayerGame()
+    game.adjustLife(1, -1)
+    game.reset()
+    expect(game.focusedSeat).toBeNull()
+  })
 })

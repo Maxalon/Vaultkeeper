@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import PlayerTile from '../components/game/PlayerTile.vue'
 import HistoryDrawer from '../components/game/HistoryDrawer.vue'
+import DicePanel from '../components/game/DicePanel.vue'
 
 const router = useRouter()
 const game = useGameStore()
@@ -11,6 +12,7 @@ const game = useGameStore()
 const seats = computed(() => game.seats)
 const canUndo = computed(() => game.undoStack.length > 0)
 const historyOpen = ref(false)
+const diceOpen = ref(false)
 
 function endGame() {
   game.reset()
@@ -42,9 +44,15 @@ function endGame() {
         aria-label="Open game history"
         @click="historyOpen = true"
       >History</button>
+      <button
+        class="bar-btn dice-btn"
+        aria-label="Open dice roller"
+        @click="diceOpen = true"
+      >Dice</button>
       <button class="bar-btn end-btn" aria-label="End game" @click="endGame">End</button>
     </div>
     <HistoryDrawer :open="historyOpen" @close="historyOpen = false" />
+    <DicePanel v-if="diceOpen" @close="diceOpen = false" />
   </div>
 </template>
 
