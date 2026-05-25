@@ -87,6 +87,13 @@ describe('game store', () => {
     expect(typeof game.history[0].timestamp).toBe('number')
   })
 
+  it('adjustLife records playerName and counterType in history', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(1, -3)
+    expect(game.history[0].playerName).toBe('P2')
+    expect(game.history[0].counterType).toBe('life')
+  })
+
   it('adjustLife is a no-op for out-of-range index', () => {
     const game = twoPlayerGame(20)
     game.adjustLife(99, +1)

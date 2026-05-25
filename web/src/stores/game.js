@@ -6,7 +6,7 @@ export const useGameStore = defineStore('game', () => {
   const startingLife = ref(40)
   const seats = ref([])
 
-  // Each entry: { seatIndex, delta, life, timestamp }
+  // Each entry: { seatIndex, playerName, counterType, delta, life, timestamp, undone? }
   const history = ref([])
   // Each entry: snapshot of seats array for full undo
   const undoStack = ref([])
@@ -33,6 +33,8 @@ export const useGameStore = defineStore('game', () => {
     seats.value[seatIndex].life += delta
     history.value.push({
       seatIndex,
+      playerName: seats.value[seatIndex].name,
+      counterType: 'life',
       delta,
       life: seats.value[seatIndex].life,
       timestamp: Date.now(),
