@@ -30,33 +30,27 @@ function showDelta(delta) {
 }
 
 // ── Hold-to-accelerate ─────────────────────────────────────────────
-// Accumulated delta per hold gesture; flushed to the store as a single
-// adjustLife call so the undo stack records one step per hold.
 let holdTimer = null
 let holdInterval = null
-let accDelta = 0
 let holdStartMs = 0
 
 function startHold(sign) {
-  accDelta = 0
   holdStartMs = Date.now()
 
   // Immediate single step.
   applyDelta(sign)
 
-  // After 1 s: 5/s
+  // After 1 s: 5/s; after 3 s: 10/s
   holdTimer = setTimeout(() => {
     holdInterval = setInterval(() => {
       const elapsed = Date.now() - holdStartMs
-      // After 3 s: 10/s
       const rate = elapsed >= 3000 ? 10 : 5
       applyDelta(sign * rate)
-    }, 200)
+    }, 1000)
   }, 1000)
 }
 
 function applyDelta(delta) {
-  accDelta += delta
   emit('adjust', delta)
   showDelta(delta)
 }
@@ -66,7 +60,6 @@ function stopHold() {
   clearInterval(holdInterval)
   holdTimer = null
   holdInterval = null
-  accDelta = 0
 }
 
 // Upper half = +1 from the current player's perspective.
