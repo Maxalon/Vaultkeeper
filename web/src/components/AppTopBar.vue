@@ -12,7 +12,7 @@ import IconSettings from '../assets/icons/settings.svg'
 
 const props = defineProps({
   sidebarCollapsed: { type: Boolean, default: false },
-  mode: { type: String, default: 'collection' }, // 'collection' | 'deck'
+  mode: { type: String, default: 'collection' }, // 'collection' | 'deck' | 'life-counter'
 })
 const emit = defineEmits(['toggle-sidebar'])
 
