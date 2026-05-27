@@ -22,6 +22,15 @@ fun signingValue(key: String, env: String): String? =
 
 val hasReleaseSigning = signingValue("storeFile", "ANDROID_KEYSTORE_FILE") != null
 
+// versionCode auto-increments from the git commit count, so every build gets
+// a unique, monotonically increasing code (Play rejects duplicate or lower
+// codes). Falls back to 1 when git history isn't available (e.g. building
+// from a source archive).
+val gitVersionCode: Int = providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().toIntOrNull() ?: 1 }.getOrElse(1)
+
 android {
     namespace = "com.vaultkeeper.app"
     compileSdk = 35
@@ -30,7 +39,7 @@ android {
         applicationId = "com.vaultkeeper.app"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
+        versionCode = gitVersionCode
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
