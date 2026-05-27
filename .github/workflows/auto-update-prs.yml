@@ -33,6 +33,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -48,6 +49,8 @@ jobs:
       MERGED_PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Ensure needs-rebase label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh label create needs-rebase \
             --repo "$GITHUB_REPOSITORY" \
