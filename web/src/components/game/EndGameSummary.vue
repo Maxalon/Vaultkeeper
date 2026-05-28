@@ -9,20 +9,14 @@ const emit = defineEmits(['confirm', 'cancel'])
 
 // null = no selection yet; -1 = draw; >= 0 = seat index
 const selectedWinner = ref(null)
-const confirming = ref(false)
 
 function selectWinner(index) {
   selectedWinner.value = index
 }
 
-async function onConfirm() {
+function onConfirm() {
   if (selectedWinner.value === null) return
-  confirming.value = true
-  try {
-    await emit('confirm', selectedWinner.value === -1 ? null : selectedWinner.value)
-  } finally {
-    confirming.value = false
-  }
+  emit('confirm', selectedWinner.value === -1 ? null : selectedWinner.value)
 }
 </script>
 
@@ -56,13 +50,13 @@ async function onConfirm() {
       </button>
 
       <div class="summary-actions">
-        <button class="cancel-btn" :disabled="confirming" @click="emit('cancel')">Cancel</button>
+        <button class="cancel-btn" @click="emit('cancel')">Cancel</button>
         <button
           class="confirm-btn"
-          :disabled="selectedWinner === null || confirming"
+          :disabled="selectedWinner === null"
           @click="onConfirm"
         >
-          {{ confirming ? 'Saving…' : 'Confirm' }}
+          Confirm
         </button>
       </div>
     </div>
