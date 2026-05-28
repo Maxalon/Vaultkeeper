@@ -5,6 +5,7 @@ import com.vaultkeeper.app.data.api.dto.DeckEntryDto
 import com.vaultkeeper.app.data.api.dto.UpdateEntryRequest
 import com.vaultkeeper.app.data.deck.DeckEntryRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -14,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 
@@ -52,7 +54,6 @@ class DeckEntryListViewModelTest {
 
         val entries = vm.entries.value
         assertEquals("side", entries.first { it.id == 1 }.zone)
-        // entry2 is untouched
         assertEquals("side", entries.first { it.id == 2 }.zone)
     }
 
@@ -75,6 +76,54 @@ class DeckEntryListViewModelTest {
         assertEquals("main", entries.first { it.id == 1 }.zone)
         assertEquals("side", entries.first { it.id == 2 }.zone)
         assertEquals("maybe", entries.first { it.id == 3 }.zone)
+    }
+
+    @Test
+    fun `moveToZone applies optimistic update before API response`() = runTest {
+        val entry = makeDeckEntry(id = 1, zone = "main")
+        coEvery { api.getEntries(1) } returns listOf(entry)
+        coEvery { api.updateEntry(1, 1, UpdateEntryRequest("side")) } returns entry.copy(zone = "side")
+
+        vm.load(1)
+        advanceUntilIdle()
+
+        vm.moveToZone(deckId = 1, entryId = 1, newZone = "side")
+
+        // Check state before coroutine finishes — optimistic update is synchronous.
+        assertEquals("side", vm.entries.value.first { it.id == 1 }.zone)
+        advanceUntilIdle()
+        assertEquals("side", vm.entries.value.first { it.id == 1 }.zone)
+    }
+
+    @Test
+    fun `moveToZone rolls back to previous zone on API error`() = runTest {
+        val entry = makeDeckEntry(id = 1, zone = "main")
+        coEvery { api.getEntries(1) } returns listOf(entry)
+        coEvery { api.updateEntry(1, 1, any()) } throws RuntimeException("network error")
+
+        vm.load(1)
+        advanceUntilIdle()
+
+        vm.moveToZone(deckId = 1, entryId = 1, newZone = "side")
+        advanceUntilIdle()
+
+        assertEquals("main", vm.entries.value.first { it.id == 1 }.zone)
+        assertEquals("network error", vm.error.value)
+    }
+
+    @Test
+    fun `moveToZone is a no-op for unknown entryId`() = runTest {
+        val entry = makeDeckEntry(id = 1, zone = "main")
+        coEvery { api.getEntries(1) } returns listOf(entry)
+
+        vm.load(1)
+        advanceUntilIdle()
+
+        vm.moveToZone(deckId = 1, entryId = 999, newZone = "side")
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { api.updateEntry(any(), any(), any()) }
+        assertNull(vm.error.value)
     }
 
     private fun makeDeckEntry(id: Int, zone: String) = DeckEntryDto(

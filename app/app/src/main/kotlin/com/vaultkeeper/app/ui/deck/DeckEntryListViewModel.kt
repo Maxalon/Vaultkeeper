@@ -15,18 +15,35 @@ class DeckEntryListViewModel(private val repo: DeckEntryRepository) : ViewModel(
     private val _entries = MutableStateFlow<List<DeckEntryDto>>(emptyList())
     val entries: StateFlow<List<DeckEntryDto>> = _entries.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
     fun load(deckId: Int) {
         viewModelScope.launch {
-            _entries.value = repo.getEntries(deckId)
+            runCatching { repo.getEntries(deckId) }
+                .onSuccess { _entries.value = it }
+                .onFailure { _error.value = it.message }
         }
     }
 
     fun moveToZone(deckId: Int, entryId: Int, newZone: String) {
+        val previous = _entries.value.find { it.id == entryId } ?: return
+
+        // Optimistic update — row reflects new zone immediately.
+        _entries.update { list -> list.map { if (it.id == entryId) it.copy(zone = newZone) else it } }
+
         viewModelScope.launch {
-            val updated = repo.moveToZone(deckId, entryId, newZone)
-            _entries.update { current ->
-                current.map { if (it.id == updated.id) updated else it }
-            }
+            runCatching { repo.moveToZone(deckId, entryId, newZone) }
+                .onSuccess { updated ->
+                    _entries.update { list -> list.map { if (it.id == updated.id) updated else it } }
+                }
+                .onFailure {
+                    // Restore previous zone on error.
+                    _entries.update { list ->
+                        list.map { if (it.id == entryId) previous else it }
+                    }
+                    _error.value = it.message
+                }
         }
     }
 }
