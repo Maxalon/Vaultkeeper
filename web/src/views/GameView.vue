@@ -8,6 +8,7 @@ const router = useRouter()
 const game = useGameStore()
 
 const seats = computed(() => game.seats)
+const canUndo = computed(() => game.history.length > 0)
 
 function endGame() {
   game.reset()
@@ -23,10 +24,20 @@ function endGame() {
         :key="i"
         :name="seat.name"
         :life="seat.life"
+        :poison="seat.poison"
         :auto-rotate="seats.length === 2 && i === 1"
+        @adjust-poison="(d) => game.adjustPoison(i, d)"
       />
     </div>
-    <button class="end-game-fab" aria-label="End game" @click="endGame">End</button>
+    <div class="fab-row">
+      <button
+        class="undo-fab"
+        :disabled="!canUndo"
+        aria-label="Undo last action"
+        @click="game.undo()"
+      >↩ Undo</button>
+      <button class="end-game-fab" aria-label="End game" @click="endGame">End</button>
+    </div>
   </div>
 </template>
 
@@ -92,13 +103,20 @@ function endGame() {
   grid-template-rows: 1fr 1fr;
 }
 
-/* ── End-game button ──────────────────────────────────────────── */
-.end-game-fab {
+/* ── FAB row (top-center) ─────────────────────────────────────── */
+.fab-row {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 12px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.end-game-fab,
+.undo-fab {
   height: 26px;
   padding: 0 14px;
   background: rgba(13, 13, 13, 0.75);
@@ -115,9 +133,15 @@ function endGame() {
   transition: all 0.15s ease;
 }
 
-.end-game-fab:hover {
+.end-game-fab:hover,
+.undo-fab:hover:not(:disabled) {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.35);
   background: rgba(13, 13, 13, 0.9);
+}
+
+.undo-fab:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 </style>

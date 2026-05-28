@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PlayerTile from '../PlayerTile.vue'
 
@@ -62,5 +62,72 @@ describe('PlayerTile', () => {
     const w = mountTile()
     expect(w.find('[data-testid="tap-upper"]').exists()).toBe(true)
     expect(w.find('[data-testid="tap-lower"]').exists()).toBe(true)
+  })
+})
+
+describe('PlayerTile — poison badge', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('renders poison badge with count 0 by default', () => {
+    const w = mountTile()
+    const badge = w.find('[data-testid="poison-badge"]')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toContain('0')
+  })
+
+  it('renders poison count from prop', () => {
+    const w = mountTile({ poison: 7 })
+    expect(w.find('[data-testid="poison-badge"]').text()).toContain('7')
+  })
+
+  it('does not apply ko class below 10', () => {
+    const w = mountTile({ poison: 9 })
+    expect(w.find('[data-testid="poison-badge"]').classes()).not.toContain('ko')
+  })
+
+  it('applies ko class at 10', () => {
+    const w = mountTile({ poison: 10 })
+    expect(w.find('[data-testid="poison-badge"]').classes()).toContain('ko')
+  })
+
+  it('applies ko class above 10', () => {
+    const w = mountTile({ poison: 12 })
+    expect(w.find('[data-testid="poison-badge"]').classes()).toContain('ko')
+  })
+
+  it('emits adjust-poison +1 on tap (pointerdown then quick pointerup)', async () => {
+    const w = mountTile({ poison: 3 })
+    const badge = w.find('[data-testid="poison-badge"]')
+    await badge.trigger('pointerdown')
+    await badge.trigger('pointerup')
+    expect(w.emitted('adjust-poison')).toEqual([[1]])
+  })
+
+  it('emits adjust-poison -1 on long-press (pointerdown held >= 500ms)', async () => {
+    const w = mountTile({ poison: 3 })
+    const badge = w.find('[data-testid="poison-badge"]')
+    await badge.trigger('pointerdown')
+    vi.advanceTimersByTime(500)
+    expect(w.emitted('adjust-poison')).toEqual([[-1]])
+  })
+
+  it('does not emit tap after long-press fires', async () => {
+    const w = mountTile({ poison: 3 })
+    const badge = w.find('[data-testid="poison-badge"]')
+    await badge.trigger('pointerdown')
+    vi.advanceTimersByTime(500)
+    await badge.trigger('pointerup')
+    expect(w.emitted('adjust-poison')).toHaveLength(1)
+    expect(w.emitted('adjust-poison')[0]).toEqual([-1])
+  })
+
+  it('cancels long-press timer on pointerleave and does not emit', async () => {
+    const w = mountTile({ poison: 3 })
+    const badge = w.find('[data-testid="poison-badge"]')
+    await badge.trigger('pointerdown')
+    await badge.trigger('pointerleave')
+    vi.advanceTimersByTime(600)
+    expect(w.emitted('adjust-poison')).toBeFalsy()
   })
 })
