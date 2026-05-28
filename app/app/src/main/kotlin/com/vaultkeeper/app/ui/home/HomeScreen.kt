@@ -22,7 +22,10 @@ import com.vaultkeeper.app.data.auth.Session
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-fun HomeScreen(vm: HomeViewModel = koinViewModel()) {
+fun HomeScreen(
+    onStartGame: () -> Unit,
+    vm: HomeViewModel = koinViewModel(),
+) {
     val session by vm.session.collectAsStateWithLifecycle()
     val username = (session as? Session.Authenticated)?.user?.username ?: "—"
 
@@ -40,6 +43,10 @@ fun HomeScreen(vm: HomeViewModel = koinViewModel()) {
                 style = MaterialTheme.typography.headlineSmall,
             )
             Spacer(Modifier.height(24.dp))
+            OutlinedButton(onClick = onStartGame) {
+                Text(stringResource(R.string.home_start_game))
+            }
+            Spacer(Modifier.height(12.dp))
             OutlinedButton(onClick = vm::logout) {
                 Text(stringResource(R.string.home_logout))
             }

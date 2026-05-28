@@ -8,5 +8,6 @@
     <string name="login_error_invalid">Invalid credentials</string>
 
     <string name="home_greeting">Signed in as %1$s</string>
+    <string name="home_start_game">Life Counter</string>
     <string name="home_logout">Sign out</string>
 </resources>

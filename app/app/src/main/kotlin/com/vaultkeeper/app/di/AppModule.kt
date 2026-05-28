@@ -9,6 +9,7 @@ import com.vaultkeeper.app.data.auth.TokenRefreshInterceptor
 import com.vaultkeeper.app.data.auth.TokenStore
 import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
 import com.vaultkeeper.app.game.GameViewModel
+import com.vaultkeeper.app.ui.game.GameSessionViewModel
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
 import kotlinx.serialization.json.Json
@@ -76,4 +77,5 @@ val appModule = module {
     viewModel { LoginViewModel(get()) }
     viewModel { HomeViewModel(get()) }
     viewModel { GameViewModel() }
+    viewModel { GameSessionViewModel() }
 }

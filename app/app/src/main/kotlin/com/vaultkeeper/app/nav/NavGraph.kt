@@ -9,12 +9,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.Session
+import com.vaultkeeper.app.ui.game.GameScreen
 import com.vaultkeeper.app.ui.home.HomeScreen
 import com.vaultkeeper.app.ui.login.LoginScreen
 import org.koin.compose.koinInject
 
 private const val ROUTE_LOGIN = "login"
 private const val ROUTE_HOME = "home"
+private const val ROUTE_GAME = "game"
 
 @Composable
 fun VaultkeeperNavGraph() {
@@ -38,6 +40,11 @@ fun VaultkeeperNavGraph() {
 
     NavHost(navController = nav, startDestination = ROUTE_LOGIN) {
         composable(ROUTE_LOGIN) { LoginScreen() }
-        composable(ROUTE_HOME) { HomeScreen() }
+        composable(ROUTE_HOME) {
+            HomeScreen(onStartGame = { nav.navigate(ROUTE_GAME) })
+        }
+        composable(ROUTE_GAME) {
+            GameScreen(onBack = { nav.popBackStack() })
+        }
     }
 }
