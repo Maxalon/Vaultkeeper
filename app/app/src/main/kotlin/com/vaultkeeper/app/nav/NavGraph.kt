@@ -11,10 +11,12 @@ import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.Session
 import com.vaultkeeper.app.ui.home.HomeScreen
 import com.vaultkeeper.app.ui.login.LoginScreen
+import com.vaultkeeper.app.ui.settings.SettingsScreen
 import org.koin.compose.koinInject
 
 private const val ROUTE_LOGIN = "login"
 private const val ROUTE_HOME = "home"
+private const val ROUTE_SETTINGS = "settings"
 
 @Composable
 fun VaultkeeperNavGraph() {
@@ -38,6 +40,11 @@ fun VaultkeeperNavGraph() {
 
     NavHost(navController = nav, startDestination = ROUTE_LOGIN) {
         composable(ROUTE_LOGIN) { LoginScreen() }
-        composable(ROUTE_HOME) { HomeScreen() }
+        composable(ROUTE_HOME) {
+            HomeScreen(onNavigateToSettings = { nav.navigate(ROUTE_SETTINGS) })
+        }
+        composable(ROUTE_SETTINGS) {
+            SettingsScreen(onBack = { nav.popBackStack() })
+        }
     }
 }
