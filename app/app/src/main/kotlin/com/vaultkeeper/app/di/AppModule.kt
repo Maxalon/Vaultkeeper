@@ -10,6 +10,7 @@ import com.vaultkeeper.app.data.auth.TokenStore
 import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
+import com.vaultkeeper.app.ui.onboarding.OnboardingViewModel
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -74,4 +75,5 @@ val appModule = module {
 
     viewModel { LoginViewModel(get()) }
     viewModel { HomeViewModel(get()) }
+    viewModel { OnboardingViewModel(get()) }
 }

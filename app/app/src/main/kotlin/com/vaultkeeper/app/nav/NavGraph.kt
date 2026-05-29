@@ -11,9 +11,11 @@ import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.Session
 import com.vaultkeeper.app.ui.home.HomeScreen
 import com.vaultkeeper.app.ui.login.LoginScreen
+import com.vaultkeeper.app.ui.onboarding.OnboardingScreen
 import org.koin.compose.koinInject
 
 private const val ROUTE_LOGIN = "login"
+private const val ROUTE_ONBOARDING = "onboarding"
 private const val ROUTE_HOME = "home"
 
 @Composable
@@ -22,8 +24,10 @@ fun VaultkeeperNavGraph() {
     val auth = koinInject<AuthRepository>()
     val session by auth.session.collectAsStateWithLifecycle()
 
-    val target = when (session) {
-        is Session.Authenticated -> ROUTE_HOME
+    val authenticated = session as? Session.Authenticated
+    val target = when {
+        authenticated?.user?.needsOnboarding == true -> ROUTE_ONBOARDING
+        authenticated != null -> ROUTE_HOME
         else -> ROUTE_LOGIN
     }
 
@@ -38,6 +42,7 @@ fun VaultkeeperNavGraph() {
 
     NavHost(navController = nav, startDestination = ROUTE_LOGIN) {
         composable(ROUTE_LOGIN) { LoginScreen() }
+        composable(ROUTE_ONBOARDING) { OnboardingScreen() }
         composable(ROUTE_HOME) { HomeScreen() }
     }
 }

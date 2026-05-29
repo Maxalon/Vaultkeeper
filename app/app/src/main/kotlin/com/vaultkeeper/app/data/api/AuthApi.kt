@@ -21,4 +21,7 @@ interface AuthApi {
 
     @GET("auth/me")
     suspend fun me(): UserDto
+
+    @POST("auth/onboarding/complete")
+    suspend fun completeOnboarding(): UserDto
 }
