@@ -29,6 +29,8 @@ class CollectionController extends Controller
         'condition'        => 'collection_entries.condition',
     ];
 
+    private const PER_PAGE = 50;
+
     /**
      * GET /api/collection
      *
@@ -38,6 +40,7 @@ class CollectionController extends Controller
      *             `search` (legacy name-substring) when q is absent.
      *   - sort:   one of SORT_FIELDS (default: name)
      *   - order:  asc|desc (default: asc)
+     *   - page:   1-based page number (default: 1)
      */
     public function index(Request $request): JsonResponse
     {
@@ -110,13 +113,21 @@ class CollectionController extends Controller
             $query->where('scryfall_cards.name', 'like', "%{$search}%");
         }
 
-        $entries = $query->orderBy($sortCol, $order)->get();
+        $page    = max(1, (int) $request->query('page', 1));
+        $total   = $query->count();
+        $entries = $query->orderBy($sortCol, $order)->forPage($page, self::PER_PAGE)->get();
 
         $wantedMap = $this->wantedByDecksMap($entries->pluck('scryfall_id')->unique()->all(), $userId);
 
         return response()->json([
             'data'     => $entries->map(fn (CollectionEntry $e) => $this->presentList($e, $wantedMap))->values(),
             'warnings' => $warnings,
+            'meta'     => [
+                'current_page' => $page,
+                'per_page'     => self::PER_PAGE,
+                'total'        => $total,
+                'has_more'     => $page * self::PER_PAGE < $total,
+            ],
         ]);
     }
 

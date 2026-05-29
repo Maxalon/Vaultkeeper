@@ -3,11 +3,14 @@ package com.vaultkeeper.app.di
 import com.vaultkeeper.app.BuildConfig
 import com.vaultkeeper.app.data.api.AuthApi
 import com.vaultkeeper.app.data.api.AuthRefreshApi
+import com.vaultkeeper.app.data.api.CollectionApi
 import com.vaultkeeper.app.data.auth.AuthInterceptor
 import com.vaultkeeper.app.data.auth.AuthRepository
 import com.vaultkeeper.app.data.auth.TokenRefreshInterceptor
 import com.vaultkeeper.app.data.auth.TokenStore
 import com.vaultkeeper.app.data.auth.UnauthenticatedEvent
+import com.vaultkeeper.app.data.repository.CollectionRepository
+import com.vaultkeeper.app.ui.collection.CollectionViewModel
 import com.vaultkeeper.app.ui.home.HomeViewModel
 import com.vaultkeeper.app.ui.login.LoginViewModel
 import kotlinx.serialization.json.Json
@@ -69,9 +72,12 @@ val appModule = module {
     }
 
     single<AuthApi> { get<Retrofit>().create(AuthApi::class.java) }
+    single<CollectionApi> { get<Retrofit>().create(CollectionApi::class.java) }
 
     single { AuthRepository(get(), get(), get()) }
+    single { CollectionRepository(get()) }
 
     viewModel { LoginViewModel(get()) }
     viewModel { HomeViewModel(get()) }
+    viewModel { CollectionViewModel(get(), get()) }
 }

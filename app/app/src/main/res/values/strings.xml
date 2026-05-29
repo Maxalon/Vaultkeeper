@@ -9,4 +9,26 @@
 
     <string name="home_greeting">Signed in as %1$s</string>
     <string name="home_logout">Sign out</string>
+
+    <string name="collection_title">Collection</string>
+    <string name="collection_refresh">Refresh</string>
+    <string name="collection_all_cards">All cards</string>
+    <string name="collection_search_hint">Search by card name…</string>
+    <string name="collection_search_clear">Clear search</string>
+    <string name="collection_stats_cards">%1$d cards</string>
+    <string name="collection_stats_value">€%1$.2f</string>
+    <string name="collection_foil">Foil</string>
+    <string name="collection_etched">Etched</string>
+    <string name="collection_empty">Your collection is empty.</string>
+    <string name="collection_empty_search">No cards match your search.</string>
+    <string name="collection_error">Failed to load collection.</string>
+    <string name="collection_retry">Retry</string>
+    <string name="collection_unknown_card">Unknown card</string>
+
+    <string name="collection_detail_condition">Condition</string>
+    <string name="collection_detail_finish">Finish</string>
+    <string name="collection_detail_nonfoil">Non-foil</string>
+    <string name="collection_detail_quantity">Quantity</string>
+    <string name="collection_detail_price">Price</string>
+    <string name="collection_detail_notes">Notes</string>
 </resources>
