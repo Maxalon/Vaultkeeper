@@ -7,6 +7,25 @@
     <string name="login_error_generic">Sign-in failed</string>
     <string name="login_error_invalid">Invalid credentials</string>
 
-    <string name="home_greeting">Signed in as %1$s</string>
     <string name="home_logout">Sign out</string>
+
+    <string name="decklist_title">My Decks</string>
+    <string name="decklist_empty">No decks yet. Tap + to create one.</string>
+    <string name="decklist_create">Create deck</string>
+    <string name="decklist_create_title">New deck</string>
+    <string name="decklist_create_name">Deck name</string>
+    <string name="decklist_create_format">Format</string>
+    <string name="decklist_create_submit">Create</string>
+
+    <string name="deck_badge_assembled">Built</string>
+    <string name="deck_delete_title">Delete deck?</string>
+    <string name="deck_delete_body">"%1$s" will be permanently deleted.</string>
+    <string name="deck_delete_confirm">Delete</string>
+
+    <string name="deckdetail_title">Deck</string>
+    <string name="deckdetail_placeholder">Deck %1$d</string>
+
+    <string name="cancel">Cancel</string>
+    <string name="back">Back</string>
+    <string name="retry">Retry</string>
 </resources>

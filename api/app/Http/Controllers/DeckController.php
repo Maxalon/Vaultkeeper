@@ -47,8 +47,15 @@ class DeckController extends Controller
             ->get()
             ->groupBy('deck_id');
 
+        $assembledDeckIds = DeckEntry::query()
+            ->whereIn('deck_id', $deckIds)
+            ->whereNotNull('physical_copy_id')
+            ->distinct()
+            ->pluck('deck_id')
+            ->flip();
+
         return response()->json(
-            $decks->map(function (Deck $deck) use ($entryCounts, $ignoredByDeck) {
+            $decks->map(function (Deck $deck) use ($entryCounts, $ignoredByDeck, $assembledDeckIds) {
                 $illegalities = $this->legality->check($deck);
                 $ignored = $ignoredByDeck->get($deck->id, collect());
                 $active = 0;
@@ -65,6 +72,7 @@ class DeckController extends Controller
                     'description'     => $deck->description,
                     'color_identity'  => $deck->color_identity,
                     'is_archived'     => $deck->is_archived,
+                    'is_assembled'    => $assembledDeckIds->has($deck->id),
                     'entry_count'     => (int) ($entryCounts[$deck->id] ?? 0),
                     'illegality_count'=> $active,
                     'commander1'      => $this->presentCommander($deck->commander1),
