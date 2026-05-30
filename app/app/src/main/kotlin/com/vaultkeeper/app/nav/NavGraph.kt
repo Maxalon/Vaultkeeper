@@ -27,6 +27,7 @@ fun VaultkeeperNavGraph() {
     val authenticated = session as? Session.Authenticated
     val target = when {
         authenticated?.user?.needsOnboarding == true -> ROUTE_ONBOARDING
+        // HomeScreen is the app's main landing screen — the Collection equivalent on Android.
         authenticated != null -> ROUTE_HOME
         else -> ROUTE_LOGIN
     }
