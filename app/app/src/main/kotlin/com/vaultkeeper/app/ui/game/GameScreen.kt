@@ -1,7 +1,6 @@
 package com.vaultkeeper.app.ui.game
 
 import android.app.Activity
-import android.view.WindowManager
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,16 +29,11 @@ fun GameScreen(
 ) {
     val session by vm.session.collectAsStateWithLifecycle()
 
-    // FLAG_KEEP_SCREEN_ON prevents the display from dimming or locking while
-    // the game screen is composed. onDispose clears it immediately so normal
-    // timeout resumes as soon as the user navigates away or backgrounds the app.
     val view = LocalView.current
     DisposableEffect(view) {
         val window = (view.context as Activity).window
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
+        WakeLockManager.acquire(window)
+        onDispose { WakeLockManager.release(window) }
     }
 
     Scaffold(
