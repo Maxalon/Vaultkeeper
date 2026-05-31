@@ -407,6 +407,18 @@ class DeckImportService
 
                 if ($existing) {
                     $existing->quantity += (int) $e['quantity'];
+                    // Update-when-null: if the first occurrence produced no
+                    // category (autoCategory returned null), apply the later
+                    // row's source_category so it isn't silently lost.
+                    // An existing non-null category is always preserved.
+                    if ($existing->category === null) {
+                        $deferredCat = isset($e['source_category']) && is_string($e['source_category']) && $e['source_category'] !== ''
+                            ? $e['source_category']
+                            : null;
+                        if ($deferredCat !== null) {
+                            $existing->category = $deferredCat;
+                        }
+                    }
                     $existing->save();
                 } else {
                     // Preserve the user-defined category from the source

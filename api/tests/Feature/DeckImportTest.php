@@ -676,6 +676,136 @@ class DeckImportTest extends TestCase
         ]);
     }
 
+    public function test_duplicate_source_row_preserves_existing_category(): void
+    {
+        // Sol Ring appears twice in the Archidekt response (same scryfall_id +
+        // zone). The first row carries "Ramp"; the second carries "Draw".
+        // Policy: once a category is set on the entry it must not be overwritten
+        // by a later duplicate row — quantities are summed instead.
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id' => 91,
+                'name' => 'Duplicate Category Test',
+                'deckFormat' => 'commander',
+                'cards' => [
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid' => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition' => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 2,
+                        'categories' => ['Ramp'],
+                        'card' => [
+                            'uid' => '22222222-2222-2222-2222-222222222222',
+                            'oracleCard' => ['name' => 'Sol Ring'],
+                            'edition' => ['editioncode' => 'cmr'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Draw'],
+                        'card' => [
+                            'uid' => '22222222-2222-2222-2222-222222222222',
+                            'oracleCard' => ['name' => 'Sol Ring'],
+                            'edition' => ['editioncode' => 'cmr'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url' => 'https://archidekt.com/decks/91/dup-cat',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+
+        // Quantities from both rows summed; first category wins.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '22222222-2222-2222-2222-222222222222',
+            'quantity' => 3,
+            'category' => 'Ramp',
+        ]);
+    }
+
+    public function test_duplicate_source_row_applies_category_when_entry_has_none(): void
+    {
+        // A card whose type_line doesn't match autoCategory's TYPE_PRIORITY
+        // list ends up with category=null on the first (no-source-category)
+        // row. A subsequent duplicate row that carries a source_category must
+        // fill it in rather than leaving it null.
+        ScryfallCard::factory()->create([
+            'scryfall_id' => '55555555-5555-5555-5555-555555555555',
+            'name' => 'Conspiracy Card',
+            'set_code' => 'cns',
+            'type_line' => 'Conspiracy',   // no TYPE_PRIORITY match → autoCategory returns null
+        ]);
+
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id' => 92,
+                'name' => 'Null Category Test',
+                'deckFormat' => 'commander',
+                'cards' => [
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid' => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition' => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 1,
+                        'categories' => [],   // no source_category; autoCategory returns null
+                        'card' => [
+                            'uid' => '55555555-5555-5555-5555-555555555555',
+                            'oracleCard' => ['name' => 'Conspiracy Card'],
+                            'edition' => ['editioncode' => 'cns'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Ramp'],   // duplicate row with a category
+                        'card' => [
+                            'uid' => '55555555-5555-5555-5555-555555555555',
+                            'oracleCard' => ['name' => 'Conspiracy Card'],
+                            'edition' => ['editioncode' => 'cns'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url' => 'https://archidekt.com/decks/92/null-cat',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+
+        // The source_category from the duplicate row must be applied because
+        // the first row left category=null.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '55555555-5555-5555-5555-555555555555',
+            'quantity' => 2,
+            'category' => 'Ramp',
+        ]);
+    }
+
     public function test_rejects_url_from_unknown_source(): void
     {
         $this->withHeaders($this->headers())
