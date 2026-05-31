@@ -9,20 +9,6 @@ use Illuminate\Support\Facades\DB;
 
 class GameResultController extends Controller
 {
-    /**
-     * POST /api/game-results
-     *
-     * Records the outcome of a completed game session against deck records.
-     * The caller supplies:
-     *   winner_deck_id  — the winning deck's id, or null for a draw/no winner
-     *   loser_deck_ids  — array of deck ids for non-winning seats that had a
-     *                     deck selected; may include the winner's id if the
-     *                     client is careless, but the winner is excluded below
-     *
-     * Each deck must belong to the authenticated user. Increments wins/losses
-     * atomically so concurrent requests (unlikely but possible) don't corrupt
-     * the counters.
-     */
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([

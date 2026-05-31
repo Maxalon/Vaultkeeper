@@ -229,12 +229,5 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead']);
     Route::post('notifications/{id}/actions/{key}', [NotificationController::class, 'executeAction']);
 
-    // -------------------------------------------------------------------------
-    // Game results (VAULT-67)
-    //
-    // Writes +1 win to the winning deck and +1 loss to each non-winning deck
-    // that had a deck selected at game start. No-winner/draw games still write
-    // losses to all participating decks.
-    // -------------------------------------------------------------------------
     Route::post('game-results', [GameResultController::class, 'store']);
 });
