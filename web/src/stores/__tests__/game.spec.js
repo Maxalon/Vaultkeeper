@@ -53,4 +53,90 @@ describe('game store', () => {
     expect(game.startingLife).toBe(40)
     expect(game.seats).toHaveLength(0)
   })
+
+  it('configure initialises poison to 0 for every seat', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 2,
+      life: 40,
+      seatConfig: [
+        { name: 'P1', deckId: null, life: 40 },
+        { name: 'P2', deckId: null, life: 40 },
+      ],
+    })
+    expect(game.seats[0].poison).toBe(0)
+    expect(game.seats[1].poison).toBe(0)
+  })
+
+  it('adjustPoison increments and clamps at 0', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 1,
+      life: 40,
+      seatConfig: [{ name: 'P1', deckId: null, life: 40 }],
+    })
+    game.adjustPoison(0, 3)
+    expect(game.seats[0].poison).toBe(3)
+    game.adjustPoison(0, -10)
+    expect(game.seats[0].poison).toBe(0)
+  })
+
+  it('adjustPoison records entries in history', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 1,
+      life: 40,
+      seatConfig: [{ name: 'P1', deckId: null, life: 40 }],
+    })
+    game.adjustPoison(0, 1)
+    game.adjustPoison(0, 1)
+    expect(game.history).toHaveLength(2)
+  })
+
+  it('undo reverses the last poison adjustment', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 1,
+      life: 40,
+      seatConfig: [{ name: 'P1', deckId: null, life: 40 }],
+    })
+    game.adjustPoison(0, 5)
+    game.undo()
+    expect(game.seats[0].poison).toBe(0)
+    expect(game.history).toHaveLength(0)
+  })
+
+  it('undo is a no-op when history is empty', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 1,
+      life: 40,
+      seatConfig: [{ name: 'P1', deckId: null, life: 40 }],
+    })
+    expect(() => game.undo()).not.toThrow()
+  })
+
+  it('adjustPoison is a no-op and does not push history when clamped at 0', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 1,
+      life: 40,
+      seatConfig: [{ name: 'P1', deckId: null, life: 40 }],
+    })
+    game.adjustPoison(0, -1)
+    expect(game.seats[0].poison).toBe(0)
+    expect(game.history).toHaveLength(0)
+  })
+
+  it('reset clears history', () => {
+    const game = useGameStore()
+    game.configure({
+      count: 1,
+      life: 40,
+      seatConfig: [{ name: 'P1', deckId: null, life: 40 }],
+    })
+    game.adjustPoison(0, 3)
+    game.reset()
+    expect(game.history).toHaveLength(0)
+  })
 })

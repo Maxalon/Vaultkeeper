@@ -4,16 +4,43 @@ import { ref, computed } from 'vue'
 const props = defineProps({
   name: { type: String, required: true },
   life: { type: Number, required: true },
+  poison: { type: Number, default: 0 },
   autoRotate: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['adjust'])
+const emit = defineEmits(['adjust', 'adjust-poison'])
 
 const userRotated = ref(false)
 const isRotated = computed(() => props.autoRotate !== userRotated.value)
 
 function toggleRotate() {
   userRotated.value = !userRotated.value
+}
+
+let pressTimer = null
+
+function onBadgePointerDown(e) {
+  e.stopPropagation()
+  pressTimer = setTimeout(() => {
+    pressTimer = null
+    emit('adjust-poison', -1)
+  }, 500)
+}
+
+function onBadgePointerUp(e) {
+  e.stopPropagation()
+  if (pressTimer !== null) {
+    clearTimeout(pressTimer)
+    pressTimer = null
+    emit('adjust-poison', +1)
+  }
+}
+
+function onBadgePointerLeave() {
+  if (pressTimer !== null) {
+    clearTimeout(pressTimer)
+    pressTimer = null
+  }
 }
 </script>
 
@@ -34,6 +61,16 @@ function toggleRotate() {
       aria-label="Rotate tile 180°"
       @click.stop="toggleRotate"
     >↺</button>
+    <button
+      class="poison-badge"
+      :class="{ ko: poison >= 10 }"
+      data-testid="poison-badge"
+      aria-label="`Poison counter: ${poison}. Tap to add, hold to remove.`"
+      @pointerdown.stop="onBadgePointerDown"
+      @pointerup.stop="onBadgePointerUp"
+      @pointerleave="onBadgePointerLeave"
+      @pointercancel="onBadgePointerLeave"
+    >☠ {{ poison }}</button>
   </div>
 </template>
 
@@ -124,5 +161,47 @@ function toggleRotate() {
 .rotate-btn.active {
   color: var(--ink-70, #aaa);
   border-color: var(--ink-30, #555);
+}
+
+.poison-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--hairline, #2e2e2e);
+  border-radius: 14px;
+  color: var(--ink-50, #777);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-sans), sans-serif;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1;
+  transition: all 150ms ease;
+  z-index: 2;
+  white-space: nowrap;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.poison-badge:hover {
+  color: var(--ink-70, #aaa);
+  border-color: var(--ink-30, #555);
+}
+
+.poison-badge.ko {
+  color: var(--red, #e05252);
+  border-color: var(--red, #e05252);
+  animation: ko-flash 0.6s ease infinite alternate;
+}
+
+@keyframes ko-flash {
+  from { opacity: 1; }
+  to   { opacity: 0.5; }
 }
 </style>
