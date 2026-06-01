@@ -1,7 +1,8 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCollectionStore, parseSearch, serializeQuery } from '../stores/collection'
+import { useFriendsStore } from '../stores/friends'
 import VaultMark from './VaultMark.vue'
 import FilterChip from './FilterChip.vue'
 import SyntaxSearch from './SyntaxSearch.vue'
@@ -17,8 +18,18 @@ const props = defineProps({
 const emit = defineEmits(['toggle-sidebar'])
 
 const collection = useCollectionStore()
+const friends = useFriendsStore()
 const router = useRouter()
 const route = useRoute()
+
+let friendsPollTimer = null
+onMounted(async () => {
+  await friends.fetchRequests()
+  friendsPollTimer = setInterval(() => friends.fetchRequests(), 60_000)
+})
+onUnmounted(() => {
+  clearInterval(friendsPollTimer)
+})
 
 // ── Chip option lists ────────────────────────────────────────────────────
 const COLOR_OPTS = [
@@ -192,11 +203,18 @@ function openFriends() {
       >Select</button>
       <button
         class="vk-icon-btn"
-        title="Friends"
-        aria-label="Friends"
+        :title="`Friends${friends.pendingIncomingCount ? ` · ${friends.pendingIncomingCount} pending` : ''}`"
+        :aria-label="`Friends${friends.pendingIncomingCount ? ` (${friends.pendingIncomingCount} pending request${friends.pendingIncomingCount === 1 ? '' : 's'})` : ''}`"
         @click="openFriends"
       >
         <IconFriends />
+        <span
+          v-if="friends.pendingIncomingCount"
+          class="friends-badge"
+          aria-hidden="true"
+        >
+          {{ friends.pendingIncomingCount > 9 ? '9+' : friends.pendingIncomingCount }}
+        </span>
       </button>
       <NotificationBell />
       <button
@@ -305,10 +323,30 @@ function openFriends() {
   cursor: pointer;
   padding: 0;
   transition: all 120ms ease;
+  position: relative;
 }
 .vk-icon-btn:hover {
   color: #1a1408;
   background: var(--amber);
   border-color: var(--amber);
+}
+
+.friends-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #d46a6a;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: 1px solid var(--bg-1);
 }
 </style>
