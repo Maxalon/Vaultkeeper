@@ -16,6 +16,7 @@ import SidebarGroup from './SidebarGroup.vue'
 import SidebarRow from './SidebarRow.vue'
 import IconAllCards from '../assets/icons/all-cards.svg'
 import IconDrawer from '../assets/icons/drawer.svg'
+import IconHeart from '../assets/icons/heart.svg'
 import IconImport from '../assets/icons/import.svg'
 import IconChevron from '../assets/chevron-down.svg'
 
@@ -68,6 +69,10 @@ function openDeck(deck) {
 
 function goToReview() {
   if (route.name !== 'review') router.push({ name: 'review' })
+}
+
+function goToLifeCounter() {
+  if (route.name !== 'life-counter') router.push({ name: 'life-counter' })
 }
 
 const importOpen = ref(false)
@@ -246,6 +251,18 @@ function itemKey(item) { return `${item.kind}:${item.id}` }
         </span>
         <span class="label">Review</span>
         <span class="num">{{ collection.review.card_count }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="sidebar-item top"
+        :class="{ active: route.name === 'life-counter' }"
+        @click="goToLifeCounter"
+      >
+        <span class="set-sym" aria-hidden="true">
+          <IconHeart />
+        </span>
+        <span class="label">Life Counter</span>
       </button>
 
       <div
