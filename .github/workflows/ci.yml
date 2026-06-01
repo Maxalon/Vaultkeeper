@@ -4,6 +4,14 @@ on:
   push:
     branches: [main, staging]
   pull_request:
+  # Manual escape hatch. A PR whose head commit was produced by a token
+  # that doesn't trigger workflows (e.g. a GITHUB_TOKEN branch-update)
+  # never gets a CI run, so its required checks sit at "Expected". Running
+  # this workflow manually against the PR's head ref creates check runs on
+  # that commit, which Branch Protection accepts. On a manual dispatch we
+  # force both required jobs to run regardless of the path filter, so both
+  # required contexts report.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -30,6 +38,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
+      scripts: ${{ steps.filter.outputs.scripts }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,11 +53,14 @@ jobs:
             web:
               - 'web/**'
               - '.github/workflows/ci.yml'
+            scripts:
+              - '.github/scripts/**'
+              - '.github/workflows/ci.yml'
 
   api-test:
     name: api / phpunit
     needs: changes
-    if: needs.changes.outputs.api == 'true'
+    if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     services:
@@ -128,7 +140,7 @@ jobs:
   web-build:
     name: web / vite build
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     defaults:
@@ -151,3 +163,15 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  script-tests:
+    name: scripts / bats
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: sudo apt-get install -y bats
+      - name: Run jira-transition tests
+        run: bats .github/scripts/jira-transition.test.bats

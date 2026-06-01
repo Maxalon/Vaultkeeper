@@ -28,16 +28,6 @@
 
 set -euo pipefail
 
-TARGET_STATUS="${1:?usage: jira-transition.sh <target-status>}"
-
-: "${JIRA_BASE_URL:?JIRA_BASE_URL is required}"
-: "${JIRA_USER_EMAIL:?JIRA_USER_EMAIL is required}"
-: "${JIRA_API_TOKEN:?JIRA_API_TOKEN is required}"
-: "${SOURCE_TEXT:?SOURCE_TEXT is required}"
-
-BASE_URL="${JIRA_BASE_URL%/}"
-AUTH="${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}"
-
 # Forward pipeline order (lower-cased for case-insensitive matching).
 PIPELINE=( "concept" "to do" "in progress" "in code review" "beta testing" "ready for release" "released" )
 
@@ -49,12 +39,6 @@ idx_of() {
   done
   echo -1
 }
-
-target_idx="$(idx_of "$TARGET_STATUS")"
-if [ "$target_idx" -lt 0 ]; then
-  echo "Target status '${TARGET_STATUS}' is not on the known pipeline; aborting." >&2
-  exit 1
-fi
 
 # Step one ticket forward until it reaches the target (or can't progress).
 walk_one() {
@@ -116,21 +100,39 @@ walk_one() {
   return 0
 }
 
-mapfile -t KEYS < <(printf '%s' "$SOURCE_TEXT" | grep -oE 'VAULT-[0-9]+' | sort -u)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  TARGET_STATUS="${1:?usage: jira-transition.sh <target-status>}"
 
-if [ "${#KEYS[@]}" -eq 0 ]; then
-  echo "No VAULT-* issue keys found in source text; nothing to do."
-  exit 0
+  : "${JIRA_BASE_URL:?JIRA_BASE_URL is required}"
+  : "${JIRA_USER_EMAIL:?JIRA_USER_EMAIL is required}"
+  : "${JIRA_API_TOKEN:?JIRA_API_TOKEN is required}"
+  : "${SOURCE_TEXT:?SOURCE_TEXT is required}"
+
+  BASE_URL="${JIRA_BASE_URL%/}"
+  AUTH="${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}"
+
+  target_idx="$(idx_of "$TARGET_STATUS")"
+  if [ "$target_idx" -lt 0 ]; then
+    echo "Target status '${TARGET_STATUS}' is not on the known pipeline; aborting." >&2
+    exit 1
+  fi
+
+  mapfile -t KEYS < <(printf '%s' "$SOURCE_TEXT" | grep -oE 'VAULT-[0-9]+' | sort -u)
+
+  if [ "${#KEYS[@]}" -eq 0 ]; then
+    echo "No VAULT-* issue keys found in source text; nothing to do."
+    exit 0
+  fi
+
+  echo "Found keys: ${KEYS[*]}"
+  echo "Target status: ${TARGET_STATUS}"
+
+  fail=0
+  for key in "${KEYS[@]}"; do
+    echo "::group::${key}"
+    walk_one "$key" || fail=1
+    echo "::endgroup::"
+  done
+
+  exit "$fail"
 fi
-
-echo "Found keys: ${KEYS[*]}"
-echo "Target status: ${TARGET_STATUS}"
-
-fail=0
-for key in "${KEYS[@]}"; do
-  echo "::group::${key}"
-  walk_one "$key" || fail=1
-  echo "::endgroup::"
-done
-
-exit "$fail"

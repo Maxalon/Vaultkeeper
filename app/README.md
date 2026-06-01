@@ -7,7 +7,7 @@ Kotlin / Compose / Material 3 client for the Vaultkeeper API.
 - compileSdk 35, minSdk 31, targetSdk 35 — JDK 17
 - Gradle Kotlin DSL with a version catalog (`gradle/libs.versions.toml`)
 - Compose + Material 3, Compose Navigation
-- Koin (DI)
+- Hilt (DI framework; application class and base activity wired) + Koin (runtime modules)
 - Retrofit + OkHttp + kotlinx.serialization
 - DataStore + Jetpack Security for JWT storage
 - Coil (image loading; pre-wired for card art)
