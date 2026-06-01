@@ -22,7 +22,7 @@ import com.vaultkeeper.app.data.auth.Session
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-fun HomeScreen(vm: HomeViewModel = koinViewModel()) {
+fun HomeScreen(onOpenDeck: (Long) -> Unit = {}, vm: HomeViewModel = koinViewModel()) {
     val session by vm.session.collectAsStateWithLifecycle()
     val username = (session as? Session.Authenticated)?.user?.username ?: "—"
 
