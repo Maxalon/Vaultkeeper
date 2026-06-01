@@ -38,6 +38,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       web: ${{ steps.filter.outputs.web }}
+      scripts: ${{ steps.filter.outputs.scripts }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +52,9 @@ jobs:
               - '.github/workflows/ci.yml'
             web:
               - 'web/**'
+              - '.github/workflows/ci.yml'
+            scripts:
+              - '.github/scripts/**'
               - '.github/workflows/ci.yml'
 
   api-test:
@@ -159,3 +163,15 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  script-tests:
+    name: scripts / bats
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: sudo apt-get install -y bats
+      - name: Run jira-transition tests
+        run: bats .github/scripts/jira-transition.test.bats
