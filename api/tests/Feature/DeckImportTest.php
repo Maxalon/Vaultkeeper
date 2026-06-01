@@ -676,6 +676,138 @@ class DeckImportTest extends TestCase
         ]);
     }
 
+    public function test_duplicate_source_entry_preserves_existing_category_on_coalesce(): void
+    {
+        // Archidekt can list the same card twice (e.g. in two category groups).
+        // The first occurrence sets the category; the second must not overwrite it.
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id' => 200,
+                'name' => 'Coalesce test',
+                'deckFormat' => 'commander',
+                'cards' => [
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid' => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition' => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                    // Sol Ring appears twice with different categories.
+                    [
+                        'quantity' => 4,
+                        'categories' => ['Ramp'],
+                        'card' => [
+                            'uid' => '22222222-2222-2222-2222-222222222222',
+                            'oracleCard' => ['name' => 'Sol Ring'],
+                            'edition' => ['editioncode' => 'cmr'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 2,
+                        'categories' => ['Mana Rocks'],
+                        'card' => [
+                            'uid' => '22222222-2222-2222-2222-222222222222',
+                            'oracleCard' => ['name' => 'Sol Ring'],
+                            'edition' => ['editioncode' => 'cmr'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url' => 'https://archidekt.com/decks/200/coalesce',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+
+        // Quantity is summed; the first-seen category wins.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '22222222-2222-2222-2222-222222222222',
+            'zone' => 'main',
+            'quantity' => 6,
+            'category' => 'Ramp',
+        ]);
+    }
+
+    public function test_duplicate_source_entry_fills_null_category_on_coalesce(): void
+    {
+        // A card whose first occurrence carries no source_category and whose
+        // type_line produces no autoCategory result should have its category
+        // filled from a subsequent source occurrence that does carry one.
+        ScryfallCard::factory()->create([
+            'scryfall_id' => 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+            'name' => 'Dungeon: Lost Mine of Phandelver',
+            'set_code' => 'afr',
+            // "Dungeon" is not in TYPE_PRIORITY so autoCategory returns null.
+            'type_line' => 'Dungeon',
+        ]);
+
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id' => 201,
+                'name' => 'Null category test',
+                'deckFormat' => 'commander',
+                'cards' => [
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid' => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition' => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                    // First occurrence: no source category → autoCategory = null.
+                    [
+                        'quantity' => 1,
+                        'categories' => [],
+                        'card' => [
+                            'uid' => 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+                            'oracleCard' => ['name' => 'Dungeon: Lost Mine of Phandelver'],
+                            'edition' => ['editioncode' => 'afr'],
+                        ],
+                    ],
+                    // Second occurrence: carries a meaningful category.
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Utility'],
+                        'card' => [
+                            'uid' => 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+                            'oracleCard' => ['name' => 'Dungeon: Lost Mine of Phandelver'],
+                            'edition' => ['editioncode' => 'afr'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url' => 'https://archidekt.com/decks/201/nullcat',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+
+        // Quantity is summed; category is filled from the second occurrence.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+            'zone' => 'main',
+            'quantity' => 2,
+            'category' => 'Utility',
+        ]);
+    }
+
     public function test_rejects_url_from_unknown_source(): void
     {
         $this->withHeaders($this->headers())
