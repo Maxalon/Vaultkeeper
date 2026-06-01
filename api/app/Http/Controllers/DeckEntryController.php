@@ -696,6 +696,11 @@ class DeckEntryController extends Controller
                                 ->orderBy('scryfall_oracles.color_identity')->select('deck_entries.*'),
             'rarity'   => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
                                 ->orderBy('scryfall_cards.rarity')->select('deck_entries.*'),
+            // Prices are per-printing in card_prices and not every printing has
+            // one — left join so unpriced entries survive, and sort them last.
+            'price'    => $query->leftJoin('card_prices', 'deck_entries.scryfall_id', '=', 'card_prices.scryfall_id')
+                                ->orderByRaw('card_prices.eur IS NULL, card_prices.eur')
+                                ->select('deck_entries.*'),
             'category' => $query->orderBy('category'),
             default    => $query->join('scryfall_cards', 'deck_entries.scryfall_id', '=', 'scryfall_cards.scryfall_id')
                                 ->orderBy('scryfall_cards.name')->select('deck_entries.*'),

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import api from '../lib/api'
 import { useToast } from '../composables/useToast'
 import { usePricesStore } from './prices'
+import { priceSortValue } from '../utils/price'
 import {
   parseSearch as parseSearchGeneric,
   serializeQuery as serializeQueryGeneric,
@@ -249,21 +250,40 @@ export const useCollectionStore = defineStore('collection', {
     },
     /**
      * Backend handles all token filtering now (full Scryfall syntax via
-     * CardSearchService). This getter only adds the client-side `color`
-     * sort, which has no SQL-side equivalent — every other sort field
+     * CardSearchService). This getter adds the client-side `color` and
+     * `price` sorts, which have no clean SQL-side equivalent — color has no
+     * orderable column, and price is finish-aware (a foil copy sorts on its
+     * foil price) which depends on per-entry flags. Every other sort field
      * is handled in the SQL ORDER BY.
      */
     filteredEntries(state) {
-      if (state.filters.sort !== 'color') return state.entries
       const dir = state.filters.order === 'desc' ? -1 : 1
-      return [...state.entries].sort((a, b) => {
-        const ka = colorSortKey(a.card?.colors)
-        const kb = colorSortKey(b.card?.colors)
-        if (ka !== kb) return ka < kb ? -dir : dir
+      const byName = (a, b) => {
         const na = (a.card?.name || '').toLowerCase()
         const nb = (b.card?.name || '').toLowerCase()
         return na < nb ? -1 : na > nb ? 1 : 0
-      })
+      }
+      if (state.filters.sort === 'color') {
+        return [...state.entries].sort((a, b) => {
+          const ka = colorSortKey(a.card?.colors)
+          const kb = colorSortKey(b.card?.colors)
+          if (ka !== kb) return ka < kb ? -dir : dir
+          return byName(a, b)
+        })
+      }
+      if (state.filters.sort === 'price') {
+        return [...state.entries].sort((a, b) => {
+          const pa = priceSortValue(a.card?.prices, { foil: a.foil, isEtched: a.is_etched })
+          const pb = priceSortValue(b.card?.prices, { foil: b.foil, isEtched: b.is_etched })
+          // Unpriced rows always sink to the bottom, regardless of direction.
+          if (pa == null && pb == null) return byName(a, b)
+          if (pa == null) return 1
+          if (pb == null) return -1
+          if (pa !== pb) return pa < pb ? -dir : dir
+          return byName(a, b)
+        })
+      }
+      return state.entries
     },
   },
 

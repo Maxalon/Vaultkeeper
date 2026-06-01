@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatEur, pickPriceFinish, PRICE_PLACEHOLDER } from '../price.js'
+import { formatEur, pickPriceFinish, priceSortValue, PRICE_PLACEHOLDER } from '../price.js'
 
 describe('formatEur', () => {
   it('returns the placeholder for null/undefined/empty/NaN', () => {
@@ -53,5 +53,32 @@ describe('pickPriceFinish', () => {
   it('returns null when every fallback is missing', () => {
     expect(pickPriceFinish({ eur: null, eur_foil: null, eur_etched: null }))
       .toBeNull()
+  })
+})
+
+describe('priceSortValue', () => {
+  it('returns null when the card has no price payload', () => {
+    expect(priceSortValue(null)).toBeNull()
+    expect(priceSortValue(undefined)).toBeNull()
+  })
+
+  it('returns null only when every finish is empty', () => {
+    expect(priceSortValue({ eur: null, eur_foil: null, eur_etched: null }))
+      .toBeNull()
+  })
+
+  it('uses the requested finish when present', () => {
+    const prices = { eur: '1.00', eur_foil: '4.00', eur_etched: '8.00' }
+    expect(priceSortValue(prices)).toBe(1)
+    expect(priceSortValue(prices, { foil: true })).toBe(4)
+    expect(priceSortValue(prices, { isEtched: true })).toBe(8)
+  })
+
+  it('falls back across finishes so a foil-only card still sorts on a number', () => {
+    // nonfoil requested but only a foil price exists
+    expect(priceSortValue({ eur: null, eur_foil: '4.00', eur_etched: null }))
+      .toBe(4)
+    expect(priceSortValue({ eur: null, eur_foil: null, eur_etched: '8.00' }))
+      .toBe(8)
   })
 })

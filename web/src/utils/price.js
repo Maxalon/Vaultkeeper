@@ -61,3 +61,20 @@ export function formatPriceForEntry(card, { foil = false, isEtched = false } = {
   const value = pickPriceFinish(card?.prices, { foil, isEtched })
   return formatEur(value)
 }
+
+/**
+ * Numeric value for sorting a card by price. Finish-aware when foil/etched
+ * are known (mirrors pickPriceFinish), and falls back across the remaining
+ * finishes so a card that only carries a foil/etched price still sorts on a
+ * real number rather than dropping to "no price". Returns null only when the
+ * card has no price in any finish, letting callers push those rows last.
+ *
+ * @param {Object|null|undefined} prices  card.prices payload
+ * @param {{foil?: boolean, isEtched?: boolean}} [opts]
+ */
+export function priceSortValue(prices, { foil = false, isEtched = false } = {}) {
+  if (!prices) return null
+  // `isEtched` is the broadest fallback chain (etched → foil → nonfoil), so
+  // it backstops whichever finish the caller asked for.
+  return pickPriceFinish(prices, { foil, isEtched }) ?? pickPriceFinish(prices, { isEtched: true })
+}
