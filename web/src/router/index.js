@@ -94,6 +94,18 @@ const routes = [
     props: (route) => ({ userId: Number(route.params.userId), readOnly: true }),
   },
   {
+    path: '/game/setup',
+    name: 'game-setup',
+    component: () => import('../views/GameSetupView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/game',
+    name: 'game',
+    component: () => import('../views/GameView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/',
     redirect: { name: 'collection' },
   },
