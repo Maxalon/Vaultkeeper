@@ -38,7 +38,7 @@ on:
 
 permissions:
   contents: write
-  issues: write
+  issues: write   # needed for gh label create/update
   pull-requests: write
 
 jobs:
