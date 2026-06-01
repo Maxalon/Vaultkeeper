@@ -89,12 +89,14 @@ jobs:
             if gh pr update-branch "$num" --repo "$GITHUB_REPOSITORY"; then
               # If the PR had the label from a previous run, drop it —
               # the update merged cleanly this time round.
-              gh pr edit "$num" --repo "$GITHUB_REPOSITORY" \
+              # Label ops use GITHUB_TOKEN; STAGING_SYNC_PAT lacks Issues:write.
+              GH_TOKEN="$GITHUB_TOKEN" gh pr edit "$num" --repo "$GITHUB_REPOSITORY" \
                 --remove-label needs-rebase 2>/dev/null || true
               echo "Updated PR #${num} (label cleared if present)."
             else
               echo "Conflict on PR #${num} — labelling needs-rebase."
-              gh pr edit "$num" --repo "$GITHUB_REPOSITORY" \
+              # Label ops use GITHUB_TOKEN; STAGING_SYNC_PAT lacks Issues:write.
+              GH_TOKEN="$GITHUB_TOKEN" gh pr edit "$num" --repo "$GITHUB_REPOSITORY" \
                 --add-label needs-rebase
             fi
             echo "::endgroup::"
