@@ -9,6 +9,9 @@ use App\Observers\DeckEntryObserver;
 use App\Observers\DeckObserver;
 use App\Observers\UserObserver;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,6 +40,18 @@ class AppServiceProvider extends ServiceProvider
             return rtrim(config('app.url'), '/')
                 .'/reset-password?token='.$token
                 .'&email='.urlencode($user->getEmailForPasswordReset());
+        });
+
+        // Named limiter for the long-running import endpoints (Archidekt
+        // bulk, CSV, text). Inline `throttle:5,1` on a route nested inside
+        // a `throttle:120,1` group used to share a cache key with the
+        // group throttle (Laravel's default signature for positional
+        // throttle args is just `sha1(user_id)`, route-agnostic), so the
+        // first SPA page load burned all 5 import attempts on unrelated
+        // requests and the first CSV upload 429'd immediately. A named
+        // limiter scopes the bucket to imports only.
+        RateLimiter::for('imports', function (Request $request) {
+            return Limit::perMinute(5)->by('imports:'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
         });
     }
 }

@@ -70,6 +70,9 @@ jobs:
     name: landed on main ⇒ Released
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,6 +86,8 @@ jobs:
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.event.after }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           # On the first push to a branch, before is the zero-SHA and the
           # range is meaningless — fall back to just the tip commit.
@@ -91,6 +96,15 @@ jobs:
             RANGE="${AFTER_SHA}"
           fi
           SOURCE_TEXT="$(git log --format='%s %b' ${RANGE} 2>/dev/null || true)"
+
+          # Squash merges from staging collapse individual commits into one,
+          # losing VAULT keys that appeared only in those commit messages.
+          # Enrich with the merge PR title and body so those keys are visible.
+          PR_INFO="$(gh api "repos/${REPO}/commits/${AFTER_SHA}/pulls" \
+            --jq '.[] | "\(.title)\n\(.body)"' 2>/dev/null || true)"
+          SOURCE_TEXT="${SOURCE_TEXT}
+          ${PR_INFO}"
+
           export SOURCE_TEXT
           bash .github/scripts/jira-transition.sh "Released"
 
