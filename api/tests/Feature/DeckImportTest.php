@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeckEntry;
 use App\Models\ScryfallCard;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,6 +14,7 @@ class DeckImportTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private string $token;
 
     protected function setUp(): void
@@ -22,33 +24,33 @@ class DeckImportTest extends TestCase
         // Seed the cards we'll reference across all three sources — the DB
         // lookup path should resolve them without hitting Scryfall.
         ScryfallCard::factory()->create([
-            'scryfall_id'    => '11111111-1111-1111-1111-111111111111',
-            'name'           => 'Atraxa, Praetors\' Voice',
-            'set_code'       => 'c16',
-            'type_line'      => 'Legendary Creature — Phyrexian Angel Horror',
+            'scryfall_id' => '11111111-1111-1111-1111-111111111111',
+            'name' => 'Atraxa, Praetors\' Voice',
+            'set_code' => 'c16',
+            'type_line' => 'Legendary Creature — Phyrexian Angel Horror',
             'color_identity' => ['W', 'U', 'B', 'G'],
         ]);
         ScryfallCard::factory()->create([
             'scryfall_id' => '22222222-2222-2222-2222-222222222222',
-            'name'        => 'Sol Ring',
-            'set_code'    => 'cmr',
-            'type_line'   => 'Artifact',
+            'name' => 'Sol Ring',
+            'set_code' => 'cmr',
+            'type_line' => 'Artifact',
         ]);
         ScryfallCard::factory()->create([
             'scryfall_id' => '33333333-3333-3333-3333-333333333333',
-            'name'        => 'Lightning Bolt',
-            'set_code'    => 'leb',
-            'type_line'   => 'Instant',
+            'name' => 'Lightning Bolt',
+            'set_code' => 'leb',
+            'type_line' => 'Instant',
         ]);
         ScryfallCard::factory()->create([
             'scryfall_id' => '44444444-4444-4444-4444-444444444444',
-            'name'        => 'Lurrus of the Dream-Den',
-            'set_code'    => 'iko',
-            'type_line'   => 'Legendary Creature — Cat Nightmare',
-            'keywords'    => ['Companion'],
+            'name' => 'Lurrus of the Dream-Den',
+            'set_code' => 'iko',
+            'type_line' => 'Legendary Creature — Cat Nightmare',
+            'keywords' => ['Companion'],
         ]);
 
-        $this->user  = User::factory()->create();
+        $this->user = User::factory()->create();
         $this->token = auth('api')->login($this->user);
 
         // No external HTTP should ever fire for the happy paths (everything
@@ -63,7 +65,7 @@ class DeckImportTest extends TestCase
 
     public function test_text_import_creates_deck_with_commander_and_zones(): void
     {
-        $text = <<<TXT
+        $text = <<<'TXT'
         Commander
         1 Atraxa, Praetors' Voice
 
@@ -78,8 +80,8 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'text',
-                'text'   => $text,
-                'name'   => 'Atraxa Superfriends',
+                'text' => $text,
+                'name' => 'Atraxa Superfriends',
                 'format' => 'commander',
             ])
             ->assertCreated();
@@ -93,29 +95,29 @@ class DeckImportTest extends TestCase
 
         $deckId = $response->json('deck.id');
         $this->assertDatabaseHas('decks', [
-            'id'                      => $deckId,
-            'name'                    => 'Atraxa Superfriends',
-            'format'                  => 'commander',
+            'id' => $deckId,
+            'name' => 'Atraxa Superfriends',
+            'format' => 'commander',
             'commander_1_scryfall_id' => '11111111-1111-1111-1111-111111111111',
-            'color_identity'          => 'WUBG',
+            'color_identity' => 'WUBG',
         ]);
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'      => $deckId,
-            'scryfall_id'  => '11111111-1111-1111-1111-111111111111',
+            'deck_id' => $deckId,
+            'scryfall_id' => '11111111-1111-1111-1111-111111111111',
             'is_commander' => true,
-            'zone'         => 'main',
+            'zone' => 'main',
         ]);
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'     => $deckId, 'scryfall_id' => '22222222-2222-2222-2222-222222222222',
-            'zone'        => 'main', 'quantity'    => 1,
+            'deck_id' => $deckId, 'scryfall_id' => '22222222-2222-2222-2222-222222222222',
+            'zone' => 'main', 'quantity' => 1,
         ]);
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'     => $deckId, 'scryfall_id' => '33333333-3333-3333-3333-333333333333',
-            'zone'        => 'main', 'quantity'    => 3,
+            'deck_id' => $deckId, 'scryfall_id' => '33333333-3333-3333-3333-333333333333',
+            'zone' => 'main', 'quantity' => 3,
         ]);
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'     => $deckId, 'scryfall_id' => '33333333-3333-3333-3333-333333333333',
-            'zone'        => 'side', 'quantity'    => 2,
+            'deck_id' => $deckId, 'scryfall_id' => '33333333-3333-3333-3333-333333333333',
+            'zone' => 'side', 'quantity' => 2,
         ]);
     }
 
@@ -128,7 +130,7 @@ class DeckImportTest extends TestCase
             'api.scryfall.com/cards/collection' => Http::response(['data' => []], 200),
         ]);
 
-        $text = <<<TXT
+        $text = <<<'TXT'
         Commander
         1 Atraxa, Praetors' Voice
 
@@ -140,8 +142,8 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'text',
-                'text'   => $text,
-                'name'   => 'With Typo',
+                'text' => $text,
+                'name' => 'With Typo',
                 'format' => 'commander',
             ])
             ->assertCreated();
@@ -159,42 +161,42 @@ class DeckImportTest extends TestCase
         // ambiguous. Archidekt's `card.uid` should win regardless.
         ScryfallCard::factory()->create([
             'scryfall_id' => '99999999-9999-9999-9999-999999999999',
-            'name'        => 'Lightning Bolt',
-            'set_code'    => 'm11',
-            'type_line'   => 'Instant',
+            'name' => 'Lightning Bolt',
+            'set_code' => 'm11',
+            'type_line' => 'Instant',
         ]);
 
         Http::fake([
             'archidekt.com/api/decks/*' => Http::response([
-                'id'           => 42,
-                'name'         => 'Four-Color Atraxa',
-                'deckFormat'   => 'commander',
-                'cards'        => [
+                'id' => 42,
+                'name' => 'Four-Color Atraxa',
+                'deckFormat' => 'commander',
+                'cards' => [
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Commander'],
                         'card' => [
-                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'uid' => '11111111-1111-1111-1111-111111111111',
                             'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
-                            'edition'    => ['editioncode' => 'c16'],
+                            'edition' => ['editioncode' => 'c16'],
                         ],
                     ],
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => [],
                         'card' => [
-                            'uid'        => '22222222-2222-2222-2222-222222222222',
+                            'uid' => '22222222-2222-2222-2222-222222222222',
                             'oracleCard' => ['name' => 'Sol Ring'],
-                            'edition'    => ['editioncode' => 'cmr'],
+                            'edition' => ['editioncode' => 'cmr'],
                         ],
                     ],
                     [
-                        'quantity'   => 2,
+                        'quantity' => 2,
                         'categories' => ['Sideboard'],
                         'card' => [
-                            'uid'        => '99999999-9999-9999-9999-999999999999',
+                            'uid' => '99999999-9999-9999-9999-999999999999',
                             'oracleCard' => ['name' => 'Lightning Bolt'],
-                            'edition'    => ['editioncode' => 'm11'],
+                            'edition' => ['editioncode' => 'm11'],
                         ],
                     ],
                 ],
@@ -204,7 +206,7 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'archidekt',
-                'url'    => 'https://archidekt.com/decks/15517081/artifact_lands',
+                'url' => 'https://archidekt.com/decks/15517081/artifact_lands',
             ])
             ->assertCreated();
 
@@ -213,14 +215,14 @@ class DeckImportTest extends TestCase
 
         $deckId = $response->json('deck.id');
         $this->assertDatabaseHas('decks', [
-            'id'                      => $deckId,
-            'name'                    => 'Four-Color Atraxa',
+            'id' => $deckId,
+            'name' => 'Four-Color Atraxa',
             'commander_1_scryfall_id' => '11111111-1111-1111-1111-111111111111',
         ]);
         // The printing Archidekt pointed at (M11 Bolt), not the LEB one.
         $this->assertDatabaseHas('deck_entries', [
             'deck_id' => $deckId, 'scryfall_id' => '99999999-9999-9999-9999-999999999999',
-            'zone'    => 'side', 'quantity' => 2,
+            'zone' => 'side', 'quantity' => 2,
         ]);
         $this->assertDatabaseMissing('deck_entries', [
             'deck_id' => $deckId, 'scryfall_id' => '33333333-3333-3333-3333-333333333333',
@@ -235,35 +237,35 @@ class DeckImportTest extends TestCase
         // Storing either verbatim leaks Delta JSON into the UI.
         Http::fake([
             'archidekt.com/api/decks/15517081/' => Http::response([
-                'id'         => 15517081,
-                'name'       => 'Empty Description',
+                'id' => 15517081,
+                'name' => 'Empty Description',
                 'deckFormat' => 'commander',
                 'description' => '{"ops":[]}',
-                'cards'      => [
+                'cards' => [
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Commander'],
                         'card' => [
-                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'uid' => '11111111-1111-1111-1111-111111111111',
                             'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
-                            'edition'    => ['editioncode' => 'c16'],
+                            'edition' => ['editioncode' => 'c16'],
                         ],
                     ],
                 ],
             ], 200),
             'archidekt.com/api/decks/15517082/' => Http::response([
-                'id'         => 15517082,
-                'name'       => 'Filled Description',
+                'id' => 15517082,
+                'name' => 'Filled Description',
                 'deckFormat' => 'commander',
                 'description' => '{"ops":[{"insert":"Stax brew. "},{"insert":"Hard lock","attributes":{"bold":true}},{"insert":" by turn 4.\n"}]}',
-                'cards'      => [
+                'cards' => [
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Commander'],
                         'card' => [
-                            'uid'        => '11111111-1111-1111-1111-111111111111',
+                            'uid' => '11111111-1111-1111-1111-111111111111',
                             'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
-                            'edition'    => ['editioncode' => 'c16'],
+                            'edition' => ['editioncode' => 'c16'],
                         ],
                     ],
                 ],
@@ -273,26 +275,26 @@ class DeckImportTest extends TestCase
         $emptyId = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'archidekt',
-                'url'    => 'https://archidekt.com/decks/15517081/empty',
+                'url' => 'https://archidekt.com/decks/15517081/empty',
             ])
             ->assertCreated()
             ->json('deck.id');
 
         $this->assertDatabaseHas('decks', [
-            'id'          => $emptyId,
+            'id' => $emptyId,
             'description' => null,
         ]);
 
         $filledId = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'archidekt',
-                'url'    => 'https://archidekt.com/decks/15517082/filled',
+                'url' => 'https://archidekt.com/decks/15517082/filled',
             ])
             ->assertCreated()
             ->json('deck.id');
 
         $this->assertDatabaseHas('decks', [
-            'id'          => $filledId,
+            'id' => $filledId,
             'description' => 'Stax brew. Hard lock by turn 4.',
         ]);
     }
@@ -302,17 +304,17 @@ class DeckImportTest extends TestCase
         // Wrenn and Six = legendary planeswalker (legal oathbreaker).
         // Fork in the Road = sorcery (legal signature spell).
         ScryfallCard::factory()->create([
-            'scryfall_id'    => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            'name'           => 'Wrenn and Six',
-            'set_code'       => 'mh1',
-            'type_line'      => 'Legendary Planeswalker — Wrenn',
+            'scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'name' => 'Wrenn and Six',
+            'set_code' => 'mh1',
+            'type_line' => 'Legendary Planeswalker — Wrenn',
             'color_identity' => ['R', 'G'],
         ]);
         ScryfallCard::factory()->create([
-            'scryfall_id'    => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-            'name'           => 'Fork in the Road',
-            'set_code'       => 'mh3',
-            'type_line'      => 'Sorcery',
+            'scryfall_id' => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'name' => 'Fork in the Road',
+            'set_code' => 'mh3',
+            'type_line' => 'Sorcery',
             'color_identity' => ['G'],
         ]);
 
@@ -322,26 +324,26 @@ class DeckImportTest extends TestCase
         // shape that used to misroute the spell into commander_2_scryfall_id.
         Http::fake([
             'archidekt.com/api/decks/*' => Http::response([
-                'id'         => 99,
-                'name'       => 'Wrenn Oathbreaker',
+                'id' => 99,
+                'name' => 'Wrenn Oathbreaker',
                 'deckFormat' => 14,
-                'cards'      => [
+                'cards' => [
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Commander'],
                         'card' => [
-                            'uid'        => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            'uid' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                             'oracleCard' => ['name' => 'Wrenn and Six'],
-                            'edition'    => ['editioncode' => 'mh1'],
+                            'edition' => ['editioncode' => 'mh1'],
                         ],
                     ],
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Commander'],
                         'card' => [
-                            'uid'        => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            'uid' => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
                             'oracleCard' => ['name' => 'Fork in the Road'],
-                            'edition'    => ['editioncode' => 'mh3'],
+                            'edition' => ['editioncode' => 'mh3'],
                         ],
                     ],
                 ],
@@ -351,7 +353,7 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'archidekt',
-                'url'    => 'https://archidekt.com/decks/99/wrenn',
+                'url' => 'https://archidekt.com/decks/99/wrenn',
             ])
             ->assertCreated();
 
@@ -360,47 +362,47 @@ class DeckImportTest extends TestCase
         // Format should be derived from the numeric deckFormat=14, not
         // silently fall back to "commander".
         $this->assertDatabaseHas('decks', [
-            'id'                      => $deckId,
-            'format'                  => 'oathbreaker',
+            'id' => $deckId,
+            'format' => 'oathbreaker',
             'commander_1_scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
             'commander_2_scryfall_id' => null,
         ]);
         // Wrenn lands in the commander slot.
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'            => $deckId,
-            'scryfall_id'        => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            'is_commander'       => true,
+            'deck_id' => $deckId,
+            'scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'is_commander' => true,
             'is_signature_spell' => false,
-            'zone'               => 'main',
+            'zone' => 'main',
         ]);
         // Fork is reclassified as a signature spell, attached to Wrenn.
-        $oathbreakerEntryId = \App\Models\DeckEntry::where('deck_id', $deckId)
+        $oathbreakerEntryId = DeckEntry::where('deck_id', $deckId)
             ->where('scryfall_id', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')
             ->value('id');
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'                => $deckId,
-            'scryfall_id'            => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-            'is_commander'           => false,
-            'is_signature_spell'     => true,
+            'deck_id' => $deckId,
+            'scryfall_id' => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'is_commander' => false,
+            'is_signature_spell' => true,
             'signature_for_entry_id' => $oathbreakerEntryId,
-            'zone'                   => 'main',
+            'zone' => 'main',
         ]);
     }
 
     public function test_archidekt_signature_spell_category_is_recognised(): void
     {
         ScryfallCard::factory()->create([
-            'scryfall_id'    => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-            'name'           => 'Wrenn and Six',
-            'set_code'       => 'mh1',
-            'type_line'      => 'Legendary Planeswalker — Wrenn',
+            'scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'name' => 'Wrenn and Six',
+            'set_code' => 'mh1',
+            'type_line' => 'Legendary Planeswalker — Wrenn',
             'color_identity' => ['R', 'G'],
         ]);
         ScryfallCard::factory()->create([
-            'scryfall_id'    => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-            'name'           => 'Fork in the Road',
-            'set_code'       => 'mh3',
-            'type_line'      => 'Sorcery',
+            'scryfall_id' => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'name' => 'Fork in the Road',
+            'set_code' => 'mh3',
+            'type_line' => 'Sorcery',
             'color_identity' => ['G'],
         ]);
 
@@ -409,26 +411,26 @@ class DeckImportTest extends TestCase
         // gets exercised here ("oathbreaker" instead of integer 14).
         Http::fake([
             'archidekt.com/api/decks/*' => Http::response([
-                'id'         => 100,
-                'name'       => 'Wrenn Oathbreaker (clean)',
+                'id' => 100,
+                'name' => 'Wrenn Oathbreaker (clean)',
                 'deckFormat' => 'oathbreaker',
-                'cards'      => [
+                'cards' => [
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Commander'],
                         'card' => [
-                            'uid'        => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                            'uid' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
                             'oracleCard' => ['name' => 'Wrenn and Six'],
-                            'edition'    => ['editioncode' => 'mh1'],
+                            'edition' => ['editioncode' => 'mh1'],
                         ],
                     ],
                     [
-                        'quantity'   => 1,
+                        'quantity' => 1,
                         'categories' => ['Signature Spell'],
                         'card' => [
-                            'uid'        => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                            'uid' => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
                             'oracleCard' => ['name' => 'Fork in the Road'],
-                            'edition'    => ['editioncode' => 'mh3'],
+                            'edition' => ['editioncode' => 'mh3'],
                         ],
                     ],
                 ],
@@ -438,19 +440,19 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'archidekt',
-                'url'    => 'https://archidekt.com/decks/100/wrenn',
+                'url' => 'https://archidekt.com/decks/100/wrenn',
             ])
             ->assertCreated();
 
         $deckId = $response->json('deck.id');
         $this->assertDatabaseHas('decks', [
-            'id'                      => $deckId,
-            'format'                  => 'oathbreaker',
+            'id' => $deckId,
+            'format' => 'oathbreaker',
             'commander_1_scryfall_id' => 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
         ]);
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'            => $deckId,
-            'scryfall_id'        => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'deck_id' => $deckId,
+            'scryfall_id' => 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
             'is_signature_spell' => true,
         ]);
     }
@@ -459,7 +461,7 @@ class DeckImportTest extends TestCase
     {
         Http::fake([
             'api2.moxfield.com/v3/decks/all/*' => Http::response([
-                'name'   => 'Lurrus Boots',
+                'name' => 'Lurrus Boots',
                 'format' => 'modern',
                 'boards' => [
                     'commanders' => ['cards' => [
@@ -472,7 +474,7 @@ class DeckImportTest extends TestCase
                         'c' => ['quantity' => 1, 'card' => ['scryfall_id' => '22222222-2222-2222-2222-222222222222', 'name' => 'Sol Ring', 'set' => 'cmr']],
                         'd' => ['quantity' => 4, 'card' => ['scryfall_id' => '33333333-3333-3333-3333-333333333333', 'name' => 'Lightning Bolt', 'set' => 'leb']],
                     ]],
-                    'sideboard'  => ['cards' => []],
+                    'sideboard' => ['cards' => []],
                     'maybeboard' => ['cards' => []],
                 ],
             ], 200),
@@ -481,17 +483,17 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'moxfield',
-                'url'    => 'https://moxfield.com/decks/TWx0hjuCOkaQdTm_q27iog',
+                'url' => 'https://moxfield.com/decks/TWx0hjuCOkaQdTm_q27iog',
             ])
             ->assertCreated();
 
         $this->assertSame(5, $response->json('imported'));
         $deckId = $response->json('deck.id');
         $this->assertDatabaseHas('decks', [
-            'id'                      => $deckId,
+            'id' => $deckId,
             'commander_1_scryfall_id' => '11111111-1111-1111-1111-111111111111',
-            'companion_scryfall_id'   => '44444444-4444-4444-4444-444444444444',
-            'format'                  => 'modern',
+            'companion_scryfall_id' => '44444444-4444-4444-4444-444444444444',
+            'format' => 'modern',
         ]);
     }
 
@@ -501,21 +503,21 @@ class DeckImportTest extends TestCase
         // collector-number match should pick the right one. This is the
         // exact shape of the bug the user hit with Archidekt exports.
         ScryfallCard::factory()->create([
-            'scryfall_id'      => '55555555-5555-5555-5555-555555555555',
-            'name'             => 'Arid Mesa',
-            'set_code'         => 'mh2',
+            'scryfall_id' => '55555555-5555-5555-5555-555555555555',
+            'name' => 'Arid Mesa',
+            'set_code' => 'mh2',
             'collector_number' => '244',
-            'type_line'        => 'Land',
+            'type_line' => 'Land',
         ]);
         ScryfallCard::factory()->create([
-            'scryfall_id'      => '66666666-6666-6666-6666-666666666666',
-            'name'             => 'Arid Mesa',
-            'set_code'         => 'mh2',
+            'scryfall_id' => '66666666-6666-6666-6666-666666666666',
+            'name' => 'Arid Mesa',
+            'set_code' => 'mh2',
             'collector_number' => '436',
-            'type_line'        => 'Land',
+            'type_line' => 'Land',
         ]);
 
-        $text = <<<TXT
+        $text = <<<'TXT'
         Commander
         1 Atraxa, Praetors' Voice
 
@@ -527,8 +529,8 @@ class DeckImportTest extends TestCase
         $response = $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'text',
-                'text'   => $text,
-                'name'   => 'Foil Lands',
+                'text' => $text,
+                'name' => 'Foil Lands',
                 'format' => 'commander',
             ])
             ->assertCreated();
@@ -538,12 +540,139 @@ class DeckImportTest extends TestCase
 
         // The collector-number variant, not the first-inserted one.
         $this->assertDatabaseHas('deck_entries', [
-            'deck_id'     => $deckId,
+            'deck_id' => $deckId,
             'scryfall_id' => '66666666-6666-6666-6666-666666666666',
         ]);
         $this->assertDatabaseMissing('deck_entries', [
-            'deck_id'     => $deckId,
+            'deck_id' => $deckId,
             'scryfall_id' => '55555555-5555-5555-5555-555555555555',
+        ]);
+    }
+
+    public function test_archidekt_import_preserves_source_categories(): void
+    {
+        // Bolt has no source category → must fall back to autoCategory's
+        // type-line derivation ("instant"). Sol Ring has user-defined
+        // "Ramp" — must survive intact, casing and all.
+        Http::fake([
+            'archidekt.com/api/decks/*' => Http::response([
+                'id' => 7,
+                'name' => 'Categorised deck',
+                'deckFormat' => 'commander',
+                'cards' => [
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Commander'],
+                        'card' => [
+                            'uid' => '11111111-1111-1111-1111-111111111111',
+                            'oracleCard' => ['name' => "Atraxa, Praetors' Voice"],
+                            'edition' => ['editioncode' => 'c16'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Ramp', 'Mana Rocks'],
+                        'card' => [
+                            'uid' => '22222222-2222-2222-2222-222222222222',
+                            'oracleCard' => ['name' => 'Sol Ring'],
+                            'edition' => ['editioncode' => 'cmr'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 4,
+                        'categories' => [],
+                        'card' => [
+                            'uid' => '33333333-3333-3333-3333-333333333333',
+                            'oracleCard' => ['name' => 'Lightning Bolt'],
+                            'edition' => ['editioncode' => 'leb'],
+                        ],
+                    ],
+                    [
+                        'quantity' => 1,
+                        'categories' => ['Sideboard', 'Removal'],
+                        'card' => [
+                            'uid' => '44444444-4444-4444-4444-444444444444',
+                            'oracleCard' => ['name' => 'Lurrus of the Dream-Den'],
+                            'edition' => ['editioncode' => 'iko'],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'archidekt',
+                'url' => 'https://archidekt.com/decks/7/cats',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '22222222-2222-2222-2222-222222222222',
+            'category' => 'Ramp',
+        ]);
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '33333333-3333-3333-3333-333333333333',
+            'category' => 'instant',
+        ]);
+        // Sideboard is consumed for zone routing; the next real category wins.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '44444444-4444-4444-4444-444444444444',
+            'zone' => 'side',
+            'category' => 'Removal',
+        ]);
+    }
+
+    public function test_moxfield_import_preserves_per_card_tags(): void
+    {
+        Http::fake([
+            'api2.moxfield.com/v3/decks/all/*' => Http::response([
+                'name' => 'Tagged deck',
+                'format' => 'commander',
+                'boards' => [
+                    'commanders' => ['cards' => [
+                        'a' => ['quantity' => 1, 'card' => ['scryfall_id' => '11111111-1111-1111-1111-111111111111', 'name' => "Atraxa, Praetors' Voice", 'set' => 'c16']],
+                    ]],
+                    'companions' => ['cards' => []],
+                    'mainboard' => ['cards' => [
+                        'b' => [
+                            'quantity' => 1,
+                            'tags' => ['Ramp'],
+                            'card' => ['scryfall_id' => '22222222-2222-2222-2222-222222222222', 'name' => 'Sol Ring', 'set' => 'cmr'],
+                        ],
+                        'c' => [
+                            'quantity' => 4,
+                            'card' => ['scryfall_id' => '33333333-3333-3333-3333-333333333333', 'name' => 'Lightning Bolt', 'set' => 'leb'],
+                        ],
+                    ]],
+                    'sideboard' => ['cards' => []],
+                    'maybeboard' => ['cards' => []],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->withHeaders($this->headers())
+            ->postJson('/api/decks/import', [
+                'source' => 'moxfield',
+                'url' => 'https://moxfield.com/decks/TaggedDeckId__________',
+            ])
+            ->assertCreated();
+
+        $deckId = $response->json('deck.id');
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '22222222-2222-2222-2222-222222222222',
+            'category' => 'Ramp',
+        ]);
+        // No tags → autoCategory fallback.
+        $this->assertDatabaseHas('deck_entries', [
+            'deck_id' => $deckId,
+            'scryfall_id' => '33333333-3333-3333-3333-333333333333',
+            'category' => 'instant',
         ]);
     }
 
@@ -552,7 +681,7 @@ class DeckImportTest extends TestCase
         $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'archidekt',
-                'url'    => 'https://example.com/decks/1',
+                'url' => 'https://example.com/decks/1',
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('url');
@@ -563,8 +692,8 @@ class DeckImportTest extends TestCase
         $this->withHeaders($this->headers())
             ->postJson('/api/decks/import', [
                 'source' => 'text',
-                'text'   => "Deck\n1 Sol Ring",
-                'name'   => 'No format',
+                'text' => "Deck\n1 Sol Ring",
+                'name' => 'No format',
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('format');
