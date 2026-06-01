@@ -1,6 +1,7 @@
 package com.vaultkeeper.app.ui.game
 
 import androidx.lifecycle.ViewModel
+import com.vaultkeeper.app.game.GamePlayer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,11 +12,11 @@ class GameSessionViewModel : ViewModel() {
     private val _session = MutableStateFlow(defaultSession())
     val session: StateFlow<GameSession> = _session.asStateFlow()
 
-    fun reset(players: List<Player>) {
+    fun reset(players: List<GamePlayer>) {
         _session.value = GameSession(players = players)
     }
 
-    fun applyKeypadAdjustment(playerId: Int, delta: Int) {
+    fun applyKeypadAdjustment(playerId: String, delta: Int) {
         _session.update { session ->
             val player = session.players.firstOrNull { it.id == playerId } ?: return@update session
             val adjustment = LifeAdjustment(
@@ -47,8 +48,8 @@ class GameSessionViewModel : ViewModel() {
     companion object {
         private fun defaultSession() = GameSession(
             players = listOf(
-                Player(id = 0, name = "Player 1", lifeTotal = 40),
-                Player(id = 1, name = "Player 2", lifeTotal = 40),
+                GamePlayer(id = "0", name = "Player 1", lifeTotal = 40),
+                GamePlayer(id = "1", name = "Player 2", lifeTotal = 40),
             ),
         )
     }
