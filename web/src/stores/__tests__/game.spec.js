@@ -6,6 +6,19 @@ beforeEach(() => {
   setActivePinia(createPinia())
 })
 
+function twoPlayerGame(life = 40) {
+  const game = useGameStore()
+  game.configure({
+    count: 2,
+    life,
+    seatConfig: [
+      { name: 'P1', deckId: null, life },
+      { name: 'P2', deckId: null, life },
+    ],
+  })
+  return game
+}
+
 describe('game store', () => {
   it('starts with no active session', () => {
     const game = useGameStore()
@@ -39,18 +52,191 @@ describe('game store', () => {
   })
 
   it('reset clears all session state', () => {
-    const game = useGameStore()
-    game.configure({
-      count: 2,
-      life: 20,
-      seatConfig: [
-        { name: 'P1', deckId: null, life: 20 },
-        { name: 'P2', deckId: null, life: 20 },
-      ],
-    })
+    const game = twoPlayerGame()
     game.reset()
     expect(game.playerCount).toBeNull()
     expect(game.startingLife).toBe(40)
     expect(game.seats).toHaveLength(0)
+  })
+
+  // ── adjustLife ──────────────────────────────────────────────────
+  it('adjustLife increments seat life', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, 1)
+    expect(game.seats[0].life).toBe(41)
+    expect(game.seats[1].life).toBe(40)
+  })
+
+  it('adjustLife decrements seat life', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(1, -1)
+    expect(game.seats[1].life).toBe(39)
+  })
+
+  it('adjustLife allows life to go negative', () => {
+    const game = twoPlayerGame(1)
+    game.adjustLife(0, -5)
+    expect(game.seats[0].life).toBe(-4)
+  })
+
+  it('adjustLife records entry in history', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +5)
+    expect(game.history).toHaveLength(1)
+    expect(game.history[0]).toMatchObject({ seatIndex: 0, delta: 5, life: 45 })
+    expect(typeof game.history[0].timestamp).toBe('number')
+  })
+
+  it('adjustLife records playerName and counterType in history', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(1, -3)
+    expect(game.history[0].playerName).toBe('P2')
+    expect(game.history[0].counterType).toBe('life')
+  })
+
+  it('adjustLife is a no-op for out-of-range index', () => {
+    const game = twoPlayerGame(20)
+    game.adjustLife(99, +1)
+    expect(game.seats[0].life).toBe(20)
+    expect(game.history).toHaveLength(0)
+  })
+
+  // ── undo ────────────────────────────────────────────────────────
+  it('undo reverts the last life adjustment', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +3)
+    game.undo()
+    expect(game.seats[0].life).toBe(40)
+  })
+
+  it('undo marks the reverted entry as undone in history', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +1)
+    game.adjustLife(0, +1)
+    game.undo()
+    expect(game.history).toHaveLength(2)
+    expect(game.history[0].undone).toBeFalsy()
+    expect(game.history[1].undone).toBe(true)
+  })
+
+  it('undo marks all entries as undone when full stack is exhausted', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +1)
+    game.adjustLife(1, -2)
+    game.undo()
+    game.undo()
+    expect(game.history.every((e) => e.undone)).toBe(true)
+    expect(game.undoStack).toHaveLength(0)
+  })
+
+  it('undo is a no-op when stack is empty', () => {
+    const game = twoPlayerGame(40)
+    game.undo()
+    expect(game.seats[0].life).toBe(40)
+  })
+
+  it('multiple adjustments and full undo sequence', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +1)
+    game.adjustLife(0, +1)
+    game.adjustLife(1, -5)
+    game.undo()
+    expect(game.seats[1].life).toBe(40)
+    game.undo()
+    expect(game.seats[0].life).toBe(41)
+    game.undo()
+    expect(game.seats[0].life).toBe(40)
+  })
+
+  it('configure clears history and undo stack from a previous game', () => {
+    const game = twoPlayerGame(40)
+    game.adjustLife(0, +1)
+    game.configure({
+      count: 2,
+      life: 20,
+      seatConfig: [
+        { name: 'A', deckId: null, life: 20 },
+        { name: 'B', deckId: null, life: 20 },
+      ],
+    })
+    expect(game.history).toHaveLength(0)
+    game.undo()
+    expect(game.seats[0].life).toBe(20)
+  })
+
+  // ── rollDice ─────────────────────────────────────────────────────
+  it('rollDice returns a number within [1, faces]', () => {
+    const game = twoPlayerGame()
+    for (let i = 0; i < 50; i++) {
+      const r = game.rollDice(20)
+      expect(r).toBeGreaterThanOrEqual(1)
+      expect(r).toBeLessThanOrEqual(20)
+    }
+  })
+
+  it('rollDice appends a roll history entry', () => {
+    const game = twoPlayerGame()
+    const result = game.rollDice(6)
+    expect(game.history).toHaveLength(1)
+    const entry = game.history[0]
+    expect(entry.type).toBe('roll')
+    expect(entry.label).toBe('d6')
+    expect(entry.result).toBe(result)
+    expect(typeof entry.timestamp).toBe('number')
+  })
+
+  it('rollDice uses "Table" when no seat has been focused', () => {
+    const game = twoPlayerGame()
+    game.rollDice(4)
+    expect(game.history[0].playerName).toBe('Table')
+  })
+
+  it('rollDice uses the name of the last-adjusted seat', () => {
+    const game = twoPlayerGame()
+    game.adjustLife(1, -1)
+    game.rollDice(20)
+    expect(game.history[1].playerName).toBe('P2')
+  })
+
+  // ── flipCoin ─────────────────────────────────────────────────────
+  it('flipCoin returns "Heads" or "Tails"', () => {
+    const game = twoPlayerGame()
+    const outcomes = new Set()
+    for (let i = 0; i < 100; i++) outcomes.add(game.flipCoin())
+    expect(outcomes).toContain('Heads')
+    expect(outcomes).toContain('Tails')
+    expect(outcomes.size).toBe(2)
+  })
+
+  it('flipCoin appends a roll history entry with label "coin"', () => {
+    const game = twoPlayerGame()
+    const result = game.flipCoin()
+    expect(game.history).toHaveLength(1)
+    const entry = game.history[0]
+    expect(entry.type).toBe('roll')
+    expect(entry.label).toBe('coin')
+    expect(entry.result).toBe(result)
+  })
+
+  it('focusedSeat resets on configure', () => {
+    const game = twoPlayerGame()
+    game.adjustLife(0, +1)
+    expect(game.focusedSeat).toBe(0)
+    game.configure({
+      count: 2,
+      life: 20,
+      seatConfig: [
+        { name: 'A', deckId: null, life: 20 },
+        { name: 'B', deckId: null, life: 20 },
+      ],
+    })
+    expect(game.focusedSeat).toBeNull()
+  })
+
+  it('focusedSeat resets on reset', () => {
+    const game = twoPlayerGame()
+    game.adjustLife(1, -1)
+    game.reset()
+    expect(game.focusedSeat).toBeNull()
   })
 })
