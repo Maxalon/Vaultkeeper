@@ -1,9 +1,37 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
+
+// Release signing credentials. Read from a gitignored
+// release-signing.properties next to settings.gradle.kts for local builds,
+// falling back to env vars for CI. Never commit the keystore or its
+// passwords. When neither source is present (e.g. a debug-only checkout)
+// the release build type is left unsigned so configuration still succeeds.
+val releaseSigningProps = Properties().apply {
+    val f = rootProject.file("release-signing.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
+fun signingValue(key: String, env: String): String? =
+    releaseSigningProps.getProperty(key) ?: System.getenv(env)
+
+val hasReleaseSigning = signingValue("storeFile", "ANDROID_KEYSTORE_FILE") != null
+
+// versionCode auto-increments from the git commit count, so every build gets
+// a unique, monotonically increasing code (Play rejects duplicate or lower
+// codes). Falls back to 1 when git history isn't available (e.g. building
+// from a source archive).
+val gitVersionCode: Int = providers.exec {
+    commandLine("git", "rev-list", "--count", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.map { it.trim().toIntOrNull() ?: 1 }.getOrElse(1)
 
 android {
     namespace = "com.vaultkeeper.app"
@@ -13,7 +41,7 @@ android {
         applicationId = "com.vaultkeeper.app"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
+        versionCode = gitVersionCode
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -46,8 +74,19 @@ android {
         }
         create("prod") {
             dimension = "env"
-            buildConfigField("String", "API_BASE_URL", "\"https://vault.kontrollzentrale.de/api/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://vaultkeeper.cards/api/\"")
             resValue("string", "app_name", "Vaultkeeper")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = rootProject.file(signingValue("storeFile", "ANDROID_KEYSTORE_FILE")!!)
+                storePassword = signingValue("storePassword", "ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "ANDROID_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "ANDROID_KEY_PASSWORD")
+            }
         }
     }
 
@@ -56,12 +95,20 @@ android {
             isMinifyEnabled = false
         }
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Bundle native debug symbols (from dependencies like Tink/Conscrypt)
+            // into the AAB so Play can symbolicate crashes/ANRs.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
         }
     }
 
@@ -91,7 +138,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
 
     implementation(libs.koin.android)
     implementation(libs.koin.compose)
