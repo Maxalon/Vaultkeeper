@@ -13,7 +13,7 @@ class GameResultController extends Controller
     {
         $data = $request->validate([
             'winner_deck_id'    => 'nullable|integer',
-            'loser_deck_ids'    => 'required|array',
+            'loser_deck_ids'    => 'present|array',
             'loser_deck_ids.*'  => 'integer',
         ]);
 
