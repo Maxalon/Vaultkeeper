@@ -5,6 +5,7 @@ import { useDeckStore } from '../../stores/deck'
 import CardPeek from '../CardPeek.vue'
 import DeckCardTile from './DeckCardTile.vue'
 import DeckCardStrip from './DeckCardStrip.vue'
+import { priceSortValue } from '../../utils/price'
 
 const props = defineProps({
   zone: { type: String, required: true },
@@ -139,6 +140,16 @@ const sorted = computed(() => {
       case 'color':    return colorKey(ca).localeCompare(colorKey(cb))
       case 'rarity':   return (ca.rarity || '').localeCompare(cb.rarity || '')
       case 'category': return (a.category || '').localeCompare(b.category || '')
+      case 'price': {
+        // Ascending by price; rows with no price in any finish sort last,
+        // then fall back to name so the order is stable.
+        const pa = priceSortValue(ca.prices)
+        const pb = priceSortValue(cb.prices)
+        if (pa == null && pb == null) return (ca.name || '').localeCompare(cb.name || '')
+        if (pa == null) return 1
+        if (pb == null) return -1
+        return pa - pb || (ca.name || '').localeCompare(cb.name || '')
+      }
       default:         return (ca.name || '').localeCompare(cb.name || '')
     }
   })

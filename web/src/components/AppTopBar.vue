@@ -54,6 +54,7 @@ const SORT_OPTS = [
   { k: 'collector_number', n: 'Number' },
   { k: 'condition', n: 'Condition' },
   { k: 'color', n: 'Color' },
+  { k: 'price', n: 'Price' },
 ]
 
 // Build the Set chip's option list from sets actually present in the

@@ -47,6 +47,7 @@ const SORT_OPTS = [
   { k: 'color', n: 'Color' },
   { k: 'rarity', n: 'Rarity' },
   { k: 'category', n: 'Category' },
+  { k: 'price', n: 'Price' },
 ]
 const DISPLAY_OPTS = [
   { k: 'strips', n: 'Strips' },

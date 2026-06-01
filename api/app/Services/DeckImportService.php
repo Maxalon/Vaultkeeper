@@ -197,7 +197,7 @@ class DeckImportService
      *   commanders: array<int, array{scryfall_id?: ?string, name: string, set?: ?string}>,
      *   signature_spells?: array<int, array{scryfall_id?: ?string, name: string, set?: ?string}>,
      *   companion?: ?array{scryfall_id?: ?string, name: string, set?: ?string},
-     *   entries: array<int, array{scryfall_id?: ?string, name: string, set?: ?string, quantity: int, zone: string}>
+     *   entries: array<int, array{scryfall_id?: ?string, name: string, set?: ?string, quantity: int, zone: string, source_category?: ?string}>
      * }  $dto
      * @param  Deck|null  $existing  When non-null, the deck's cards/commanders/format/
      *                               description/name are overwritten in place. The deck's
@@ -409,12 +409,19 @@ class DeckImportService
                     $existing->quantity += (int) $e['quantity'];
                     $existing->save();
                 } else {
+                    // Preserve the user-defined category from the source
+                    // (Archidekt categories, Moxfield tags). Only fall back
+                    // to type-line / oracle-tag derivation when the source
+                    // didn't ship one.
+                    $sourceCategory = isset($e['source_category']) && is_string($e['source_category']) && $e['source_category'] !== ''
+                        ? $e['source_category']
+                        : null;
                     DeckEntry::create([
                         'deck_id' => $deck->id,
                         'scryfall_id' => $scryfallId,
                         'quantity' => max(1, (int) $e['quantity']),
                         'zone' => $zone,
-                        'category' => $this->entryCtrl->autoCategory($card),
+                        'category' => $sourceCategory ?? $this->entryCtrl->autoCategory($card),
                     ]);
                 }
                 $imported += (int) $e['quantity'];
@@ -1291,7 +1298,11 @@ class DeckImportService
                 $cardData['scryfall_id'] ?? null,
             ]);
 
-            $cats = array_map('strtolower', (array) ($c['categories'] ?? []));
+            $catsRaw = array_values(array_filter(
+                (array) ($c['categories'] ?? []),
+                fn ($v) => is_string($v) && $v !== '',
+            ));
+            $cats = array_map('strtolower', $catsRaw);
 
             $row = [
                 'scryfall_id' => $scryfallId,
@@ -1318,7 +1329,11 @@ class DeckImportService
                 continue;
             }
 
-            $entries[] = $row + ['quantity' => $qty, 'zone' => $this->archidektZone($c)];
+            $entries[] = $row + [
+                'quantity' => $qty,
+                'zone' => $this->archidektZone($c),
+                'source_category' => $this->pickSourceCategory($catsRaw),
+            ];
         }
 
         $format = $this->resolveArchidektFormat($json['deckFormat'] ?? ($json['format'] ?? null));
@@ -1349,6 +1364,43 @@ class DeckImportService
         }
 
         return 'commander';
+    }
+
+    /**
+     * Pick the first user-meaningful category from a source's per-card list,
+     * skipping the ones we already consumed for slot routing
+     * (commander/companion/signature spell) and the ones that encode the
+     * board/zone (sideboard/maybeboard). Preserves the source's casing so
+     * "Ramp", "Card Draw", etc. survive intact for display.
+     */
+    private function pickSourceCategory(array $categories): ?string
+    {
+        static $skip = [
+            'commander', 'commanders',
+            'companion', 'companions',
+            'signature spell', 'signature spells',
+            'sideboard', 'maybeboard', 'maybe',
+        ];
+        foreach ($categories as $cat) {
+            if (! is_string($cat)) {
+                continue;
+            }
+            $trim = trim($cat);
+            if ($trim === '') {
+                continue;
+            }
+            $lower = strtolower($trim);
+            if (in_array($lower, $skip, true)) {
+                continue;
+            }
+            if (str_contains($lower, 'sideboard') || str_contains($lower, 'maybeboard')) {
+                continue;
+            }
+
+            return $trim;
+        }
+
+        return null;
     }
 
     /** Archidekt encodes zone via card category name or a boolean flag. */
@@ -1449,7 +1501,16 @@ class DeckImportService
                 if ($r['name'] === '' && empty($r['scryfall_id'])) {
                     continue;
                 }
-                $entries[] = $r + ['quantity' => $qty, 'zone' => $zone];
+                // Moxfield exposes per-card user tags on the board entry.
+                // Take the first non-empty one as the deck-entry category so
+                // user-curated buckets (Ramp, Removal, ...) survive import
+                // instead of being overwritten by autoCategory().
+                $tags = (array) ($row['tags'] ?? []);
+                $entries[] = $r + [
+                    'quantity' => $qty,
+                    'zone' => $zone,
+                    'source_category' => $this->pickSourceCategory($tags),
+                ];
             }
         }
 
