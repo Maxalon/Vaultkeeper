@@ -21,6 +21,7 @@ use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScryfallCardController;
 use App\Http\Controllers\UserCollectionController;
 use App\Http\Controllers\UserSearchController;
+use App\Http\Controllers\GameResultController;
 use App\Http\Controllers\WantedMatchController;
 use Illuminate\Support\Facades\Route;
 
@@ -229,4 +230,6 @@ Route::middleware(['auth:api', 'throttle:120,1'])->group(function () {
     Route::get('notifications', [NotificationController::class, 'index']);
     Route::post('notifications/{id}/read', [NotificationController::class, 'markRead']);
     Route::post('notifications/{id}/actions/{key}', [NotificationController::class, 'executeAction']);
+
+    Route::post('game-results', [GameResultController::class, 'store']);
 });

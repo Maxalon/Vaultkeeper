@@ -282,6 +282,14 @@ watch(
           </span>
         </div>
 
+        <div
+          v-if="deck.deck.wins > 0 || deck.deck.losses > 0"
+          class="record-row"
+        >
+          <span class="record-label">Record</span>
+          <span class="record-value">{{ deck.deck.wins }}W – {{ deck.deck.losses }}L</span>
+        </div>
+
         <div v-if="deckTotals" class="price-pills">
           <div class="price-pill">
             <span class="price-pill-k">Total</span>
@@ -443,6 +451,25 @@ watch(
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.record-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-50);
+}
+.record-value {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--ink-70);
+  letter-spacing: 0.04em;
 }
 
 .deck-title {

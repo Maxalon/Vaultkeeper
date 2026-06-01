@@ -1,17 +1,45 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
+import { useToast } from '../composables/useToast'
+import api from '../lib/api'
 import PlayerTile from '../components/game/PlayerTile.vue'
+import EndGameSummary from '../components/game/EndGameSummary.vue'
 
 const router = useRouter()
 const game = useGameStore()
+const toast = useToast()
 
 const seats = computed(() => game.seats)
+const showSummary = ref(false)
 
 function endGame() {
+  showSummary.value = true
+}
+
+async function handleConfirm(winnerIndex) {
+  const winnerDeckId = winnerIndex !== null ? (seats.value[winnerIndex]?.deckId ?? null) : null
+  const loserDeckIds = seats.value
+    .filter((s, i) => s.deckId && i !== winnerIndex)
+    .map((s) => s.deckId)
+
+  try {
+    await api.post('/game-results', {
+      winner_deck_id: winnerDeckId,
+      loser_deck_ids: loserDeckIds,
+    })
+    toast.success('Game result saved.')
+  } catch {
+    toast.error('Could not save game result.')
+  }
+
   game.reset()
   router.push({ name: 'game-setup' })
+}
+
+function handleCancel() {
+  showSummary.value = false
 }
 </script>
 
@@ -27,6 +55,12 @@ function endGame() {
       />
     </div>
     <button class="end-game-fab" aria-label="End game" @click="endGame">End</button>
+    <EndGameSummary
+      v-if="showSummary"
+      :seats="seats"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 
