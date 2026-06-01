@@ -7,7 +7,7 @@ const props = defineProps({
   placeholder: { type: String, default: 'Syntax: c:red t:creature r:mythic sort:rarity…' },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'help'])
 
 const focused = ref(false)
 
@@ -55,7 +55,7 @@ function onInput(event) {
         @blur="focused = false"
       />
     </div>
-    <button class="vk-syntax-help" title="Syntax reference" type="button">
+    <button class="vk-syntax-help" title="Syntax reference" type="button" @click="emit('help')">
       <span style="font-family: var(--font-mono), monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.06em;">?</span>
     </button>
   </div>

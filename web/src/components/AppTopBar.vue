@@ -9,12 +9,13 @@ import TopbarTabBar from './tabs/TopbarTabBar.vue'
 import NotificationBell from './NotificationBell.vue'
 import IconFriends from '../assets/icons/friends.svg'
 import IconSettings from '../assets/icons/settings.svg'
+import IconSearch from '../assets/icons/search.svg'
 
 const props = defineProps({
   sidebarCollapsed: { type: Boolean, default: false },
   mode: { type: String, default: 'collection' }, // 'collection' | 'deck'
 })
-const emit = defineEmits(['toggle-sidebar'])
+const emit = defineEmits(['toggle-sidebar', 'catalog-search'])
 
 const collection = useCollectionStore()
 const router = useRouter()
@@ -190,6 +191,15 @@ function openFriends() {
         :class="{ active: collection.selecting }"
         @click="collection.toggleSelecting()"
       >Select</button>
+      <button
+        v-if="mode === 'deck'"
+        class="vk-icon-btn"
+        title="Search cards"
+        aria-label="Search cards"
+        @click="emit('catalog-search')"
+      >
+        <IconSearch />
+      </button>
       <button
         class="vk-icon-btn"
         title="Friends"
