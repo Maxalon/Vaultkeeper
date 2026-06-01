@@ -48,7 +48,7 @@ private const val ROUTE_NOTIFICATIONS = "notifications"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BottomNavScaffold() {
+fun BottomNavScaffold(onNavigateToDeck: (Long) -> Unit = {}) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -95,7 +95,7 @@ fun BottomNavScaffold() {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(Tab.Collection.route) { CollectionScreen() }
-            composable(Tab.Decks.route) { DecksScreen() }
+            composable(Tab.Decks.route) { DecksScreen(onNavigateToDeck = onNavigateToDeck) }
             composable(Tab.Review.route) { ReviewScreen() }
             composable(Tab.Friends.route) { FriendsScreen() }
             composable(ROUTE_NOTIFICATIONS) { NotificationsScreen() }
