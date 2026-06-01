@@ -1,0 +1,142 @@
+name: Jira status sync
+
+# Keep VAULT-* tickets in step with the deploy pipeline:
+#   - PR merged into staging  → ticket moves to "Beta Testing" (it's live on
+#     the staging/beta environment, which auto-deploys on staging push).
+#   - Commit lands on main     → ticket moves to "Released".
+#
+# Tickets are matched by VAULT-<n> keys found in the PR title/body, the head
+# branch name, and the commit messages bundled into the merge/push — so the
+# squashed "Staging (#NNN)" merges into main still resolve every key from the
+# commit messages they carry.
+#
+# Status moves walk the issue's real Jira workflow forward one transition at a
+# time (Beta Testing → Ready for Release → Released has no direct edge), so the
+# automation only ever advances a ticket along a path the workflow allows and
+# never drags one backward.
+#
+# The manual "backfill" run (workflow_dispatch) reconciles existing tickets:
+# every key in main's history is walked to Released, and keys on staging but
+# not yet on main are walked to Beta Testing.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   JIRA_BASE_URL    https://vaultkeeper.atlassian.net   (no trailing slash)
+#   JIRA_USER_EMAIL  Atlassian account email tied to the API token
+#   JIRA_API_TOKEN   token from https://id.atlassian.com/manage-profile/security/api-tokens
+# The token's account needs permission to transition issues in the VAULT project.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [staging]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  beta-testing:
+    name: merged → staging ⇒ Beta Testing
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move referenced tickets to Beta Testing
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          COMMITS="$(git log --format='%s %b' "${BASE_SHA}..${HEAD_SHA}" 2>/dev/null || true)"
+          SOURCE_TEXT="${PR_TITLE}
+          ${PR_BODY}
+          ${HEAD_REF}
+          ${COMMITS}"
+          export SOURCE_TEXT
+          bash .github/scripts/jira-transition.sh "Beta Testing"
+
+  released:
+    name: landed on main ⇒ Released
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move referenced tickets to Released
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # On the first push to a branch, before is the zero-SHA and the
+          # range is meaningless — fall back to just the tip commit.
+          RANGE="${BEFORE_SHA}..${AFTER_SHA}"
+          if ! git rev-parse --quiet --verify "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            RANGE="${AFTER_SHA}"
+          fi
+          SOURCE_TEXT="$(git log --format='%s %b' ${RANGE} 2>/dev/null || true)"
+
+          # Squash merges from staging collapse individual commits into one,
+          # losing VAULT keys that appeared only in those commit messages.
+          # Enrich with the merge PR title and body so those keys are visible.
+          PR_INFO="$(gh api "repos/${REPO}/commits/${AFTER_SHA}/pulls" \
+            --jq '.[] | "\(.title)\n\(.body)"' 2>/dev/null || true)"
+          SOURCE_TEXT="${SOURCE_TEXT}
+          ${PR_INFO}"
+
+          export SOURCE_TEXT
+          bash .github/scripts/jira-transition.sh "Released"
+
+  backfill:
+    name: backfill from git history
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+      JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main and staging
+        run: git fetch --no-tags origin main staging
+
+      # Released first: every ticket whose work is on main is walked all the
+      # way to Released. Beta second: tickets only on staging move to Beta
+      # Testing — and any that were just set to Released are left alone, since
+      # the walk never moves a ticket backward.
+      - name: Backfill Released (all of main)
+        run: |
+          SOURCE_TEXT="$(git log --format='%s %b' origin/main 2>/dev/null || true)"
+          export SOURCE_TEXT
+          bash .github/scripts/jira-transition.sh "Released"
+
+      - name: Backfill Beta Testing (staging not yet on main)
+        run: |
+          SOURCE_TEXT="$(git log --format='%s %b' origin/main..origin/staging 2>/dev/null || true)"
+          export SOURCE_TEXT
+          bash .github/scripts/jira-transition.sh "Beta Testing"
