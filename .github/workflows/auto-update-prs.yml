@@ -26,6 +26,11 @@ name: Auto-update PRs when their base branch advances
 # blocking auto-merge. A PAT authenticates as a real user, so the update
 # commit fires CI normally. (Same reason deploy.yml's sync-staging uses
 # a PAT.)
+#
+# Label management uses GITHUB_TOKEN instead of STAGING_SYNC_PAT. The PAT
+# is a fine-grained token scoped for branch push and PR operations; it
+# doesn't carry Issues:write, which the GitHub API requires for label
+# create/update. GITHUB_TOKEN gets Issues:write from the permissions block.
 
 on:
   pull_request:
@@ -33,6 +38,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -48,6 +54,8 @@ jobs:
       MERGED_PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Ensure needs-rebase label exists
+        env:
+          GH_TOKEN: ${{ github.token }}   # STAGING_SYNC_PAT lacks Issues:write
         run: |
           gh label create needs-rebase \
             --repo "$GITHUB_REPOSITORY" \

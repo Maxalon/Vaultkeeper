@@ -205,10 +205,19 @@ jobs:
 
   # ─── Sync staging → main after a successful prod deploy ──────────────────
   #
-  # Squash-merges into main leave the staging branch holding the original
-  # un-squashed commits, which makes staging look permanently "N ahead,
-  # 1 behind" main. This job resets staging to main's tip so the two
-  # branches stay identical after every prod deploy.
+  # Root cause of the PR-retargeting problem (VAULT-55):
+  # When the staging-to-main release PR is merged, GitHub's "Automatically
+  # delete head branches" setting removes the staging branch. GitHub then
+  # silently retargets every open PR whose base was staging to the repo's
+  # default branch (main). The force-push step below recreates staging from
+  # main's tip, but by that point the PRs already point at main. The
+  # "retarget" step that follows repairs them explicitly.
+  #
+  # The force-push also corrects the divergence left by squash-merges:
+  # squash-merges into main leave staging holding the original un-squashed
+  # commits, making it look permanently "N ahead, 1 behind" main. Resetting
+  # staging to main's tip keeps the two branches identical after every
+  # prod deploy.
   #
   # Uses a fine-grained PAT (STAGING_SYNC_PAT) because the default
   # GITHUB_TOKEN authenticates as github-actions[bot] and has no repo role,
@@ -221,6 +230,9 @@ jobs:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
 
+    env:
+      GH_TOKEN: ${{ secrets.STAGING_SYNC_PAT }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -229,3 +241,37 @@ jobs:
 
       - name: Force-push main to staging
         run: git push --force origin HEAD:refs/heads/staging
+
+      - name: Retarget feature PRs from main back to staging
+        run: |
+          set -euo pipefail
+
+          # Any open PR that targeted staging and got silently retargeted to
+          # main by GitHub's auto-delete is now visible as --base main. We
+          # move them back. PRs from hotfix/* or release/* branches are
+          # intentionally targeting main and are left alone.
+          mapfile -t PRS < <(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --state open \
+            --json number,headRefName \
+            --jq '.[] | select(.headRefName | test("^(hotfix|release)/") | not) | .number')
+
+          if [ ${#PRS[@]} -eq 0 ]; then
+            echo "No feature PRs needed retargeting."
+            exit 0
+          fi
+
+          FAILED=0
+          for num in "${PRS[@]}"; do
+            echo "Retargeting PR #${num} → staging..."
+            if gh api -X PATCH "repos/${GITHUB_REPOSITORY}/pulls/${num}" \
+              -f base=staging; then
+              echo "PR #${num} retargeted."
+            else
+              echo "WARNING: failed to retarget PR #${num}." >&2
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          echo "Done — retargeted $((${#PRS[@]} - FAILED))/${#PRS[@]} PR(s)."
+          [ "$FAILED" -eq 0 ]
